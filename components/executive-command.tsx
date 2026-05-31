@@ -1137,6 +1137,8 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
             due_date: dueDateTime,
             is_draft: draft,
             is_new: true,
+            repeat_daily: repeatDaily,
+            is_daily_task: repeatDaily,
         };
 
         // Only include task_description if it has a value
@@ -1160,6 +1162,8 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
             due_date: dueDateTime || undefined,
             is_draft: draft,
             is_new: true,
+            repeat_daily: repeatDaily,
+            is_daily_task: repeatDaily,
             assigned_to_user: staff.find(s => s.id === newTask.assignedTo) ? {
                 full_name: staff.find(s => s.id === newTask.assignedTo)?.full_name || "",
                 department: staff.find(s => s.id === newTask.assignedTo)?.department || ""
@@ -1293,24 +1297,33 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
         if (!staffToRemove) return;
 
         try {
-            // 1. Unassign active tasks
-            await supabase
-                .from("tasks")
-                .update({ assigned_to: null })
-                .eq("assigned_to", staffToRemove.id);
+            const uid = staffToRemove.id;
 
-            // 2. Permanently delete from database
-            const { error } = await supabase
-                .from("profiles")
-                .delete()
-                .eq("id", staffToRemove.id);
+            // 1. Cascade delete from dependent database tables sequentially client-side
+            await supabase.from("tutor_notifications").delete().eq("tutor_id", uid);
+            await supabase.from("class_schedules").delete().eq("tutor_id", uid);
+            await supabase.from("classes").delete().eq("tutor_id", uid);
+            await supabase.from("tutor_availability").delete().eq("tutor_id", uid);
+            await supabase.from("daily_reports").delete().or(`profile_id.eq.${uid},user_id.eq.${uid}`);
+            await supabase.from("knocks").delete().eq("knocked_by", uid);
+            await supabase.from("attendance").delete().eq("user_id", uid);
+            await supabase.from("activity_feed").delete().eq("user_id", uid);
+            await supabase.from("notifications").delete().eq("user_id", uid);
+            await supabase.from("requests").delete().or(`submitted_by.eq.${uid},reviewed_by.eq.${uid}`);
+            await supabase.from("tasks").delete().or(`assigned_to.eq.${uid},created_by.eq.${uid}`);
+            await supabase.from("ideas").delete().eq("created_by", uid);
 
-            if (error) {
-                // Fallback to soft delete if FK constraint hits or other issue
-                await supabase
-                    .from("profiles")
-                    .update({ full_name: "[DELETED]", status: "offline" })
-                    .eq("id", staffToRemove.id);
+            // 2. Try DB RPC
+            const { error: cascadeError } = await supabase.rpc('delete_profile_cascade', {
+                profile_uuid: uid
+            });
+
+            // 3. Force delete the profile row to ensure it is completely wiped
+            const { error: deleteError } = await supabase.from("profiles").delete().eq("id", uid);
+
+            if (deleteError && cascadeError) {
+                // In case profile delete fails, try to soft-delete
+                await supabase.from("profiles").update({ full_name: "[DELETED]", status: "offline" }).eq("id", uid);
             }
 
             toast.success("OPERATIVE TERMINATED & DATA PURGED");
@@ -1319,6 +1332,7 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
             setStaffToRemove(null);
             setConfirmName("");
         } catch (e) {
+            console.error("Termination failed:", e);
             toast.error("Termination failed");
         }
     };
@@ -2922,6 +2936,27 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                                         );
                                     })}
                                 </div>
+                            </div>
+
+                            {/* SECTION 5: Repeat Daily Option Switch */}
+                            <div className="flex items-center justify-between p-4 rounded-2xl border border-gray-100 dark:border-white/10 bg-gray-50/50 dark:bg-white/5">
+                                <div className="space-y-0.5">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-[#1a1a2e] dark:text-white">
+                                        Repeat Daily
+                                    </label>
+                                    <p className="text-[9px] text-gray-400 dark:text-white/40 leading-normal">
+                                        Automatically assign this task to the selected staff member every day.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setRepeatDaily(!repeatDaily)}
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${repeatDaily ? "bg-orange-500" : "bg-gray-200 dark:bg-zinc-800"}`}
+                                >
+                                    <span
+                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${repeatDaily ? "translate-x-6" : "translate-x-1"}`}
+                                    />
+                                </button>
                             </div>
                         </div>
                     </ScrollArea>

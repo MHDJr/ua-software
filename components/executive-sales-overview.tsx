@@ -1221,7 +1221,7 @@ export function ExecutiveSalesOverview() {
                                 Today's Reports
                             </Badge>
                         </div>
-                        {userRole === 'CEO' && (
+                        {(userRole === 'CEO' || userRole === 'MANAGER') && (
                             <Button
                                 variant="ghost"
                                 size="sm"

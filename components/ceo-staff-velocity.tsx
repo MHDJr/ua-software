@@ -16,6 +16,7 @@ import {
     Clock,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import {
     Dialog,
@@ -153,10 +154,11 @@ export function CEOStaffVelocity() {
     const [isStaffReportOpen, setIsStaffReportOpen] = useState(false);
     const [staffLogs, setStaffLogs] = useState<any[]>([]);
     const [loadingLogs, setLoadingLogs] = useState(false);
+    const [timeframe, setTimeframe] = useState<"daily" | "weekly" | "monthly">("monthly");
 
     useEffect(() => {
         loadStaffVelocity();
-    }, []);
+    }, [timeframe]);
 
     const loadStaffVelocity = async () => {
         setLoading(true);
@@ -172,10 +174,23 @@ export function CEOStaffVelocity() {
                 return;
             }
 
-            // Get current month daily reports to compute active conversions
-            const currentMonth = new Date();
-            const firstDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).toISOString().split('T')[0];
-            const lastDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).toISOString().split('T')[0];
+            // Calculate firstDay and lastDay dynamically based on selected timeframe
+            const today = new Date();
+            let firstDay = "";
+            let lastDay = "";
+
+            if (timeframe === "daily") {
+                firstDay = today.toISOString().split('T')[0];
+                lastDay = firstDay;
+            } else if (timeframe === "weekly") {
+                const sevenDaysAgo = new Date();
+                sevenDaysAgo.setDate(today.getDate() - 6);
+                firstDay = sevenDaysAgo.toISOString().split('T')[0];
+                lastDay = today.toISOString().split('T')[0];
+            } else { // monthly
+                firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+                lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+            }
 
             const { data: dailyReports, error: dailyReportsError } = await supabase
                 .from('daily_reports')
@@ -748,10 +763,30 @@ export function CEOStaffVelocity() {
                     </div>
                     <div>
                         <h2 className="text-xl font-bold text-gray-900">Staff Velocity</h2>
-                        <p className="text-sm text-gray-500">Monthly performance overview</p>
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-0.5">
+                            {timeframe === "daily" ? "Daily" : timeframe === "weekly" ? "Weekly" : "Monthly"} performance overview
+                        </p>
                     </div>
                 </div>
-                <div className="flex items-center gap-2 self-end sm:self-auto">
+                <div className="flex flex-wrap items-center gap-3 self-end sm:self-auto">
+                    {/* Timeframe Filter Selector */}
+                    <div className="bg-slate-100 p-0.5 rounded-xl flex items-center border border-slate-200/50">
+                        {(["daily", "weekly", "monthly"] as const).map((t) => (
+                            <button
+                                key={t}
+                                onClick={() => setTimeframe(t)}
+                                className={cn(
+                                    "px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all",
+                                    timeframe === t 
+                                        ? "bg-white text-[#31267D] shadow-sm font-black" 
+                                        : "text-slate-500 hover:text-slate-900"
+                                )}
+                            >
+                                {t}
+                            </button>
+                        ))}
+                    </div>
+
                     <button
                         onClick={generateCombinedReportPDF}
                         className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#2F1E73] hover:bg-[#2F1E73]/90 text-white text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer"

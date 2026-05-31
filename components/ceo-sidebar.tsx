@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { LayoutDashboard, Users, Mail, ChevronRight, ChevronLeft, TrendingUp, LogOut, Wallet, Brain } from "lucide-react";
+import { LayoutDashboard, Users, Mail, ChevronRight, ChevronLeft, TrendingUp, LogOut, Wallet, Brain, Plus, Calendar } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { useBadgeCounts } from "@/hooks/use-badge-counts";
@@ -10,6 +10,9 @@ import { supabase } from "@/lib/supabase";
 import { SystemSyncButton } from "./system-sync-button";
 import { useAuth } from "@/lib/auth-context";
 import { motion, AnimatePresence } from "framer-motion";
+import { useQueryClient } from "@tanstack/react-query";
+import { LeaveRequestModal } from "@/components/LeaveRequestModal";
+import { RequestModal } from "@/components/RequestModal";
 
 // Brand colors
 const BRAND_COLORS = {
@@ -67,6 +70,9 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange }: CEOS
     const { badgeCounts } = useBadgeCounts();
     const { userRole, profile } = useAuth();
     const router = useRouter();
+    const queryClient = useQueryClient();
+    const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
+    const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
 
     const handleToggleMinimized = () => {
         const newState = !isMinimized;
@@ -256,6 +262,46 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange }: CEOS
                         </div>
                     )}
 
+                    {userRole !== "CEO" && (
+                        <div className="flex flex-col gap-2">
+                            {isMinimized ? (
+                                <div className="flex flex-col gap-2 items-center">
+                                    <button 
+                                        onClick={() => setIsLeaveModalOpen(true)}
+                                        className="w-8 h-8 rounded-full bg-[#31267D]/10 hover:bg-[#31267D]/20 text-[#31267D] flex items-center justify-center transition-all duration-300 hover:scale-105"
+                                        title="Request Leave"
+                                    >
+                                        <Calendar className="w-4 h-4" />
+                                    </button>
+                                    <button 
+                                        onClick={() => setIsRequestModalOpen(true)}
+                                        className="w-8 h-8 rounded-full bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 flex items-center justify-center transition-all duration-300 hover:scale-105"
+                                        title="New Request"
+                                    >
+                                        <Plus className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-2">
+                                    <button 
+                                        onClick={() => setIsLeaveModalOpen(true)}
+                                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-[#31267D]/5 hover:bg-[#31267D]/10 text-[#31267D] text-[9px] font-black uppercase tracking-widest transition-all duration-300"
+                                    >
+                                        <Calendar className="w-3.5 h-3.5" />
+                                        Request Leave
+                                    </button>
+                                    <button 
+                                        onClick={() => setIsRequestModalOpen(true)}
+                                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white text-[9px] font-black uppercase tracking-widest shadow-lg shadow-orange-500/20 transition-all duration-300"
+                                    >
+                                        <Plus className="w-3.5 h-3.5" />
+                                        New Request
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     <div className="space-y-2">
                         <button
                             onClick={handleLogout}
@@ -290,6 +336,21 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange }: CEOS
                     </div>
                 </div>
             </div>
+            
+            {userRole !== "CEO" && (
+                <>
+                    <LeaveRequestModal
+                        isOpen={isLeaveModalOpen}
+                        onClose={() => setIsLeaveModalOpen(false)}
+                        onSubmitSuccess={() => queryClient.invalidateQueries()}
+                    />
+                    <RequestModal
+                        isOpen={isRequestModalOpen}
+                        onClose={() => setIsRequestModalOpen(false)}
+                        onSubmitSuccess={() => queryClient.invalidateQueries()}
+                    />
+                </>
+            )}
         </aside>
     );
 }

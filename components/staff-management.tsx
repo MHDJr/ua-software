@@ -1484,6 +1484,11 @@ export function StaffManagement() {
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [confirmName, setConfirmName] = useState("");
 
+    const [staffToEdit, setStaffToEdit] = useState<StaffMember | null>(null);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [newUsername, setNewUsername] = useState("");
+    const [isUpdatingUsername, setIsUpdatingUsername] = useState(false);
+
     const loading = isLoadingStaff || isLoadingTasks || isLoadingRequests;
 
     // Process staff data for UI
@@ -1514,6 +1519,7 @@ export function StaffManagement() {
                 avatar: profile.avatar_url || "",
                 email: profile.email || "",
                 phone: profile.phone || "",
+                username: profile.username || "",
             };
         });
 
@@ -1637,17 +1643,33 @@ export function StaffManagement() {
                 }
             }
 
-            // 2. Cascade delete from database
+            const uid = staffToDelete.id;
+
+            // 2. Cascade delete from dependent database tables sequentially client-side
+            await supabase.from("tutor_notifications").delete().eq("tutor_id", uid);
+            await supabase.from("class_schedules").delete().eq("tutor_id", uid);
+            await supabase.from("classes").delete().eq("tutor_id", uid);
+            await supabase.from("tutor_availability").delete().eq("tutor_id", uid);
+            await supabase.from("daily_reports").delete().or(`profile_id.eq.${uid},user_id.eq.${uid}`);
+            await supabase.from("knocks").delete().eq("knocked_by", uid);
+            await supabase.from("attendance").delete().eq("user_id", uid);
+            await supabase.from("activity_feed").delete().eq("user_id", uid);
+            await supabase.from("notifications").delete().eq("user_id", uid);
+            await supabase.from("requests").delete().or(`submitted_by.eq.${uid},reviewed_by.eq.${uid}`);
+            await supabase.from("tasks").delete().or(`assigned_to.eq.${uid},created_by.eq.${uid}`);
+            await supabase.from("ideas").delete().eq("created_by", uid);
+
+            // 3. Try DB RPC first
             const { error: cascadeError } = await supabase.rpc('delete_profile_cascade', {
-                profile_uuid: staffToDelete.id
+                profile_uuid: uid
             });
 
-            if (cascadeError) {
-                await supabase.from("tasks").update({ assigned_to: null }).eq("assigned_to", staffToDelete.id);
-                const { error: deleteError } = await supabase.from("profiles").delete().eq("id", staffToDelete.id);
-                if (deleteError) {
-                    await supabase.from("profiles").update({ full_name: "[DELETED]", status: "offline" }).eq("id", staffToDelete.id);
-                }
+            // 4. Force delete the profile row to ensure it is completely wiped
+            const { error: deleteError } = await supabase.from("profiles").delete().eq("id", uid);
+
+            if (deleteError && cascadeError) {
+                // In case profile delete fails due to something else, try to soft-delete
+                await supabase.from("profiles").update({ full_name: "[DELETED]", status: "offline" }).eq("id", uid);
             }
 
             toast.success("Personnel terminated successfully");
@@ -1658,6 +1680,59 @@ export function StaffManagement() {
         } catch (e) {
             console.error("Deletion error:", e);
             toast.error("Failed to delete staff member");
+        }
+    };
+
+    const updateUsername = async () => {
+        if (!staffToEdit) return;
+        
+        const cleanedUsername = newUsername.trim().toLowerCase();
+        if (!cleanedUsername) {
+            toast.error("Username cannot be empty");
+            return;
+        }
+        
+        const usernameRegex = /^[a-z0-9_]+$/;
+        if (!usernameRegex.test(cleanedUsername)) {
+            toast.error("Username must contain only lowercase letters, numbers, and underscores (no spaces)");
+            return;
+        }
+
+        setIsUpdatingUsername(true);
+        try {
+            // Check if username is already taken by another profile
+            const { data: existingUser, error: checkError } = await supabase
+                .from("profiles")
+                .select("id")
+                .eq("username", cleanedUsername)
+                .neq("id", staffToEdit.id)
+                .maybeSingle();
+
+            if (checkError) throw checkError;
+
+            if (existingUser) {
+                toast.error("Username is already taken");
+                setIsUpdatingUsername(false);
+                return;
+            }
+
+            const { error: updateError } = await supabase
+                .from("profiles")
+                .update({ username: cleanedUsername })
+                .eq("id", staffToEdit.id);
+
+            if (updateError) throw updateError;
+
+            toast.success("Username updated successfully");
+            setIsEditModalOpen(false);
+            setStaffToEdit(null);
+            setNewUsername("");
+            queryClient.invalidateQueries();
+        } catch (e) {
+            console.error("Update username error:", e);
+            toast.error("Failed to update username");
+        } finally {
+            setIsUpdatingUsername(false);
         }
     };
 
@@ -1709,13 +1784,6 @@ export function StaffManagement() {
                     <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
                         {(userRole === 'CEO' || userRole === 'MANAGER' || profile?.role === 'ceo' || profile?.role === 'manager' || profile?.is_manager) && (
                             <>
-                                <button
-                                    onClick={() => setIsMonthlyReportOpen(true)}
-                                    className="bg-white border border-zinc-200 text-zinc-900 px-4 py-2 rounded-xl text-sm font-bold shadow-[0_4px_20px_rgba(0,0,0,0.02)] hover:bg-zinc-50 transition-all flex items-center justify-center gap-2 shrink-0 h-11"
-                                >
-                                    <BarChart3 className="w-4 h-4 text-zinc-600" />
-                                    View Monthly Report
-                                </button>
                                 <button
                                     onClick={downloadMonthlyOperationsReport}
                                     disabled={isDownloadingOperationsReport}
@@ -1937,9 +2005,14 @@ export function StaffManagement() {
                                                 )}
                                             </div>
                                             {userRole === 'CEO' && (
-                                                <Button variant="ghost" onClick={() => { setStaffToDelete(staff); setIsDeleteModalOpen(true); }} className="h-8 px-3 rounded-xl text-red-600 font-black uppercase text-[8px] gap-1.5">
-                                                    <Trash2 className="w-3 h-3" /> Terminate
-                                                </Button>
+                                                <div className="flex gap-1 items-center">
+                                                    <Button variant="ghost" onClick={() => { setStaffToEdit(staff); setNewUsername(staff.username || ""); setIsEditModalOpen(true); }} className="h-8 px-2 rounded-xl text-[#31267D] hover:bg-indigo-50 font-black uppercase text-[8px] gap-1">
+                                                        <Pencil className="w-3.5 h-3.5" /> Edit
+                                                    </Button>
+                                                    <Button variant="ghost" onClick={() => { setStaffToDelete(staff); setIsDeleteModalOpen(true); }} className="h-8 px-2 rounded-xl text-red-600 hover:bg-red-50 font-black uppercase text-[8px] gap-1">
+                                                        <Trash2 className="w-3.5 h-3.5" /> Terminate
+                                                    </Button>
+                                                </div>
                                             )}
                                         </div>
                                     </div>
@@ -2034,12 +2107,22 @@ export function StaffManagement() {
                                                          </button>
                                                      )}
                                                     {userRole === 'CEO' && (
-                                                        <button 
-                                                            onClick={() => { setStaffToDelete(staff); setIsDeleteModalOpen(true); }} 
-                                                            className="p-2 rounded-xl transition-all duration-300 hover:bg-red-50 dark:hover:bg-red-950/20 text-gray-400 hover:text-red-600"
-                                                        >
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </button>
+                                                        <>
+                                                            <button 
+                                                                onClick={() => { setStaffToEdit(staff); setNewUsername(staff.username || ""); setIsEditModalOpen(true); }} 
+                                                                className="p-2 rounded-xl transition-all duration-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 text-gray-400 hover:text-[#31267D]"
+                                                                title="Edit Username"
+                                                            >
+                                                                <Pencil className="w-4 h-4" />
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => { setStaffToDelete(staff); setIsDeleteModalOpen(true); }} 
+                                                                className="p-2 rounded-xl transition-all duration-300 hover:bg-red-50 dark:hover:bg-red-950/20 text-gray-400 hover:text-red-600"
+                                                                title="Terminate Personnel"
+                                                            >
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </button>
+                                                        </>
                                                     )}
                                                 </div>
                                             </td>
@@ -2068,6 +2151,45 @@ export function StaffManagement() {
                         <div className="flex gap-3">
                             <Button variant="outline" onClick={() => setIsDeleteModalOpen(false)} className="flex-1 py-6 rounded-2xl font-black uppercase tracking-widest text-[10px] border-gray-100">Abort</Button>
                             <Button variant="destructive" disabled={confirmName !== staffToDelete?.name} onClick={deleteStaff} className="flex-1 py-6 rounded-2xl font-black uppercase tracking-widest text-[10px] bg-red-600 shadow-lg shadow-red-500/20">Confirm</Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+                <DialogContent className="max-w-md p-0 overflow-hidden rounded-3xl border-0">
+                    <div className="bg-[#31267D] px-6 py-6 text-white text-center">
+                        <Pencil className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                        <h3 className="text-lg font-black uppercase tracking-widest text-orange-500">Edit Username</h3>
+                        <p className="text-[10px] font-bold uppercase tracking-tighter opacity-80 mt-1">Personnel Directory Record Update</p>
+                    </div>
+                    <div className="p-8 bg-white space-y-6">
+                        <p className="text-sm text-gray-600 font-medium text-center">Update the directory username for <span className="font-black text-gray-900">{staffToEdit?.name}</span>.</p>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">New Username</label>
+                            <Input 
+                                value={newUsername} 
+                                onChange={(e) => setNewUsername(e.target.value)} 
+                                placeholder="lowercase_and_underscores_only" 
+                                className="py-6 rounded-2xl border-gray-100 focus:ring-[#31267D]/10 focus:border-[#31267D]" 
+                            />
+                            <p className="text-[9px] text-gray-400 font-medium leading-normal">
+                                Must contain only lowercase letters, numbers, and underscores (no spaces).
+                            </p>
+                        </div>
+                        <div className="flex gap-3">
+                            <Button variant="outline" onClick={() => setIsEditModalOpen(false)} className="flex-1 py-6 rounded-2xl font-black uppercase tracking-widest text-[10px] border-gray-100">Cancel</Button>
+                            <Button 
+                                disabled={isUpdatingUsername || !newUsername.trim()} 
+                                onClick={updateUsername} 
+                                className="flex-1 py-6 rounded-2xl font-black uppercase tracking-widest text-[10px] bg-[#F14D24] hover:bg-[#F14D24]/90 text-white shadow-lg shadow-orange-500/20"
+                            >
+                                {isUpdatingUsername ? (
+                                    <Loader2 className="w-4 h-4 animate-spin mx-auto" />
+                                ) : (
+                                    "Save Changes"
+                                )}
+                            </Button>
                         </div>
                     </div>
                 </DialogContent>

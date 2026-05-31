@@ -42,6 +42,18 @@ Deno.serve(async (req) => {
 
         if (leavesError) throw leavesError;
 
+        // Fetch financial entries for the current month
+        const currentMonthYYYYMM = new Date().toISOString().slice(0, 7); // YYYY-MM
+        const { data: finEntries, error: finError } = await supabase
+            .from("financial_entries")
+            .select("*")
+            .gte("entry_date", `${currentMonthYYYYMM}-01`)
+            .order("entry_date", { ascending: false });
+
+        if (finError) {
+            console.error("Error fetching financial entries for monthly report:", finError);
+        }
+
         // 3. Compute stats per staff member
         const taskMap = new Map();
         tasks?.forEach((t) => {
@@ -410,8 +422,152 @@ Deno.serve(async (req) => {
             }
             console.log("Monthly Leaves Report email dispatched successfully!");
 
+            // 8c. Construct and dispatch Monthly Financial Report
+            console.log("Constructing and dispatching Monthly Financial Report...");
+            const entriesList = finEntries || [];
+            const uloomxTotal = entriesList.reduce((sum: number, e: any) => sum + (parseFloat(e.uloomx_income) || 0), 0);
+            const usthadTotal = entriesList.reduce((sum: number, e: any) => sum + (parseFloat(e.usthad_income) || 0), 0);
+            const totalExpense = entriesList.reduce((sum: number, e: any) => sum + (parseFloat(e.total_expenses) || 0), 0);
+            const balance = uloomxTotal + usthadTotal - totalExpense;
+
+            // Formatter helper inside edge function
+            const formatCurrencyEdge = (amount: number) => {
+                return new Intl.NumberFormat("en-IN", {
+                    style: "currency",
+                    currency: "INR",
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0,
+                }).format(amount);
+            };
+
+            let finBreakdownRows = "";
+            entriesList.forEach((e: any) => {
+                const dateStr = new Date(e.entry_date).toLocaleDateString("en-IN", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric"
+                });
+
+                const usthadIncVal = parseFloat(e.usthad_income) || 0;
+                const uloomxIncVal = parseFloat(e.uloomx_income) || 0;
+                const expVal = parseFloat(e.total_expenses) || 0;
+                const netVal = usthadIncVal + uloomxIncVal - expVal;
+
+                finBreakdownRows += `
+                    <tr style="border-bottom: 1px solid #E5E7EB;">
+                        <td style="padding: 12px 16px; font-size: 11px; color: #4B5563;">${dateStr}</td>
+                        <td style="padding: 12px 16px; font-size: 11px; color: #111827; font-weight: bold;">${formatCurrencyEdge(usthadIncVal)}</td>
+                        <td style="padding: 12px 16px; font-size: 11px; color: #F14D24; font-weight: bold;">${formatCurrencyEdge(uloomxIncVal)}</td>
+                        <td style="padding: 12px 16px; font-size: 11px; color: #DC2626;">${formatCurrencyEdge(expVal)}</td>
+                        <td style="padding: 12px 16px; font-size: 11px; text-align: right; font-weight: bold; color: ${netVal >= 0 ? "#059669" : "#DC2626"};">
+                            ${formatCurrencyEdge(netVal)}
+                        </td>
+                    </tr>
+                `;
+            });
+
+            const finHtmlContent = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <title>Monthly Financial Audit & Performance Report</title>
+            </head>
+            <body style="margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #F3F4F6;">
+                <table align="center" border="0" cellpadding="0" cellspacing="0" width="650" style="border-collapse: collapse; margin-top: 40px; margin-bottom: 40px; background-color: #FFFFFF; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); border: 1px solid #E5E7EB;">
+                    <tr>
+                        <td bgcolor="#31267D" style="padding: 24px 32px;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                <tr>
+                                    <td>
+                                        <h1 style="margin: 0; color: #FFFFFF; font-size: 17px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase;">MONTHLY FINANCIAL AUDIT BRIEFING</h1>
+                                        <p style="margin: 4px 0 0 0; color: #FFFFFF; opacity: 0.8; font-size: 9px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase;">Usthad Academy OS • Financial Intelligence</p>
+                                    </td>
+                                    <td align="right" style="color: #FFFFFF; opacity: 0.8; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+                                        ${reportMonth}
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 32px;">
+                            <h4 style="margin: 0 0 12px 0; font-size: 11px; font-weight: 900; text-transform: uppercase; color: #9CA3AF; letter-spacing: 1.5px;">Financial Cumulative Overview</h4>
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 32px;">
+                                <tr>
+                                    <td width="23%" style="background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 16px; text-align: center;">
+                                        <div style="font-size: 8px; font-weight: 900; color: #9CA3AF; text-transform: uppercase; letter-spacing: 1px;">Usthad Revenue</div>
+                                        <div style="font-size: 16px; font-weight: 900; color: #111827; margin-top: 4px;">${formatCurrencyEdge(usthadTotal)}</div>
+                                    </td>
+                                    <td width="2%"></td>
+                                    <td width="23%" style="background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 16px; text-align: center;">
+                                        <div style="font-size: 8px; font-weight: 900; color: #9CA3AF; text-transform: uppercase; letter-spacing: 1px;">UloomX Revenue</div>
+                                        <div style="font-size: 16px; font-weight: 900; color: #F14D24; margin-top: 4px;">${formatCurrencyEdge(uloomxTotal)}</div>
+                                    </td>
+                                    <td width="2%"></td>
+                                    <td width="23%" style="background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 16px; text-align: center;">
+                                        <div style="font-size: 8px; font-weight: 900; color: #9CA3AF; text-transform: uppercase; letter-spacing: 1px;">Total Expenses</div>
+                                        <div style="font-size: 16px; font-weight: 900; color: #DC2626; margin-top: 4px;">${formatCurrencyEdge(totalExpense)}</div>
+                                    </td>
+                                    <td width="2%"></td>
+                                    <td width="23%" style="background-color: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 8px; padding: 16px; text-align: center;">
+                                        <div style="font-size: 8px; font-weight: 900; color: #059669; text-transform: uppercase; letter-spacing: 1px;">Net Balance</div>
+                                        <div style="font-size: 16px; font-weight: 900; color: #059669; margin-top: 4px;">${formatCurrencyEdge(balance)}</div>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <h4 style="margin: 0 0 12px 0; font-size: 11px; font-weight: 900; text-transform: uppercase; color: #9CA3AF; letter-spacing: 1.5px;">Detailed Financial Transactions</h4>
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; border: 1px solid #E5E7EB; border-radius: 12px; overflow: hidden; background-color: #FFFFFF;">
+                                <thead style="background-color: #F9FAFB; border-bottom: 1px solid #E5E7EB;">
+                                    <tr>
+                                        <th style="padding: 12px 16px; font-size: 9px; font-weight: 900; color: #9CA3AF; text-align: left; text-transform: uppercase; letter-spacing: 1px;">Date</th>
+                                        <th style="padding: 12px 16px; font-size: 9px; font-weight: 900; color: #9CA3AF; text-align: left; text-transform: uppercase; letter-spacing: 1px;">Usthad Rev</th>
+                                        <th style="padding: 12px 16px; font-size: 9px; font-weight: 900; color: #9CA3AF; text-align: left; text-transform: uppercase; letter-spacing: 1px;">UloomX Rev</th>
+                                        <th style="padding: 12px 16px; font-size: 9px; font-weight: 900; color: #9CA3AF; text-align: left; text-transform: uppercase; letter-spacing: 1px;">Expenses</th>
+                                        <th style="padding: 12px 16px; font-size: 9px; font-weight: 900; color: #9CA3AF; text-align: right; text-transform: uppercase; letter-spacing: 1px;">Net Balance</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${finBreakdownRows || `<tr><td colspan="5" style="padding: 24px; text-align: center; color: #6B7280; font-size: 12px;">No transactions recorded for this period.</td></tr>`}
+                                </tbody>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td bgcolor="#1F2937" style="padding: 24px; text-align: center; color: #9CA3AF; font-size: 11px;">
+                            <p style="margin: 0; text-transform: uppercase; letter-spacing: 1.5px; font-weight: bold;">Usthad Academy OS • Command Center</p>
+                            <p style="margin: 4px 0 0 0; font-size: 9px; color: #6B7280;">This is an official financial audit briefing. Confidentiality required.</p>
+                        </td>
+                    </tr>
+                </table>
+            </body>
+            </html>
+            `;
+
+            const finResendResponse = await fetch("https://api.resend.com/emails", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${resendApiKey}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    from: "Usthad Academy OS <onboarding@resend.dev>",
+                    to: recipientEmails,
+                    subject: `MONTHLY FINANCIAL AUDIT BRIEFING • ${reportMonth}`,
+                    html: finHtmlContent,
+                }),
+            });
+
+            if (!finResendResponse.ok) {
+                const errorText = await finResendResponse.text();
+                console.error(`Resend API error sending monthly financial report: ${errorText}`);
+            } else {
+                console.log("Monthly Financial Report email dispatched successfully!");
+            }
+
             // 9. PERFORM MONTH-END DATA PURGING (CEO COMMANDS TO CLEAR STORAGE)
-            console.log("Both monthly reports sent successfully. Initiating database cleanup...");
+            console.log("All monthly reports sent successfully. Initiating database cleanup...");
 
             // 9a. Delete all completed tasks
             const { data: clearedTasks, error: taskCleanupError } = await supabase

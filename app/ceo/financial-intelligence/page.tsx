@@ -22,7 +22,10 @@ import {
     Sparkles,
     Zap,
     Home,
+    FileText,
+    Loader2,
 } from "lucide-react";
+import { jsPDF } from "jspdf";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { MobileBottomNav } from "@/components/mobile-bottom-nav";
@@ -656,6 +659,404 @@ const useCounterAnimation = (targetValue: number, duration: number = 2000) => {
 
 export default function CEOFinancialIntelligence() {
     const { profile } = useAuth();
+    const [logoPng, setLogoPng] = useState<string | null>(null);
+    const [isDownloadingFinanceReport, setIsDownloadingFinanceReport] = useState(false);
+
+    useEffect(() => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+            const canvas = document.createElement("canvas");
+            canvas.width = 500;
+            canvas.height = 500;
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+                ctx.fillStyle = "rgba(0,0,0,0)";
+                ctx.fillRect(0, 0, 500, 500);
+                ctx.drawImage(img, 0, 0, 500, 500);
+                try {
+                    const dataUrl = canvas.toDataURL("image/png");
+                    setLogoPng(dataUrl);
+                } catch (e) {
+                    console.error("Failed to convert logo to data URL", e);
+                }
+            }
+        };
+        img.src = "/images/usthadacademylogo2.svg";
+    }, []);
+
+    const downloadMonthlyFinanceReport = async () => {
+        setIsDownloadingFinanceReport(true);
+        toast.loading("Compiling Monthly Financial Audit Report...");
+        
+        try {
+            const currentMonthYYYYMM = new Date().toISOString().slice(0, 7); // YYYY-MM
+            const { data: entries, error: fetchError } = await supabase
+                .from("financial_entries")
+                .select("*")
+                .gte("entry_date", `${currentMonthYYYYMM}-01`)
+                .order("entry_date", { ascending: false });
+
+            if (fetchError) throw fetchError;
+
+            const doc = new jsPDF({
+                orientation: "portrait",
+                unit: "mm",
+                format: "a4"
+            });
+
+            const primaryColor = "#31267D"; // Usthad Navy
+            const secondaryColor = "#F14D24"; // Usthad Orange
+            const darkGray = "#1F2937";
+            const lightGray = "#4B5563";
+
+            // Helper to draw confidentiality footer
+            const drawFooterConfidential = (d: jsPDF) => {
+                d.setFont("helvetica", "italic");
+                d.setFontSize(7.5);
+                d.setTextColor(156, 163, 175);
+                const footerMsg = "CONFIDENTIAL - USTHAD ACADEMY COMMAND CENTER OS OFFICIAL FINANCIAL AUDIT REPORT.";
+                d.text(footerMsg, 105 - d.getTextWidth(footerMsg) / 2, 287);
+            };
+
+            // Helper to draw standard header banner
+            const drawHeaderBanner = (d: jsPDF, pageNum: number) => {
+                // Top banner background
+                d.setFillColor(49, 38, 125); 
+                d.rect(0, 0, 210, 35, "F");
+
+                // Brand Logo inside white box
+                d.setFillColor(255, 255, 255);
+                d.rect(14, 8, 18, 18, "F");
+                
+                if (logoPng) {
+                    try {
+                        d.addImage(logoPng, 'PNG', 15.5, 9.5, 15, 15);
+                    } catch (err) {
+                        d.setFillColor(241, 77, 36);
+                        d.rect(16, 10, 14, 14, "F");
+                        d.setTextColor(255, 255, 255);
+                        d.setFont("helvetica", "bold");
+                        d.setFontSize(10);
+                        d.text("UA", 19, 19);
+                    }
+                } else {
+                    d.setFillColor(241, 77, 36);
+                    d.rect(16, 10, 14, 14, "F");
+                    d.setTextColor(255, 255, 255);
+                    d.setFont("helvetica", "bold");
+                    d.setFontSize(10);
+                    d.text("UA", 19, 19);
+                }
+
+                // Header Title
+                d.setTextColor(255, 255, 255);
+                d.setFont("helvetica", "bold");
+                d.setFontSize(15);
+                d.text("USTHAD ACADEMY", 38, 16);
+                d.setFont("helvetica", "normal");
+                d.setFontSize(8);
+                d.text("COMMAND CENTER OS • MONTHLY FINANCIAL AUDIT REPORT", 38, 22);
+
+                // Date Generated
+                const dateStr = new Date().toLocaleDateString("en-IN", {
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric"
+                });
+                d.setFontSize(8);
+                d.setTextColor(255, 255, 255);
+                d.text(`Report Date: ${dateStr}`, 155, 29);
+                
+                if (pageNum > 1) {
+                    d.text(`Page ${pageNum}`, 190, 15);
+                }
+                
+                // Orange separation line
+                d.setFillColor(241, 77, 36); // #F14D24
+                d.rect(15, 42, 180, 0.5, "F");
+            };
+
+            // ==========================================
+            // PAGE 1: COVER PAGE & STATS OVERVIEW
+            // ==========================================
+            // Top accent banner
+            doc.setFillColor(241, 77, 36);
+            doc.rect(0, 0, 210, 15, "F");
+
+            // Brand Logo in center
+            if (logoPng) {
+                try {
+                    doc.addImage(logoPng, 'PNG', 92.5, 35, 25, 25);
+                } catch (e) {}
+            }
+
+            doc.setTextColor(49, 38, 125);
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(22);
+            doc.text("USTHAD ACADEMY", 105, 72, { align: "center" });
+
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(10);
+            doc.setTextColor(lightGray);
+            doc.text("COMMAND CENTER OS • FINANCIAL INTELLIGENCE SYSTEM", 105, 78, { align: "center" });
+
+            doc.setFillColor(241, 77, 36); // Orange
+            doc.rect(75, 84, 60, 1.2, "F");
+
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(16);
+            doc.setTextColor(darkGray);
+            doc.text("MONTHLY FINANCIAL AUDIT BRIEFING", 105, 96, { align: "center" });
+
+            const reportMonthName = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }).toUpperCase();
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(11);
+            doc.setTextColor(241, 77, 36);
+            doc.text(`AUDIT REPORT PERIOD: ${reportMonthName}`, 105, 103, { align: "center" });
+
+            // Stats grid
+            let yPos = 120;
+            doc.setTextColor(49, 38, 125);
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(11);
+            doc.text("ACADEMY FISCAL PERFORMANCE PORTFOLIO", 20, yPos);
+            doc.setFillColor(49, 38, 125);
+            doc.rect(20, yPos + 1.8, 45, 0.8, "F");
+
+            yPos += 8;
+
+            const uloomxTotal = entries?.reduce((sum, e) => sum + (parseFloat(e.uloomx_income) || 0), 0) || 0;
+            const usthadTotal = entries?.reduce((sum, e) => sum + (parseFloat(e.usthad_income) || 0), 0) || 0;
+            const totalExpense = entries?.reduce((sum, e) => sum + (parseFloat(e.total_expenses) || 0), 0) || 0;
+            const balance = uloomxTotal + usthadTotal - totalExpense;
+
+            // 4 boxes in a grid
+            doc.setFillColor(249, 250, 251);
+            doc.roundedRect(20, yPos, 80, 22, 2, 2, "F");
+            doc.roundedRect(110, yPos, 80, 22, 2, 2, "F");
+            doc.roundedRect(20, yPos + 28, 80, 22, 2, 2, "F");
+            doc.roundedRect(110, yPos + 28, 80, 22, 2, 2, "F");
+
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(7.5);
+            doc.setTextColor(lightGray);
+            doc.text("MONTHLY USTHAD ACADEMY INCOME", 24, yPos + 6);
+            doc.text("MONTHLY ULOOMX INCOME", 114, yPos + 6);
+            doc.text("MONTHLY CUMULATIVE EXPENSES", 24, yPos + 34);
+            doc.text("CURRENT MONTHLY BALANCE", 114, yPos + 34);
+
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(12.5);
+            doc.setTextColor(darkGray);
+            doc.text(formatCurrency(usthadTotal), 24, yPos + 15);
+            doc.setTextColor(241, 77, 36); 
+            doc.text(formatCurrency(uloomxTotal), 114, yPos + 15);
+            doc.setTextColor(239, 68, 68); 
+            doc.text(formatCurrency(totalExpense), 24, yPos + 43);
+            doc.setTextColor(16, 185, 129); 
+            doc.text(formatCurrency(balance), 114, yPos + 43);
+
+            // Targets vs Achievements
+            yPos += 64;
+            doc.setTextColor(49, 38, 125);
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(11);
+            doc.text("FISCAL TARGET CONGRUENCY METRICS", 20, yPos);
+            doc.setFillColor(49, 38, 125);
+            doc.rect(20, yPos + 1.8, 45, 0.8, "F");
+
+            yPos += 8;
+
+            const targetsList = [
+                { name: "Usthad Academy Revenue Target", val: targets.usthadTarget, actual: usthadTotal, color: "#31267D" },
+                { name: "UloomX Revenue Target", val: targets.uloomxTarget, actual: uloomxTotal, color: "#F14D24" },
+                { name: "Operational Expense limit", val: targets.expenseTarget, actual: totalExpense, color: "#EF4444" }
+            ];
+
+            targetsList.forEach((t) => {
+                const percentage = t.val > 0 ? (t.actual / t.val) * 100 : 100;
+
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(8.5);
+                doc.setTextColor(darkGray);
+                doc.text(t.name.toUpperCase(), 24, yPos + 4);
+
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(8);
+                doc.setTextColor(lightGray);
+                doc.text(`Target: ${formatCurrency(t.val)} | Actual: ${formatCurrency(t.actual)}`, 24, yPos + 9);
+
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(8);
+                doc.setTextColor(t.color);
+                doc.text(`${percentage.toFixed(1)}% Achieved`, 186, yPos + 9, { align: "right" });
+
+                doc.setDrawColor(243, 244, 246);
+                doc.setLineWidth(0.15);
+                doc.line(20, yPos + 12, 190, yPos + 12);
+                yPos += 15;
+            });
+
+            drawFooterConfidential(doc);
+
+            // ==========================================
+            // PAGE 2: DETAILED TRANSACTION LEDGER
+            // ==========================================
+            doc.addPage();
+            let pageNum = doc.getNumberOfPages();
+            drawHeaderBanner(doc, pageNum);
+
+            let tableYPos = 48;
+
+            doc.setTextColor(49, 38, 125);
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(12);
+            doc.text("DAILY FINANCIAL TRANSMISSION LEDGER", 15, tableYPos);
+            
+            doc.setFillColor(241, 77, 36);
+            doc.rect(15, tableYPos + 2, 45, 1, "F");
+
+            tableYPos += 8;
+
+            // Table Header
+            doc.setFillColor(49, 38, 125);
+            doc.roundedRect(15, tableYPos, 180, 8, 1, 1, "F");
+            
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(7.5);
+            doc.setTextColor(255, 255, 255);
+            doc.text("ENTRY DATE", 18, tableYPos + 5.5);
+            doc.text("USTHAD ACADEMY REVENUE", 45, tableYPos + 5.5);
+            doc.text("ULOOMX REVENUE", 90, tableYPos + 5.5);
+            doc.text("TOTAL EXPENSES", 132, tableYPos + 5.5);
+            doc.text("NET BALANCE", 170, tableYPos + 5.5);
+
+            tableYPos += 8;
+
+            if (!entries || entries.length === 0) {
+                doc.setFont("helvetica", "italic");
+                doc.setFontSize(8.5);
+                doc.setTextColor(100, 116, 139);
+                doc.setFillColor(249, 250, 251);
+                doc.rect(15, tableYPos, 180, 10, "F");
+                doc.text("No financial transactions recorded for this period.", 18, tableYPos + 6.5);
+                tableYPos += 12;
+            } else {
+                entries.forEach((e: any, index: number) => {
+                    const entryDate = new Date(e.entry_date).toLocaleDateString("en-IN", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric"
+                    });
+
+                    const usthadIncVal = parseFloat(e.usthad_income) || 0;
+                    const uloomxIncVal = parseFloat(e.uloomx_income) || 0;
+                    const expVal = parseFloat(e.total_expenses) || 0;
+                    const netVal = usthadIncVal + uloomxIncVal - expVal;
+
+                    const rowHeight = 8;
+
+                    // Page overflow safety check
+                    if (tableYPos + rowHeight > 270) {
+                        doc.addPage();
+                        pageNum = doc.getNumberOfPages();
+                        drawHeaderBanner(doc, pageNum);
+                        tableYPos = 42;
+
+                        // Redraw headers
+                        doc.setFillColor(49, 38, 125);
+                        doc.roundedRect(15, tableYPos, 180, 8, 1, 1, "F");
+                        doc.setFont("helvetica", "bold");
+                        doc.setFontSize(7.5);
+                        doc.setTextColor(255, 255, 255);
+                        doc.text("ENTRY DATE", 18, tableYPos + 5.5);
+                        doc.text("USTHAD ACADEMY REVENUE", 45, tableYPos + 5.5);
+                        doc.text("ULOOMX REVENUE", 90, tableYPos + 5.5);
+                        doc.text("TOTAL EXPENSES", 132, tableYPos + 5.5);
+                        doc.text("NET BALANCE", 170, tableYPos + 5.5);
+                        tableYPos += 8;
+                    }
+
+                    // Stripe styling
+                    if (index % 2 === 1) {
+                        doc.setFillColor(249, 250, 251);
+                        doc.rect(15, tableYPos, 180, rowHeight, "F");
+                    }
+
+                    doc.setFont("helvetica", "normal");
+                    doc.setFontSize(7.5);
+                    doc.setTextColor(31, 41, 55);
+
+                    // Entry Date
+                    doc.text(entryDate, 18, tableYPos + 5);
+
+                    // Usthad Academy Revenue
+                    doc.text(formatCurrency(usthadIncVal), 45, tableYPos + 5);
+
+                    // UloomX Revenue
+                    doc.text(formatCurrency(uloomxIncVal), 90, tableYPos + 5);
+
+                    // Total Expenses
+                    doc.setTextColor(239, 68, 68); 
+                    doc.text(formatCurrency(expVal), 132, tableYPos + 5);
+
+                    // Net Balance
+                    doc.setFont("helvetica", "bold");
+                    if (netVal >= 0) {
+                        doc.setTextColor(16, 185, 129); 
+                    } else {
+                        doc.setTextColor(239, 68, 68); 
+                    }
+                    doc.text(formatCurrency(netVal), 170, tableYPos + 5);
+
+                    // Divider line
+                    doc.setDrawColor(243, 244, 246);
+                    doc.setLineWidth(0.1);
+                    doc.line(15, tableYPos + rowHeight, 195, tableYPos + rowHeight);
+
+                    tableYPos += rowHeight;
+                });
+            }
+
+            // Signatory Block page-break check
+            if (tableYPos > 235) {
+                doc.addPage();
+                pageNum = doc.getNumberOfPages();
+                drawHeaderBanner(doc, pageNum);
+                tableYPos = 45;
+            }
+
+            tableYPos += 18;
+            doc.setDrawColor(209, 213, 219);
+            doc.setLineWidth(0.2);
+            doc.line(15, tableYPos, 80, tableYPos);
+
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(8.5);
+            doc.setTextColor(31, 41, 55);
+            doc.text("SALEEM (EXECUTIVE DIRECTOR / CEO)", 15, tableYPos + 5);
+
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8);
+            doc.setTextColor(75, 85, 99);
+            doc.text("Executive Financial Authority Signature", 15, tableYPos + 9);
+
+            drawFooterConfidential(doc);
+
+            // Save PDF
+            doc.save(`Usthad_Academy_Financial_Report_${reportMonthName.replace(/\s+/g, '_')}.pdf`);
+            
+            toast.dismiss();
+            toast.success("Financial Audit Report generated successfully!");
+        } catch (e: any) {
+            console.error("Finance PDF export fail:", e);
+            toast.dismiss();
+            toast.error("Failed to generate financial report.");
+        } finally {
+            setIsDownloadingFinanceReport(false);
+        }
+    };
     const [dailyMetrics, setDailyMetrics] = useState<DailyMetrics>({
         uloomxIncome: 0,
         usthadIncome: 0,
@@ -996,6 +1397,24 @@ export default function CEOFinancialIntelligence() {
                                 <Home className="w-4 h-4 md:w-5 md:h-5 text-[#ff4d00] group-hover:text-white transition-colors" />
                             </button>
 
+                             {/* Download Finance Report Button */}
+                            <button
+                                onClick={downloadMonthlyFinanceReport}
+                                disabled={isDownloadingFinanceReport}
+                                className="h-9 md:h-10 px-4 rounded-xl text-white font-bold text-xs md:text-sm flex items-center justify-center gap-2 active:scale-95 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                                style={{
+                                    background: "linear-gradient(135deg, #ff4d00 0%, #dc2626 100%)",
+                                    boxShadow: "0 4px 15px rgba(255, 77, 0, 0.25)"
+                                }}
+                            >
+                                {isDownloadingFinanceReport ? (
+                                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                                ) : (
+                                    <FileText className="w-4 h-4 text-white" />
+                                )}
+                                <span>Download Finance Report</span>
+                            </button>
+
                             {/* Live System Status */}
                             <div className="flex items-center gap-1.5 md:gap-2 px-2.5 md:px-4 py-1.5 md:py-2.5 rounded-full bg-green-50 border border-green-200 flex-shrink-0">
                                 <div className="relative">
@@ -1093,39 +1512,11 @@ export default function CEOFinancialIntelligence() {
                             <div className="flex-1">
                                 <h3 className="text-lg md:text-xl font-bold text-[#1e293b] mb-4 md:mb-8">Monthly Fiscal Performance</h3>
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
-                                    {/* UloomX Card */}
-                                    <div className="p-4 md:p-6 rounded-[16px] md:rounded-[20px] bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 hover:shadow-md transition-all flex flex-col justify-between">
-                                        <div>
-                                            <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-[#ff4d00]/10 flex items-center justify-center mb-2 md:mb-3">
-                                                <Building className="w-4 h-4 md:w-5 md:h-5 text-[#ff4d00]" />
-                                            </div>
-                                            <p className="text-xs md:text-sm text-[#64748b] mb-1">Monthly UloomX Total</p>
-                                            <p className="text-xl md:text-2xl font-black text-[#1e293b]">{formatCurrency(animatedMonthlyUloomx.currentValue)}</p>
-                                        </div>
-                                        <div className="mt-4 pt-3 border-t border-gray-200/50 flex flex-col gap-1.5 w-full">
-                                            <div className="flex justify-between items-center text-[10px] md:text-xs font-bold">
-                                                <span className="text-[#64748b]">Target: {formatCurrency(targets.uloomxTarget)}</span>
-                                                <span className="text-[#ff4d00]">
-                                                    {((monthlyMetrics.uloomxTotal / (targets.uloomxTarget || 1)) * 100).toFixed(1)}%
-                                                </span>
-                                            </div>
-                                            <div className="w-full bg-slate-200 dark:bg-zinc-800 rounded-full h-1.5 overflow-hidden">
-                                                <div 
-                                                    className="h-1.5 rounded-full transition-all duration-500" 
-                                                    style={{ 
-                                                        width: `${Math.min(100, (monthlyMetrics.uloomxTotal / (targets.uloomxTarget || 1)) * 100)}%`,
-                                                        background: 'linear-gradient(90deg, #ff4d00 0%, #ff6b35 100%)'
-                                                    }}
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-
                                     {/* Usthad Academy Card */}
                                     <div className="p-4 md:p-6 rounded-[16px] md:rounded-[20px] bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 hover:shadow-md transition-all flex flex-col justify-between">
                                         <div>
-                                            <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-[#ffb088]/20 flex items-center justify-center mb-2 md:mb-3">
-                                                <Landmark className="w-4 h-4 md:w-5 md:h-5 text-[#ff6b35]" />
+                                            <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-white border border-slate-100 shadow-sm flex items-center justify-center mb-2 md:mb-3 overflow-hidden p-0.5">
+                                                <img src="/images/usthadacademylogo2.svg" alt="Usthad Academy" className="w-full h-full object-contain" />
                                             </div>
                                             <p className="text-xs md:text-sm text-[#64748b] mb-1">Monthly Usthad Total</p>
                                             <p className="text-xl md:text-2xl font-black text-[#1e293b]">{formatCurrency(animatedMonthlyUsthad.currentValue)}</p>
@@ -1143,6 +1534,34 @@ export default function CEOFinancialIntelligence() {
                                                     style={{ 
                                                         width: `${Math.min(100, (monthlyMetrics.usthadTotal / (targets.usthadTarget || 1)) * 100)}%`,
                                                         background: 'linear-gradient(90deg, #ffb088 0%, #ff8c52 100%)'
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* UloomX Card */}
+                                    <div className="p-4 md:p-6 rounded-[16px] md:rounded-[20px] bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 hover:shadow-md transition-all flex flex-col justify-between">
+                                        <div>
+                                            <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-white border border-slate-100 shadow-sm flex items-center justify-center mb-2 md:mb-3 overflow-hidden p-0.5">
+                                                <img src="/images/uloomx.png" alt="UloomX" className="w-full h-full object-contain scale-110" />
+                                            </div>
+                                            <p className="text-xs md:text-sm text-[#64748b] mb-1">Monthly UloomX Total</p>
+                                            <p className="text-xl md:text-2xl font-black text-[#1e293b]">{formatCurrency(animatedMonthlyUloomx.currentValue)}</p>
+                                        </div>
+                                        <div className="mt-4 pt-3 border-t border-gray-200/50 flex flex-col gap-1.5 w-full">
+                                            <div className="flex justify-between items-center text-[10px] md:text-xs font-bold">
+                                                <span className="text-[#64748b]">Target: {formatCurrency(targets.uloomxTarget)}</span>
+                                                <span className="text-[#ff4d00]">
+                                                    {((monthlyMetrics.uloomxTotal / (targets.uloomxTarget || 1)) * 100).toFixed(1)}%
+                                                </span>
+                                            </div>
+                                            <div className="w-full bg-slate-200 dark:bg-zinc-800 rounded-full h-1.5 overflow-hidden">
+                                                <div 
+                                                    className="h-1.5 rounded-full transition-all duration-500" 
+                                                    style={{ 
+                                                        width: `${Math.min(100, (monthlyMetrics.uloomxTotal / (targets.uloomxTarget || 1)) * 100)}%`,
+                                                        background: 'linear-gradient(90deg, #ff4d00 0%, #ff6b35 100%)'
                                                     }}
                                                 />
                                             </div>
