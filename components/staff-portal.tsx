@@ -1153,22 +1153,49 @@ export default function StaffPortal() {
     const updateTaskProgress = async (taskId: string, progressVal: number) => {
         try {
             console.log(`Updating task ${taskId} progress to:`, progressVal);
+            const isCompleted = progressVal === 100;
+            const targetTask = tasks.find(t => t.id === taskId);
+            
+            // Cache current state for rollback on error
+            const previousTasks = [...tasks];
+            const previousCompleted = [...completedTasks];
+
             // Update local state immediately for instant visual response
-            setTasks(prev => prev.map(t => t.id === taskId ? { ...t, progress: progressVal } : t));
+            if (isCompleted && targetTask) {
+                const updated: Task = { ...targetTask, progress: 100, status: "COMPLETED" as any };
+                setTasks(prev => prev.filter(t => t.id !== taskId));
+                setCompletedTasks(prev => [updated, ...prev]);
+            } else {
+                setTasks(prev => prev.map(t => t.id === taskId ? { 
+                    ...t, 
+                    progress: progressVal,
+                } : t));
+            }
+
+            const updatePayload: any = {
+                progress: progressVal,
+                updated_at: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            if (isCompleted) {
+                updatePayload.status = "COMPLETED";
+            }
 
             const { error } = await supabase
                 .from("tasks")
-                .update({ 
-                    progress: progressVal,
-                    updated_at: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                })
+                .update(updatePayload)
                 .eq("id", taskId);
                 
             if (error) {
                 console.error("Update progress error:", error);
                 toast.error("Failed to update progress in database");
+                // Rollback on error
+                setTasks(previousTasks);
+                setCompletedTasks(previousCompleted);
                 return;
+            }
+            if (isCompleted) {
+                toast.success("Mission complete! Moved to completed tab.");
             }
         } catch (err) {
             console.error("Update progress exception:", err);
@@ -1179,10 +1206,23 @@ export default function StaffPortal() {
     const submitForReview = async (taskId: string) => {
         try {
             console.log('Submitting task for review:', taskId);
+            
+            // Cache current state for rollback on error
+            const previousTasks = [...tasks];
+            const previousCompleted = [...completedTasks];
+
+            // Optimistic move
+            const targetTask = tasks.find(t => t.id === taskId);
+            if (targetTask) {
+                const updated: Task = { ...targetTask, progress: 100, status: "COMPLETED" as any };
+                setTasks(prev => prev.filter(t => t.id !== taskId));
+                setCompletedTasks(prev => [updated, ...prev]);
+            }
+
             const { error } = await supabase
                 .from("tasks")
                 .update({ 
-                    status: "UNDER_REVIEW",
+                    status: "COMPLETED",
                     progress: 100,
                     updated_at: new Date().toISOString(),
                     updatedAt: new Date().toISOString()
@@ -1192,11 +1232,13 @@ export default function StaffPortal() {
             if (error) {
                 console.error("Submit for review error:", error);
                 toast.error("Failed to submit task for review: " + error.message);
+                // Rollback
+                setTasks(previousTasks);
+                setCompletedTasks(previousCompleted);
                 return;
             }
             
-            toast.success("Task submitted for administrator review!");
-            setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: "UNDER_REVIEW", progress: 100 } : t));
+            toast.success("Task completed! Moved to completed section.");
         } catch (err) {
             console.error("Submit for review exception:", err);
             toast.error("Something went wrong submitting task for review");
@@ -1206,6 +1248,19 @@ export default function StaffPortal() {
     const markAsCompleted = async (taskId: string) => {
         try {
             console.log('Marking task as completed:', taskId);
+            
+            // Cache current state for rollback on error
+            const previousTasks = [...tasks];
+            const previousCompleted = [...completedTasks];
+
+            // Optimistic move
+            const targetTask = tasks.find(t => t.id === taskId);
+            if (targetTask) {
+                const updated: Task = { ...targetTask, progress: 100, status: "COMPLETED" as any };
+                setTasks(prev => prev.filter(t => t.id !== taskId));
+                setCompletedTasks(prev => [updated, ...prev]);
+            }
+
             const { error } = await supabase
                 .from("tasks")
                 .update({ 
@@ -1219,13 +1274,13 @@ export default function StaffPortal() {
             if (error) {
                 console.error("Mark as completed error:", error);
                 toast.error("Failed to mark task as completed: " + error.message);
+                // Rollback
+                setTasks(previousTasks);
+                setCompletedTasks(previousCompleted);
                 return;
             }
             
             toast.success("Task marked as completed!");
-            setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: "COMPLETED", progress: 100 } : t));
-            // Fetch updated data to reflect in completed section
-            fetchData();
         } catch (err) {
             console.error("Mark as completed exception:", err);
             toast.error("Something went wrong marking task as completed");
@@ -2070,6 +2125,12 @@ export default function StaffPortal() {
                                                 >
                                                     {showCompleted ? "COMPLETED" : task.priority?.toUpperCase()}
                                                 </span>
+                                                {showCompleted && ((task as any).reviewed_at || (task as any).ceo_reviewed) && (
+                                                    <span className="flex items-center gap-1 text-[9px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 uppercase tracking-widest animate-pulse">
+                                                        <Check className="w-2.5 h-2.5 text-emerald-500" />
+                                                        {((task as any).reviewed_by_info || "Management").toUpperCase()} REVIEWED OK
+                                                    </span>
+                                                )}
                                                 {task.is_daily_task && !showCompleted && (
                                                     <span className="flex items-center gap-1 text-[9px] font-black text-orange-600 dark:text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded border border-orange-500/20 uppercase tracking-widest">
                                                         <Sparkles className="w-2 h-2" />{" "}
@@ -2579,12 +2640,6 @@ export default function StaffPortal() {
                                 Assign objectives to your department team
                             </p>
                         </div>
-                        <button
-                            onClick={() => setIsAssignTaskOpen(false)}
-                            className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-all"
-                        >
-                            <X className="w-4 h-4" />
-                        </button>
                     </div>
 
                     <form onSubmit={handleAssignTask} className="flex-1 flex flex-col overflow-hidden">

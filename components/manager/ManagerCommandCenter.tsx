@@ -52,6 +52,9 @@ import {
     BarChart3,
     Shield,
     UserPlus,
+    History,
+    Megaphone,
+    ArrowRight,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
@@ -83,6 +86,7 @@ import { RequestModal } from "@/components/RequestModal";
 import { LeaveRequestModal } from "@/components/LeaveRequestModal";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ProfileModal } from "@/components/ProfileModal";
+import AddIdeaDialog from "@/components/AddIdeaDialog";
 import { cn } from "@/lib/utils";
 
 // Brand colors - Professional Navy, White, Orange (Matching Staff Hub)
@@ -96,6 +100,37 @@ const BRAND = {
     warning: "#F59E0B",
     danger: "#EF4444",
     cardBg: "#FFFFFF",
+};
+
+const formatTrackerRequest = (req: any) => {
+    let title = req.type?.replace("_", " ").toUpperCase() || "REQUEST";
+    if (req.type === "access_elevation") title = "Access Elevation";
+    else if (req.type === "role_change") title = "Role Elevation";
+    else if (req.type === "permission") title = "Permission Access";
+    else if (req.type === "leave") title = "Leave Authorization";
+    else if (req.type === "budget") title = "Budget Allocation";
+    
+    let detail = "";
+    if (req.description) {
+        let desc = req.description;
+        if (desc.startsWith("[") && desc.endsWith("]")) {
+            const parts = desc.slice(1, -1).split("|");
+            const systemPart = parts.find((p: string) => p.trim().startsWith("System:"));
+            const justificationPart = parts.find((p: string) => p.trim().startsWith("Justification:"));
+            
+            const systemVal = systemPart ? systemPart.split(":")[1]?.trim() : "";
+            const justificationVal = justificationPart ? justificationPart.split(":")[1]?.trim() : "";
+            
+            if (systemVal && justificationVal) {
+                detail = `${systemVal} • "${justificationVal}"`;
+            } else if (justificationVal) {
+                detail = `"${justificationVal}"`;
+            }
+        } else {
+            detail = desc;
+        }
+    }
+    return { title, detail };
 };
 
 interface ManagerCommandCenterProps {
@@ -128,6 +163,8 @@ export function ManagerCommandCenter({
 
     // Community Board (Ideas) state
     const [communityIdeas, setCommunityIdeas] = useState<any[]>([]);
+    const [requests, setRequests] = useState<any[]>([]);
+    const [isIdeasOpen, setIsIdeasOpen] = useState(false);
 
     // Task assignment state (CEO style)
     const [isAssignTaskOpen, setIsAssignTaskOpen] = useState(false);
@@ -170,6 +207,15 @@ export function ManagerCommandCenter({
         );
     }, [accessibleStaff, assigneeSearch]);
 
+    const addIdeaStaffList = useMemo(() => {
+        return staffData.map((s) => ({
+            id: s.id,
+            name: s.name,
+            dept: s.department,
+            role: s.role,
+        }));
+    }, [staffData]);
+
     // Fetching data
     const fetchTasks = async () => {
         if (!profile) return;
@@ -182,8 +228,7 @@ export function ManagerCommandCenter({
             let completedQuery = supabase
                 .from("tasks")
                 .select("*, creator:created_by(id, full_name, role, designation)")
-                .eq("status", "completed")
-                .is("reviewed_at", null);
+                .in("status", ["completed", "COMPLETED"]);
 
             if (managerDepartmentAccess) {
                 const accessibleStaffIds = staffData
@@ -202,15 +247,22 @@ export function ManagerCommandCenter({
                 );
             }
 
-            const [activeRes, completedRes] = await Promise.all([
+            const [activeRes, completedRes, requestsRes] = await Promise.all([
                 activeQuery.order("created_at", { ascending: false }),
                 completedQuery.order("updated_at", { ascending: false }),
+                supabase
+                    .from("requests")
+                    .select("*, submitted_by:profiles!requests_submitted_by_fkey(id, full_name)")
+                    .eq("submitted_by", profile.id)
+                    .neq("type", "idea")
+                    .order("created_at", { ascending: false }),
             ]);
 
             if (activeRes.data) setTasks(activeRes.data);
             if (completedRes.data) setCompletedTasks(completedRes.data);
+            if (requestsRes.data) setRequests(requestsRes.data);
         } catch (error) {
-            console.error("Error fetching tasks:", error);
+            console.error("Error fetching tasks & requests:", error);
         }
     };
 
@@ -308,9 +360,10 @@ export function ManagerCommandCenter({
         };
 
         try {
-            const { error } = await supabase
+            const { data, error } = await supabase
                 .from("tasks")
-                .insert(insertPayload);
+                .insert(insertPayload)
+                .select("*, creator:created_by(id, full_name, role, designation)");
             if (error) throw error;
 
             toast.success(
@@ -318,7 +371,13 @@ export function ManagerCommandCenter({
             );
             setIsAssignTaskOpen(false);
             resetTaskForm();
-            fetchTasks();
+            
+            // Prepend the new task directly in local state to make updates instant
+            if (data && data[0]) {
+                setTasks((prev) => [data[0], ...prev]);
+            } else {
+                fetchTasks();
+            }
         } catch (error: any) {
             toast.error("Failed to assign task: " + error.message);
         }
@@ -340,26 +399,54 @@ export function ManagerCommandCenter({
     };
 
     const updateTaskProgress = async (id: string, progress: number) => {
+        const isCompleted = progress === 100;
+        const previousTasks = [...tasks];
+        const previousCompleted = [...completedTasks];
+
+        // Optimistically update local state if completed
+        if (isCompleted) {
+            const targetTask = tasks.find((t) => t.id === id);
+            if (targetTask) {
+                const updated: Task = { ...targetTask, status: "completed" as any, progress: 100 };
+                setTasks((prev) => prev.filter((t) => t.id !== id));
+                setCompletedTasks((prev) => [updated, ...prev]);
+            }
+        }
+
         try {
             const { error } = await supabase
                 .from("tasks")
                 .update({
                     progress,
-                    status: progress === 100 ? "completed" : "in_progress",
+                    status: isCompleted ? "completed" : "in_progress",
                     updated_at: new Date().toISOString(),
                 })
                 .eq("id", id);
             if (error) throw error;
-            if (progress === 100) {
+            if (isCompleted) {
                 toast.success("Task completed!");
-                fetchTasks();
             }
         } catch (error) {
             toast.error("Failed to update progress");
+            // Rollback on failure
+            setTasks(previousTasks);
+            setCompletedTasks(previousCompleted);
         }
     };
 
     const markTaskAsCompleted = async (id: string) => {
+        // Cache current states for potential rollback
+        const previousTasks = [...tasks];
+        const previousCompleted = [...completedTasks];
+
+        // Optimistically update local state immediately
+        const targetTask = tasks.find((t) => t.id === id);
+        if (targetTask) {
+            const updated: Task = { ...targetTask, status: "completed" as any, progress: 100 };
+            setTasks((prev) => prev.filter((t) => t.id !== id));
+            setCompletedTasks((prev) => [updated, ...prev]);
+        }
+
         try {
             const { error } = await supabase
                 .from("tasks")
@@ -370,48 +457,63 @@ export function ManagerCommandCenter({
                 .eq("id", id);
             if (error) throw error;
             toast.success("Task marked as completed");
-            fetchTasks();
         } catch (error) {
             toast.error("Failed to update task");
+            // Rollback on failure
+            setTasks(previousTasks);
+            setCompletedTasks(previousCompleted);
         }
     };
 
     const markTaskAsReviewed = async (id: string) => {
-        try {
-            // Get current task to see existing reviewers
-            const { data: taskData } = await supabase
-                .from("tasks")
-                .select("reviewed_by_info")
-                .eq("id", id)
-                .single();
-
-            const myRole =
-                profile?.role === "ceo"
-                    ? "CEO"
-                    : profile?.designation || profile?.role || "Manager";
-            
-            let newInfo = myRole;
-            if (taskData?.reviewed_by_info) {
-                const existing = taskData.reviewed_by_info;
-                if (!existing.toLowerCase().includes(myRole.toLowerCase())) {
-                    newInfo = `${existing} & ${myRole}`;
-                } else {
-                    newInfo = existing;
-                }
+        const myRole =
+            profile?.role === "ceo"
+                ? "CEO"
+                : profile?.designation || profile?.role || "Manager";
+        
+        // Find existing task in completedTasks array locally to bypass DB read query
+        const taskToReview = completedTasks.find((t) => t.id === id);
+        const existing = taskToReview?.reviewed_by_info;
+        
+        let newInfo = myRole;
+        if (existing) {
+            if (!existing.toLowerCase().includes(myRole.toLowerCase())) {
+                newInfo = `${existing} & ${myRole}`;
+            } else {
+                newInfo = existing;
             }
+        }
 
+        const nowStr = new Date().toISOString();
+        const previousCompleted = [...completedTasks];
+
+        // Optimistically update local state immediately
+        setCompletedTasks((prev) =>
+            prev.map((t) =>
+                t.id === id
+                    ? {
+                          ...t,
+                          reviewed_at: nowStr,
+                          reviewed_by_info: newInfo,
+                      }
+                    : t,
+            ),
+        );
+
+        try {
             const { error } = await supabase
                 .from("tasks")
                 .update({
-                    reviewed_at: new Date().toISOString(),
+                    reviewed_at: nowStr,
                     reviewed_by_info: newInfo,
                 })
                 .eq("id", id);
             if (error) throw error;
             toast.success("Task marked as reviewed");
-            fetchTasks();
         } catch (error) {
             toast.error("Failed to review task");
+            // Rollback on failure
+            setCompletedTasks(previousCompleted);
         }
     };
 
@@ -573,56 +675,99 @@ export function ManagerCommandCenter({
             className={`min-h-screen ${className}`}
             style={{ backgroundColor: BRAND.bg }}
         >
-            {/* CLEAN ADMINISTRATOR-STYLE HEADER */}
-            <header className="bg-white border-b border-slate-200 sticky top-0 z-50 hidden md:block">
-                <div className="max-w-[1700px] mx-auto px-4 md:px-8 py-4">
-                    <div className="flex items-center justify-between">
+            {/* PREMIUM FLOATING GLASSMORPHIC HEADER */}
+            <header className="w-[calc(100%-2rem)] mx-auto mt-4 rounded-2xl md:rounded-3xl border border-slate-200/50 dark:border-zinc-800/40 shadow-xl bg-white/70 dark:bg-zinc-950/75 backdrop-blur-xl sticky top-4 z-50 transition-all duration-300">
+                <div className="max-w-[1700px] mx-auto px-4 md:px-6 py-2.5">
+                    <div className="flex items-center justify-between gap-4">
                         {/* Logo */}
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-[#2F1E73] rounded-xl flex items-center justify-center shadow-lg shadow-[#2F1E73]/20">
+                        <div className="flex items-center gap-3 group cursor-default shrink-0">
+                            <div className="w-10 h-10 bg-gradient-to-br from-[#2F1E73] to-[#F15A24] rounded-xl flex items-center justify-center shadow-lg shadow-[#2F1E73]/20 relative overflow-hidden group-hover:scale-105 transition-transform duration-300">
+                                <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                                 <div className="text-white text-[10px] font-black tracking-widest">
                                     UA
                                 </div>
                             </div>
                             <div>
-                                <h1 className="text-sm font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
-                                    {department} Management Portal
+                                <h1 className="text-xs md:text-sm font-black text-slate-900 dark:text-white uppercase tracking-tight flex items-center gap-1.5 group-hover:text-[#F15A24] transition-colors duration-200">
+                                    {department} <span className="text-[#2F1E73] dark:text-purple-400 font-extrabold">Management</span>
                                 </h1>
+                                <p className="text-[8px] md:text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest font-black leading-tight">
+                                    Operational Command Center
+                                </p>
                             </div>
                         </div>
 
-                        {/* Profile & Logout */}
-                        <div className="flex items-center gap-4">
-                            <div className="text-right hidden sm:block">
-                                <p className="text-sm font-black text-slate-900 uppercase tracking-tight">
-                                    {profile?.full_name || "Manager"}
-                                </p>
-                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                                    {profile?.designation ||
-                                        `${department} Department Head`}
-                                </p>
+                        {/* Mid Section: Active Sync Status & Quick Stats Widgets */}
+                        <div className="hidden md:flex items-center gap-4 flex-1 justify-center">
+                            {/* Sync Status */}
+                            <div className="hidden lg:flex items-center gap-2 bg-[#2F1E73]/5 dark:bg-zinc-800/20 border border-slate-200/50 dark:border-zinc-800/30 px-3.5 py-1.5 rounded-full select-none">
+                                <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                </span>
+                                <span className="text-[8px] font-black uppercase tracking-widest text-slate-500 dark:text-zinc-400">
+                                    UA SYSTEM SYNCED
+                                </span>
                             </div>
-                            <div
+
+                            {/* Stats Badges */}
+                            <div className="flex items-center gap-2.5">
+                                <div className="flex items-center gap-2 bg-amber-500/5 border border-amber-500/20 px-3 py-1.5 rounded-xl shadow-[0_2px_8px_rgba(245,158,11,0.02)]">
+                                    <Target className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                                    <span className="text-[9px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                                        {tasks.length} Active Missions
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-2 bg-[#2F1E73]/5 border border-[#2F1E73]/10 dark:bg-purple-500/5 dark:border-purple-500/20 px-3 py-1.5 rounded-xl shadow-[0_2px_8px_rgba(47,30,115,0.02)]">
+                                    <Users className="w-3.5 h-3.5 text-[#2F1E73] dark:text-purple-400" />
+                                    <span className="text-[9px] font-black uppercase tracking-wider text-[#2F1E73] dark:text-purple-400">
+                                        {accessibleStaff.length} Personnel
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Profile Menu Capsule & Sign Out */}
+                        <div className="flex items-center gap-3 shrink-0">
+                            {/* Unified Capsule */}
+                            <div 
                                 onClick={() => setIsProfileModalOpen(true)}
-                                className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-lg overflow-hidden cursor-pointer hover:scale-105 transition-transform duration-300"
-                                style={{
-                                    background: `linear-gradient(135deg, ${BRAND.navy}, ${BRAND.orange})`,
-                                }}
+                                className="flex items-center gap-2.5 bg-slate-50/50 hover:bg-slate-100/80 dark:bg-zinc-900/40 dark:hover:bg-zinc-800/80 border border-slate-200/50 dark:border-zinc-800/60 pl-3 pr-2 py-1.5 rounded-xl transition-all duration-300 cursor-pointer group shadow-sm hover:scale-[1.02]"
                             >
-                                {profile?.avatar_url ? (
-                                    <img src={profile.avatar_url} alt="Profile" className="w-full h-full object-cover" />
-                                ) : (
-                                    (profile?.full_name || "M")
-                                        .split(" ")
-                                        .map((n: string) => n[0])
-                                        .join("")
-                                        .slice(0, 2)
-                                        .toUpperCase()
-                                )}
+                                <div className="text-right hidden sm:block">
+                                    <p className="text-[11px] font-black text-slate-800 dark:text-white uppercase tracking-tight leading-none group-hover:text-[#F15A24] transition-colors">
+                                        {profile?.full_name || "Manager"}
+                                    </p>
+                                    <p className="text-[8px] text-slate-400 dark:text-zinc-500 font-bold uppercase tracking-widest leading-none mt-1">
+                                        {profile?.designation || `${department} Head`}
+                                    </p>
+                                </div>
+                                <div className="relative">
+                                    <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white font-black text-xs shadow-inner overflow-hidden border border-white/20"
+                                        style={{
+                                            background: `linear-gradient(135deg, ${BRAND.navy}, ${BRAND.orange})`,
+                                        }}
+                                    >
+                                        {profile?.avatar_url ? (
+                                            <img src={profile.avatar_url} alt="Profile" className="w-full h-full object-cover animate-fade-in" />
+                                        ) : (
+                                            (profile?.full_name || "M")
+                                                .split(" ")
+                                                .map((n: string) => n[0])
+                                                .join("")
+                                                .slice(0, 2)
+                                                .toUpperCase()
+                                        )}
+                                    </div>
+                                    {/* Pulse Online Dot */}
+                                    <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-white dark:border-zinc-950 rounded-full animate-pulse"></span>
+                                </div>
                             </div>
+
+                            {/* Power Button */}
                             <button
                                 onClick={() => signOut()}
-                                className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all border border-slate-100"
+                                className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-zinc-900 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all border border-slate-150 dark:border-zinc-800/80 shadow-sm hover:scale-105 active:scale-95"
                             >
                                 <Power className="w-5 h-5" />
                             </button>
@@ -650,27 +795,139 @@ export function ManagerCommandCenter({
                                 </p>
                             </div>
                         </div>
-
-                        {/* Action Buttons (Request Modals) */}
-                        <div className="flex items-center gap-3">
-                            <button
-                                onClick={() => setIsLeaveModalOpen(true)}
-                                className="px-4 py-2.5 bg-orange-50 text-orange-600 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-orange-100 transition-all border border-orange-200"
-                            >
-                                Leave Request
-                            </button>
-                            <button
-                                onClick={() => setIsRequestModalOpen(true)}
-                                className="px-4 py-2.5 bg-[#2F1E73] text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-[#2F1E73]/90 transition-all shadow-md"
-                            >
-                                New Request
-                            </button>
-                        </div>
                     </div>
                 </div>
 
-                {/* Left Column - Community Board */}
+                {/* Left Column - Action Portal, Sparks, Request Tracker & Community Board */}
                 <div className="col-span-12 lg:col-span-3 space-y-6 order-3 lg:order-1">
+                    {/* Action Portal */}
+                    <div className="bg-white rounded-2xl md:rounded-[2.5rem] p-5 md:p-6 shadow-sm border border-slate-100">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="p-2 rounded-lg bg-orange-50 dark:bg-orange-950/20">
+                                <Plus className="w-4 h-4 text-[#F15A24]" />
+                            </div>
+                            <span className="text-xs font-black tracking-widest uppercase text-slate-400">
+                                Action Portal
+                            </span>
+                        </div>
+                        <div className="space-y-3">
+                            {[
+                                {
+                                    id: "new_request",
+                                    label: "New Request",
+                                    icon: Plus,
+                                },
+                                {
+                                    id: "leave_request",
+                                    label: "Leave Request",
+                                    icon: Calendar,
+                                },
+                            ].map((item) => (
+                                <button
+                                    key={item.id}
+                                    onClick={() => {
+                                        if (item.id === "new_request") {
+                                            setIsRequestModalOpen(true);
+                                        } else if (item.id === "leave_request") {
+                                            setIsLeaveModalOpen(true);
+                                        }
+                                    }}
+                                    className="w-full p-4 rounded-2xl flex items-center justify-between text-white hover:opacity-90 transition-all bg-[#2F1E73] group shadow-md"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <item.icon className="w-4 h-4 text-orange-400" />
+                                        <span className="text-[11px] font-black uppercase tracking-widest">
+                                            {item.label}
+                                        </span>
+                                    </div>
+                                    <Plus className="w-4 h-4 opacity-40 group-hover:rotate-90 transition-all" />
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Share a Spark */}
+                    <div className="bg-white rounded-2xl md:rounded-[2.5rem] p-5 md:p-6 shadow-sm border border-slate-100 group hover:border-orange-250 transition-all">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="p-2 bg-orange-50 rounded-xl">
+                                <Lightbulb className="w-5 h-5 text-orange-500" />
+                            </div>
+                            <div>
+                                <span className="text-[10px] font-black tracking-widest uppercase text-slate-400">
+                                    Innovation Lab
+                                </span>
+                                <h4 className="text-xs font-black text-slate-800 uppercase">
+                                    Share a Spark
+                                </h4>
+                            </div>
+                        </div>
+                        <p className="text-[11px] text-slate-500 mb-5 leading-relaxed font-medium">
+                            Have a good idea for the Academy? Share it directly with CEO.
+                        </p>
+                        <button
+                            onClick={() => setIsIdeasOpen(true)}
+                            className="w-full py-3 bg-orange-50 hover:bg-orange-100 rounded-2xl font-black text-[9px] tracking-widest uppercase text-[#F15A24] transition-colors flex items-center justify-center gap-2"
+                        >
+                            Submit Idea <ArrowRight className="w-3 h-3" />
+                        </button>
+                    </div>
+
+                    {/* Request Tracker */}
+                    <div className="bg-white rounded-2xl md:rounded-[2.5rem] p-5 md:p-6 shadow-sm border border-slate-100">
+                        <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center gap-3">
+                                <History className="w-4 h-4 text-slate-400" />
+                                <span className="text-xs font-black tracking-widest uppercase text-slate-400">
+                                    Request Tracker
+                                </span>
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                            <div className="max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
+                                {requests.map((req) => {
+                                    const { title, detail } = formatTrackerRequest(req);
+                                    return (
+                                        <div
+                                            key={req.id}
+                                            className="flex items-center justify-between py-4 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 px-2 transition-all"
+                                        >
+                                            <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                                                <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center shadow-sm shrink-0 border border-slate-100">
+                                                    <Calendar className="w-4 h-4 text-slate-500" />
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="text-xs font-bold text-slate-900 tracking-wide">
+                                                        {title}
+                                                    </p>
+                                                    <p className="text-[10px] text-slate-500 font-medium mt-1 truncate tracking-tight uppercase">
+                                                        {detail ? `${detail} • ` : ""}{format(new Date(req.created_at), "MMM d, h:mm a")}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <span
+                                                className={`text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider shrink-0 ml-3 ${
+                                                    req.status === "approved"
+                                                        ? "bg-emerald-55/10 text-emerald-600 border border-emerald-500/20"
+                                                        : req.status === "pending"
+                                                          ? "bg-amber-50 text-amber-600 border border-amber-100"
+                                                          : "bg-rose-50 text-rose-600 border border-rose-100"
+                                                }`}
+                                            >
+                                                {req.status?.toUpperCase() || "PENDING"}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            {requests.length === 0 && (
+                                <div className="text-center py-6">
+                                    <p className="text-[9px] text-slate-400 font-bold uppercase">No requests found</p>
+                                    <p className="text-[8px] text-slate-500 mt-2">Submit a request to see it here</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
                     {/* Community Board (Ideas) */}
                     <div className="bg-white rounded-2xl md:rounded-[2.5rem] p-5 md:p-6 shadow-sm border border-slate-100">
                         <div className="flex items-center gap-2 mb-5">
@@ -686,7 +943,7 @@ export function ManagerCommandCenter({
                                 </p>
                             </div>
                         </div>
-                        <ScrollArea className="h-[450px] pr-2">
+                        <ScrollArea className="h-[250px] pr-2">
                             <div className="space-y-3">
                                 {communityIdeas.map((idea) => (
                                     <div
@@ -1075,17 +1332,24 @@ export function ManagerCommandCenter({
                                                     ) : (
                                                         task.assigned_to !==
                                                             profile?.id && (
-                                                            <button
-                                                                onClick={() =>
-                                                                    markTaskAsReviewed(
-                                                                        task.id,
-                                                                    )
-                                                                }
-                                                                className="h-8 px-4 text-[9px] font-black uppercase bg-emerald-500 text-white rounded-xl transition-all shadow-md shadow-emerald-500/20 flex items-center gap-1.5 hover:scale-[1.02] active:scale-[0.98]"
-                                                            >
-                                                                <CheckCircle className="w-3.5 h-3.5" />{" "}
-                                                                Review Mission
-                                                            </button>
+                                                            task.reviewed_at ? (
+                                                                <span className="h-8 px-3 text-[9px] font-black uppercase bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-xl border border-emerald-500/20 flex items-center gap-1.5">
+                                                                    <Check className="w-3 h-3 text-emerald-500" />
+                                                                    Reviewed ({task.reviewed_by_info || "Management"})
+                                                                </span>
+                                                            ) : (
+                                                                <button
+                                                                    onClick={() =>
+                                                                        markTaskAsReviewed(
+                                                                            task.id,
+                                                                        )
+                                                                    }
+                                                                    className="h-8 px-4 text-[9px] font-black uppercase bg-emerald-500 text-white rounded-xl transition-all shadow-md shadow-emerald-500/20 flex items-center gap-1.5 hover:scale-[1.02] active:scale-[0.98]"
+                                                                >
+                                                                    <CheckCircle className="w-3.5 h-3.5" />{" "}
+                                                                    Review Mission
+                                                                </button>
+                                                            )
                                                         )
                                                     )}
                                                 </div>
@@ -1158,7 +1422,7 @@ export function ManagerCommandCenter({
                                             </button>
                                         </div>
                                     ))
-                                )}
+                                                                )}
                             </div>
                         </ScrollArea>
                     </div>
@@ -1167,32 +1431,27 @@ export function ManagerCommandCenter({
 
             {/* CEO-STYLE TASK ASSIGNMENT DIALOG */}
             <Dialog open={isAssignTaskOpen} onOpenChange={setIsAssignTaskOpen}>
-                <DialogContent className="bg-white border border-gray-100 text-slate-900 max-w-md rounded-3xl shadow-2xl overflow-hidden p-0 flex flex-col max-h-[85vh]">
-                    <div className="px-6 pt-7 pb-4 flex items-start justify-between flex-shrink-0 border-b">
+                <DialogContent className="bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 text-slate-900 dark:text-zinc-100 max-w-md rounded-3xl shadow-2xl overflow-hidden p-0 flex flex-col max-h-[85vh]">
+                    <div className="px-6 pt-7 pb-4 flex items-start justify-between flex-shrink-0 border-b dark:border-zinc-800">
                         <div>
-                            <DialogTitle className="text-lg font-black tracking-tight text-[#1a1a2e] flex items-center gap-2">
+                            <DialogTitle className="text-lg font-black tracking-tight text-[#1a1a2e] dark:text-white flex items-center gap-2">
                                 <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#F15A24]/10 to-[#2F1E73]/10 flex items-center justify-center">
                                     <Target className="w-4 h-4 text-[#F15A24]" />
                                 </div>
                                 Deploy Mission
                             </DialogTitle>
-                            <p className="text-[11px] text-gray-400 font-semibold mt-1 ml-10 uppercase tracking-widest">
+                            <p className="text-[11px] text-gray-400 dark:text-white/40 font-semibold mt-1 ml-10 uppercase tracking-widest">
                                 {department} Strategic Deployment
                             </p>
                         </div>
-                        <button
-                            onClick={() => setIsAssignTaskOpen(false)}
-                            className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-all"
-                        >
-                            <X className="w-4 h-4" />
-                        </button>
                     </div>
 
-                    <ScrollArea className="flex-1 px-6">
-                        <div className="space-y-5 py-6">
-                            {/* Task Title */}
+                    {/* Scrollable Form */}
+                    <ScrollArea className="flex-1 px-6 custom-scrollbar">
+                        <div className="space-y-5 pb-6">
+                            {/* SECTION 1: Task Title */}
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">
                                     Task Title
                                 </label>
                                 <input
@@ -1204,13 +1463,13 @@ export function ManagerCommandCenter({
                                             title: e.target.value,
                                         })
                                     }
-                                    className="w-full h-12 px-4 rounded-xl border border-gray-200 bg-gray-50 text-sm font-semibold text-[#1a1a2e] focus:outline-none focus:ring-2 focus:ring-[#F15A24]/30"
+                                    className="w-full h-12 px-4 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-sm font-semibold text-[#1a1a2e] dark:text-white placeholder:text-gray-300 dark:placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-[#F15A24]/30 focus:border-[#F15A24]/50 transition-all duration-200"
                                 />
                             </div>
 
-                            {/* Description */}
+                            {/* SECTION 2: Objective */}
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">
                                     Objective
                                 </label>
                                 <textarea
@@ -1220,20 +1479,21 @@ export function ManagerCommandCenter({
                                         setTaskDescription(e.target.value)
                                     }
                                     rows={3}
-                                    className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm font-medium text-[#1a1a2e] resize-none leading-relaxed focus:outline-none focus:ring-2 focus:ring-[#F15A24]/30"
+                                    className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-sm font-medium text-[#1a1a2e] dark:text-white placeholder:text-gray-300 dark:placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-[#2F1E73]/30 focus:border-[#2F1E73]/50 transition-all duration-200 resize-none leading-relaxed"
                                 />
                             </div>
 
-                            {/* Staff + Deadline */}
+                            {/* SECTION 3: Staff + Deadline */}
                             <div className="grid grid-cols-2 gap-4">
+                                {/* Assign Staff */}
                                 <div className="space-y-1.5">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">
                                         Assign Staff
                                     </label>
                                     <div className="relative">
                                         {newTask.assignedTo ? (
                                             <div
-                                                className="flex items-center gap-2 px-3 h-11 rounded-xl border border-gray-200 bg-gray-50 cursor-pointer"
+                                                className="flex items-center gap-2 px-3 h-11 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 group/assignee cursor-pointer"
                                                 onClick={() => {
                                                     setNewTask({
                                                         ...newTask,
@@ -1242,16 +1502,31 @@ export function ManagerCommandCenter({
                                                     setAssigneeSearch("");
                                                 }}
                                             >
-                                                <div className="w-6 h-6 rounded-full bg-[#F15A24] text-white flex items-center justify-center text-[9px] font-black shadow-sm">
-                                                    {
-                                                        accessibleStaff.find(
-                                                            (s) =>
-                                                                s.id ===
-                                                                newTask.assignedTo,
-                                                        )?.avatar
-                                                    }
-                                                </div>
-                                                <span className="flex-1 text-sm font-semibold truncate">
+                                                <Avatar className="h-6 w-6 flex-shrink-0">
+                                                    <AvatarImage
+                                                        src={
+                                                            accessibleStaff.find(
+                                                                (s) =>
+                                                                    s.id ===
+                                                                    newTask.assignedTo,
+                                                            )?.avatar_url
+                                                        }
+                                                    />
+                                                    <AvatarFallback className="bg-[#2F1E73] text-white text-[9px] font-black">
+                                                        {accessibleStaff
+                                                            .find(
+                                                                (s) =>
+                                                                    s.id ===
+                                                                    newTask.assignedTo,
+                                                            )
+                                                            ?.name?.substring(
+                                                                0,
+                                                                2,
+                                                            )
+                                                            .toUpperCase()}
+                                                    </AvatarFallback>
+                                                </Avatar>
+                                                <span className="flex-1 text-sm font-semibold text-[#1a1a2e] dark:text-white truncate">
                                                     {
                                                         accessibleStaff.find(
                                                             (s) =>
@@ -1260,130 +1535,225 @@ export function ManagerCommandCenter({
                                                         )?.name
                                                     }
                                                 </span>
-                                                <X className="w-3.5 h-3.5 text-gray-400" />
+                                                <X className="w-3.5 h-3.5 text-gray-300 group-hover/assignee:text-red-400 transition-colors" />
                                             </div>
                                         ) : (
                                             <>
-                                                <input
-                                                    placeholder="Search personnel..."
-                                                    value={assigneeSearch}
-                                                    onChange={(e) => {
-                                                        setAssigneeSearch(
-                                                            e.target.value,
-                                                        );
-                                                        setShowAssigneeDropdown(
-                                                            true,
-                                                        );
-                                                    }}
-                                                    onFocus={() =>
-                                                        setShowAssigneeDropdown(
-                                                            true,
-                                                        )
-                                                    }
-                                                    className="w-full h-11 pl-4 pr-4 rounded-xl border border-gray-200 bg-gray-50 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#F15A24]/20"
-                                                />
+                                                <div className="relative">
+                                                    <input
+                                                        placeholder="Search personnel..."
+                                                        value={assigneeSearch}
+                                                        onChange={(e) => {
+                                                            setAssigneeSearch(
+                                                                e.target.value,
+                                                            );
+                                                            setShowAssigneeDropdown(
+                                                                true,
+                                                            );
+                                                        }}
+                                                        onFocus={() =>
+                                                            setShowAssigneeDropdown(
+                                                                true,
+                                                            )
+                                                        }
+                                                        className="w-full h-11 pl-9 pr-4 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-sm font-semibold text-[#1a1a2e] dark:text-white placeholder:text-gray-300 dark:placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-[#F15A24]/30 focus:border-[#F15A24]/50 transition-all duration-200"
+                                                    />
+                                                    <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300 dark:text-white/20" />
+                                                </div>
                                                 {showAssigneeDropdown &&
                                                     assigneeSearch && (
-                                                        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-100 rounded-xl overflow-hidden shadow-xl max-h-[160px] overflow-y-auto">
-                                                            {filteredStaffForSearch.map(
-                                                                (s) => (
-                                                                    <button
-                                                                        key={
-                                                                            s.id
-                                                                        }
-                                                                        onClick={() => {
-                                                                            setNewTask(
-                                                                                {
-                                                                                    ...newTask,
-                                                                                    assignedTo:
-                                                                                        s.id,
-                                                                                },
-                                                                            );
-                                                                            setShowAssigneeDropdown(
-                                                                                false,
-                                                                            );
-                                                                        }}
-                                                                        className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left border-b last:border-none"
-                                                                    >
-                                                                        <div className="w-7 h-7 rounded-full bg-[#2F1E73] text-white flex items-center justify-center text-[9px] font-black">
-                                                                            {
-                                                                                s.avatar
-                                                                            }
-                                                                        </div>
-                                                                        <div className="text-xs font-bold text-slate-900">
-                                                                            {
-                                                                                s.name
-                                                                            }
-                                                                        </div>
-                                                                    </button>
-                                                                ),
-                                                            )}
+                                                        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-[#1a1625] border border-gray-100 dark:border-white/10 rounded-xl overflow-hidden shadow-xl">
+                                                            <ScrollArea className="max-h-[160px]">
+                                                                {filteredStaffForSearch.length ===
+                                                                0 ? (
+                                                                    <div className="p-3 text-center text-[11px] text-gray-400 font-semibold">
+                                                                        No staff found
+                                                                    </div>
+                                                                ) : (
+                                                                    filteredStaffForSearch.map(
+                                                                        (s) => (
+                                                                            <button
+                                                                                key={
+                                                                                    s.id
+                                                                                }
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    setNewTask(
+                                                                                        {
+                                                                                            ...newTask,
+                                                                                            assignedTo:
+                                                                                                s.id,
+                                                                                        },
+                                                                                    );
+                                                                                    setAssigneeSearch(
+                                                                                        s.name ||
+                                                                                            "",
+                                                                                    );
+                                                                                    setShowAssigneeDropdown(
+                                                                                        false,
+                                                                                    );
+                                                                                }}
+                                                                                className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors border-b border-gray-50 dark:border-white/5 last:border-none"
+                                                                            >
+                                                                                <Avatar className="h-7 w-7 flex-shrink-0">
+                                                                                    <AvatarImage
+                                                                                        src={
+                                                                                            s.avatar_url
+                                                                                        }
+                                                                                    />
+                                                                                    <AvatarFallback className="bg-[#2D2A77]/10 text-[#2D2A77] dark:text-white text-[9px] font-black">
+                                                                                        {s.name
+                                                                                            ?.substring(
+                                                                                                0,
+                                                                                                2,
+                                                                                            )
+                                                                                            .toUpperCase()}
+                                                                                    </AvatarFallback>
+                                                                                </Avatar>
+                                                                                <div className="text-left">
+                                                                                    <div className="text-xs font-bold text-[#1a1a2e] dark:text-white">
+                                                                                        {
+                                                                                            s.name
+                                                                                        }
+                                                                                    </div>
+                                                                                    <div className="text-[10px] text-gray-400 dark:text-white/40 uppercase">
+                                                                                        {s.department ||
+                                                                                            "Staff"}
+                                                                                    </div>
+                                                                                </div>
+                                                                            </button>
+                                                                        ),
+                                                                    )
+                                                                )}
+                                                            </ScrollArea>
                                                         </div>
                                                     )}
                                             </>
                                         )}
                                     </div>
                                 </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+
+                                {/* Deadline */}
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">
                                         Deadline
                                     </label>
-                                    <input
-                                        type="date"
-                                        value={newTask.due_date}
-                                        onChange={(e) =>
-                                            setNewTask({
-                                                ...newTask,
-                                                due_date: e.target.value,
-                                            })
-                                        }
-                                        className="w-full h-11 px-3 rounded-xl border border-gray-200 bg-gray-50 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#F15A24]/20"
-                                    />
+                                    <div className="space-y-2">
+                                        <input
+                                            type="date"
+                                            value={newTask.due_date}
+                                            onChange={(e) =>
+                                                setNewTask({
+                                                    ...newTask,
+                                                    due_date: e.target.value,
+                                                })
+                                            }
+                                            className="w-full h-12 px-4 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-sm font-semibold text-[#1a1a2e] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#F15A24]/30 focus:border-[#F15A24]/50 transition-all duration-200 [&::-webkit-calendar-picker-indicator]:opacity-40"
+                                        />
+                                        <input
+                                            type="time"
+                                            value={newTask.due_time}
+                                            onChange={(e) =>
+                                                setNewTask({
+                                                    ...newTask,
+                                                    due_time: e.target.value,
+                                                })
+                                            }
+                                            className="w-full h-11 px-4 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-sm font-semibold text-[#1a1a2e] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#F15A24]/30 focus:border-[#F15A24]/50 transition-all duration-200"
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* Priority Selection */}
+                            {/* SECTION 4: Priority Buttons */}
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">
-                                    Mission Priority
+                                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">
+                                    Priority
                                 </label>
                                 <div className="flex gap-2">
-                                    {["low", "medium", "high", "urgent"].map(
-                                        (p) => (
+                                    {(
+                                        [
+                                            "low",
+                                            "medium",
+                                            "high",
+                                            "urgent",
+                                        ] as const
+                                    ).map((p) => {
+                                        const colors: Record<string, string> = {
+                                            low: "bg-emerald-500 border-emerald-500 text-white",
+                                            medium: "bg-amber-500 border-amber-500 text-white",
+                                            high: "bg-orange-500 border-orange-500 text-white",
+                                            urgent: "bg-red-500 border-red-500 text-white",
+                                        };
+                                        const outline: Record<string, string> =
+                                            {
+                                                low: "border-emerald-200 text-emerald-500 hover:bg-emerald-50 dark:border-emerald-900 dark:text-emerald-400 dark:hover:bg-emerald-900/20",
+                                                medium: "border-amber-200 text-amber-500 hover:bg-amber-50 dark:border-amber-900 dark:text-amber-400 dark:hover:bg-amber-900/20",
+                                                high: "border-orange-200 text-orange-500 hover:bg-orange-50 dark:border-orange-900 dark:text-orange-400 dark:hover:bg-orange-900/20",
+                                                urgent: "border-red-200 text-red-500 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-900/20",
+                                            };
+                                        const active = newTask.priority === p;
+                                        return (
                                             <button
                                                 key={p}
+                                                type="button"
                                                 onClick={() =>
                                                     setNewTask({
                                                         ...newTask,
                                                         priority: p,
                                                     })
                                                 }
-                                                className={`flex-1 h-10 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                                                    newTask.priority === p
-                                                        ? "bg-[#2F1E73] text-white shadow-md scale-[1.02]"
-                                                        : "bg-slate-50 text-slate-400 hover:bg-slate-100"
-                                                }`}
+                                                className={`flex-1 h-9 rounded-xl border-2 text-[10px] font-black uppercase tracking-wider transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm ${active ? colors[p] : `bg-transparent ${outline[p]}`}`}
                                             >
                                                 {p}
                                             </button>
-                                        ),
-                                    )}
+                                        );
+                                    })}
                                 </div>
+                            </div>
+
+                            {/* SECTION 5: Repeat Daily Option Switch */}
+                            <div className="flex items-center justify-between p-4 rounded-2xl border border-gray-100 dark:border-white/10 bg-gray-50/50 dark:bg-white/5">
+                                <div className="space-y-0.5">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-[#1a1a2e] dark:text-white">
+                                        Repeat Daily
+                                    </label>
+                                    <p className="text-[9px] text-gray-400 dark:text-white/40 leading-normal">
+                                        Automatically assign this task to the selected staff member every day.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setRepeatDaily(!repeatDaily)}
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${repeatDaily ? "bg-orange-500" : "bg-gray-200 dark:bg-zinc-800"}`}
+                                >
+                                    <span
+                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${repeatDaily ? "translate-x-6" : "translate-x-1"}`}
+                                    />
+                                </button>
                             </div>
                         </div>
                     </ScrollArea>
 
-                    <div className="p-6 bg-gray-50/50 flex items-center justify-between gap-3 flex-shrink-0 border-t">
+                    {/* Footer */}
+                    <div className="px-6 py-4 border-t border-gray-100 dark:border-white/10 flex items-center justify-between flex-shrink-0 bg-white dark:bg-[#1a1625]">
                         <button
+                            type="button"
                             onClick={() => setIsAssignTaskOpen(false)}
-                            className="px-6 h-12 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-gray-600 transition-colors"
+                            className="text-sm font-semibold text-gray-400 dark:text-white/40 hover:text-gray-700 dark:hover:text-white transition-colors duration-200"
                         >
                             Cancel
                         </button>
                         <button
-                            onClick={() => assignTask()}
-                            className="flex-1 h-12 bg-gradient-to-r from-[#2F1E73] to-[#F15A24] text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-[#2F1E73]/20 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all"
+                            type="button"
+                            onClick={() => {
+                                console.log('Deploy mission button clicked');
+                                assignTask(false);
+                            }}
+                            disabled={!newTask.title || !newTask.assignedTo}
+                            className="h-11 px-6 rounded-xl bg-gradient-to-r from-[#2F1E73] to-[#F15A24] text-white text-[11px] font-black uppercase tracking-[0.15em] flex items-center gap-2 hover:shadow-lg hover:shadow-[#2F1E73]/20 hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
                         >
+                            <Target className="w-4 h-4" />
                             Deploy Mission
                         </button>
                     </div>
@@ -1402,6 +1772,12 @@ export function ManagerCommandCenter({
             <ProfileModal
                 isOpen={isProfileModalOpen}
                 onClose={() => setIsProfileModalOpen(false)}
+            />
+            <AddIdeaDialog
+                open={isIdeasOpen}
+                onOpenChange={setIsIdeasOpen}
+                staffList={addIdeaStaffList}
+                currentUserId={profile?.id || ""}
             />
 
             {/* Confetti styles */}

@@ -10,8 +10,12 @@ export default function StaffPage() {
     const router = useRouter();
 
     useEffect(() => {
-        if (!loading && profile && profile.role === "ceo") {
-            router.replace("/ceo");
+        if (!loading) {
+            if (!profile) {
+                router.replace("/");
+            } else if (profile.role === "ceo") {
+                router.replace("/ceo");
+            }
         }
     }, [profile, loading, router]);
 

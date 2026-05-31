@@ -1692,19 +1692,19 @@ export function StaffManagement() {
             return;
         }
         
-        const usernameRegex = /^[a-z0-9_]+$/;
+        const usernameRegex = /^[a-zA-Z0-9_]+$/;
         if (!usernameRegex.test(cleanedUsername)) {
-            toast.error("Username must contain only lowercase letters, numbers, and underscores (no spaces)");
+            toast.error("Username must contain only letters, numbers, and underscores (no spaces)");
             return;
         }
 
         setIsUpdatingUsername(true);
         try {
-            // Check if username is already taken by another profile
+            // Check if username is already taken by another profile (case-insensitive check for maximum collision safety)
             const { data: existingUser, error: checkError } = await supabase
                 .from("profiles")
                 .select("id")
-                .eq("username", cleanedUsername)
+                .ilike("username", cleanedUsername)
                 .neq("id", staffToEdit.id)
                 .maybeSingle();
 
@@ -1728,9 +1728,9 @@ export function StaffManagement() {
             setStaffToEdit(null);
             setNewUsername("");
             queryClient.invalidateQueries();
-        } catch (e) {
+        } catch (e: any) {
             console.error("Update username error:", e);
-            toast.error("Failed to update username");
+            toast.error(e.message || "Failed to update username");
         } finally {
             setIsUpdatingUsername(false);
         }

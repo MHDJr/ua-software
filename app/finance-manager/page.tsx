@@ -10,8 +10,10 @@ export default function FinanceManagerPage() {
     const router = useRouter();
 
     useEffect(() => {
-        if (!loading && profile) {
-            if (profile.role === "ceo") {
+        if (!loading) {
+            if (!profile) {
+                router.replace("/");
+            } else if (profile.role === "ceo") {
                 router.replace("/ceo");
             } else if (!profile.is_manager || profile.department !== "Finance") {
                 // Not a finance manager, redirect to their proper place

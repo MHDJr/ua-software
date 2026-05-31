@@ -10,8 +10,10 @@ export default function MarketingManagerPage() {
     const router = useRouter();
 
     useEffect(() => {
-        if (!loading && profile) {
-            if (profile.role === "ceo") {
+        if (!loading) {
+            if (!profile) {
+                router.replace("/");
+            } else if (profile.role === "ceo") {
                 router.replace("/ceo");
             } else if (!profile.is_manager || profile.department !== "Marketing") {
                 // Not a marketing manager, redirect to their proper place

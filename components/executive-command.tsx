@@ -446,9 +446,9 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
 
     // Optimize displayed tasks
     const displayedTasks = useMemo(() => {
-        if (taskTab === "completed") return completedTasks;
-        
-        return tasks.filter((t) => {
+        const sourceTasks = taskTab === "completed" ? completedTasks : tasks;
+
+        return sourceTasks.filter((t) => {
             if (deletingTaskIds.has(t.id)) return false;
             
             const isOverdue = t.due_date && new Date(t.due_date) < new Date();
@@ -457,25 +457,36 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
             // Department filtering
             if (departmentFilter !== "ceo") {
                 const assignee = staff.find(s => s.id === t.assigned_to);
-                if (!assignee) return false;
+                const creator = staff.find(s => s.id === t.created_by);
                 
-                const dept = assignee.department?.toLowerCase() || "";
-                switch (departmentFilter) {
-                    case "sales": return dept === "sales";
-                    case "marketing": return dept === "marketing";
-                    case "accounts": return dept === "accounts";
-                    case "administration": return dept === "administration" || dept === "admin" || dept === "hr";
-                    default: return false;
-                }
+                const assigneeDept = assignee?.department?.toLowerCase() || "";
+                const creatorDept = creator?.department?.toLowerCase() || "";
+                
+                const matchesDept = (dept: string) => {
+                    switch (departmentFilter) {
+                        case "sales": return dept === "sales";
+                        case "marketing": return dept === "marketing";
+                        case "accounts": return dept === "accounts" || dept === "finance";
+                        case "administration": return dept === "administration" || dept === "admin" || dept === "hr";
+                        default: return false;
+                    }
+                };
+
+                const isAssigneeMatch = matchesDept(assigneeDept);
+                const isCreatorMatch = matchesDept(creatorDept);
+                
+                if (!isAssigneeMatch && !isCreatorMatch) return false;
             }
 
-            // CEO/My Tasks filter
-            if (departmentFilter === "ceo") {
-                if (userRole === 'MANAGER') {
-                    const currentMe = profile?.id || lastValidProfileIdRef.current;
-                    const isAssignedByCeo = (t as any).creator?.role === 'ceo';
-                    const isAssignedToMe = t.assigned_to === currentMe;
-                    if (!isAssignedByCeo || !isAssignedToMe) return false;
+            // CEO/My Tasks filter (Only for active tabs, not completed)
+            if (taskTab !== "completed") {
+                if (departmentFilter === "ceo") {
+                    if (userRole === 'MANAGER') {
+                        const currentMe = profile?.id || lastValidProfileIdRef.current;
+                        const isAssignedByCeo = (t as any).creator?.role === 'ceo';
+                        const isAssignedToMe = t.assigned_to === currentMe;
+                        if (!isAssignedByCeo || !isAssignedToMe) return false;
+                    }
                 }
 
                 if (taskTab === "daily") return isDaily;
@@ -484,10 +495,7 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                 return !isOverdue && t.priority !== "urgent";
             }
 
-            if (taskTab === "daily") return isDaily;
-            if (taskTab === "overdue") return isOverdue;
-            if (taskTab === "blocked") return t.priority === "urgent";
-            return !isOverdue && t.priority !== "urgent";
+            return true;
         });
     }, [taskTab, tasks, completedTasks, deletingTaskIds, departmentFilter, staff, userRole, profile?.id]);
 
@@ -1428,17 +1436,14 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
             // Wake up auth session at the millisecond of mutation to prevent transient freezes
             await supabase.auth.getSession();
 
-            // Get current task to see existing reviewers
-            const { data: currentTask } = await supabase
-                .from("tasks")
-                .select("reviewed_by_info")
-                .eq("id", id)
-                .single();
-
             const myRole = profile?.role === "ceo" ? "CEO" : (profile?.designation || profile?.role || "Administrator");
+            
+            // Find existing task in local state array to bypass DB read query
+            const taskToReview = realtimeTasks.find((t) => t.id === id);
+            const existing = taskToReview?.reviewed_by_info;
+
             let newInfo = myRole;
-            if (currentTask?.reviewed_by_info) {
-                const existing = currentTask.reviewed_by_info;
+            if (existing) {
                 if (!existing.toLowerCase().includes(myRole.toLowerCase())) {
                     newInfo = `${existing} & ${myRole}`;
                 } else {
@@ -2420,22 +2425,20 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                                                 )}
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                {((t.status || "").toUpperCase() === "UNDER_REVIEW" || (t.status || "").toUpperCase() === "IN_REVIEW") && (
-                                                    <button
-                                                        onClick={() => approveAndCloseTask(t.id)}
-                                                        className="h-8 px-3 text-[9px] font-black uppercase bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl transition-all border-none shadow-md shadow-emerald-500/25 flex items-center gap-1.5 hover:-translate-y-0.5"
-                                                        title="Approve and Close Task"
-                                                    >
-                                                        <Check className="w-3.5 h-3.5" strokeWidth={3} /> Approve & Close
-                                                    </button>
-                                                )}
                                                 {taskTab === "completed" ? (
-                                                    <button
-                                                        onClick={() => markTaskAsReviewed(t.id)}
-                                                        className="h-8 px-4 text-[9px] font-black uppercase bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-xl transition-all border-none shadow-sm"
-                                                    >
-                                                        Mark Reviewed
-                                                    </button>
+                                                    (t.reviewed_at || (t as any).ceo_reviewed) ? (
+                                                        <span className="h-8 px-3 text-[9px] font-black uppercase bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-xl border border-emerald-500/20 flex items-center gap-1.5">
+                                                            <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                                            Reviewed ({(t as any).reviewed_by_info || "Management"})
+                                                        </span>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => markTaskAsReviewed(t.id)}
+                                                            className="h-8 px-4 text-[9px] font-black uppercase bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl transition-all border-none shadow-sm"
+                                                        >
+                                                            Mark Reviewed
+                                                        </button>
+                                                    )
                                                 ) : (
                                                     <button
                                                         onClick={() => deleteTask(t.id)}
@@ -2695,12 +2698,6 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                                 Deploy a task to staff
                             </p>
                         </div>
-                        <button
-                            onClick={() => setIsAssignTaskOpen(false)}
-                            className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-all"
-                        >
-                            <X className="w-4 h-4" />
-                        </button>
                     </div>
 
                     {/* Scrollable Form */}
@@ -3329,14 +3326,6 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                                     Comprehensive Personnel Overview
                                 </p>
                             </div>
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => setShowStaffOverview(false)}
-                                className="rounded-full text-theme-text-40 hover:text-theme-text hover:bg-theme-bg-white-10"
-                            >
-                                <X className="w-5 h-5" />
-                            </Button>
                         </div>
                     </div>
 
