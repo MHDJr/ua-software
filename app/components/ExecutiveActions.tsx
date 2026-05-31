@@ -360,7 +360,7 @@ export default function ExecutiveActions({
                         </div>
                         <p className="text-[10px] text-white/40 bg-white/5 p-3 rounded border border-white/5">
                             This will send a high-priority alert to the staff
-                            member's dashboard.
+                            member&apos;s dashboard.
                         </p>
                         <DialogFooter className="pt-2">
                             <DialogClose asChild>

@@ -236,7 +236,7 @@ export function CEOInbox() {
                             Command Intelligence
                         </h1>
                         <p className="text-xs md:text-sm italic text-slate-400 dark:text-zinc-400 mt-0.5 md:mt-1 line-clamp-2">
-                            "Executive Dashboard & Communications Hub."
+                            &quot;Executive Dashboard &amp; Communications Hub.&quot;
                         </p>
                     </div>
                 </div>
@@ -249,7 +249,7 @@ export function CEOInbox() {
                     <div className="max-w-5xl mx-auto">
                         <div className="flex items-center justify-between mb-4">
                             <h2 className="text-3xl font-bold" style={{ color: BRAND_COLORS.indigo }}>
-                                The 'Spark' Inbox
+                                The &apos;Spark&apos; Inbox
                             </h2>
                             {ideas.length > 0 && (
                                 <Button

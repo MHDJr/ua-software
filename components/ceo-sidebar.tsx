@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useQueryClient } from "@tanstack/react-query";
 import { LeaveRequestModal } from "@/components/LeaveRequestModal";
 import { RequestModal } from "@/components/RequestModal";
+import { ProfileModal } from "@/components/ProfileModal";
 
 // Brand colors
 const BRAND_COLORS = {
@@ -73,6 +74,7 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange }: CEOS
     const queryClient = useQueryClient();
     const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
     const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
+    const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
     const handleToggleMinimized = () => {
         const newState = !isMinimized;
@@ -203,6 +205,7 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange }: CEOS
                         <div
                             className="w-10 h-10 rounded-[1.25rem] flex items-center justify-center bg-white shadow-[0_10px_30px_rgba(49,38,125,0.15)] group-hover:shadow-[0_15px_40px_rgba(49,38,125,0.25)] transition-all duration-500 border border-indigo-50/50 overflow-hidden ring-4 ring-indigo-500/5"
                         >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img 
                                 src="/images/usthadacademylogo2.svg" 
                                 alt="UA Logo" 
@@ -316,12 +319,15 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange }: CEOS
                             )}
                         </button>
 
-                        <div className={cn(
-                            "flex items-center transition-all duration-700",
-                            isMinimized ? "justify-center py-4" : "gap-3 p-2 bg-[#31267D]/[0.03] rounded-[1.75rem] border border-[#31267D]/5"
-                        )}>
+                        <div 
+                            onClick={() => setIsProfileModalOpen(true)}
+                            className={cn(
+                                "flex items-center transition-all duration-700 cursor-pointer hover:bg-[#31267D]/5 dark:hover:bg-zinc-800/30",
+                                isMinimized ? "justify-center py-4" : "gap-3 p-2 bg-[#31267D]/[0.03] rounded-[1.75rem] border border-[#31267D]/5"
+                            )}
+                        >
                             <Avatar className="w-10 h-10 border-2 border-white shadow-xl flex-shrink-0 transition-transform duration-500 hover:scale-105">
-                                <AvatarImage src={userRole === 'CEO' ? "/images/ceo.jpeg" : undefined} />
+                                <AvatarImage src={profile?.avatar_url || (userRole === 'CEO' ? "/images/ceo.jpeg" : undefined)} />
                                 <AvatarFallback className="bg-[#31267D] text-white font-black text-xs">
                                     {(profile?.full_name || 'U').split(' ').map(n => n[0]).join('')}
                                 </AvatarFallback>
@@ -351,6 +357,11 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange }: CEOS
                     />
                 </>
             )}
+            
+            <ProfileModal
+                isOpen={isProfileModalOpen}
+                onClose={() => setIsProfileModalOpen(false)}
+            />
         </aside>
     );
 }

@@ -26,6 +26,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 import { MonthlyProgressGauge } from "@/components/monthly-progress-gauge";
+import { ProfileModal } from "@/components/ProfileModal";
 
 // Types
 interface FinancialEntry {
@@ -187,8 +188,9 @@ export default function AccountsPage() {
     const [greeting, setGreeting] = useState("Good Morning");
     const [isClient, setIsClient] = useState(false);
     const [financialHistory, setFinancialHistory] = useState<FinancialEntry[]>([]);
-    const [loading, setLoading] = useState(true);
     const [monthlyTarget, setMonthlyTarget] = useState<MonthlyTarget | null>(null);
+    const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+    const [loading, setLoading] = useState(true);
 
     // Update time and greeting
     useEffect(() => {
@@ -326,15 +328,22 @@ export default function AccountsPage() {
                 <div className="max-w-7xl mx-auto px-6 py-4">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#ff4d00] to-[#ff8c00] flex items-center justify-center text-white font-bold shadow-lg">
-                                AC
+                            <div 
+                                onClick={() => setIsProfileModalOpen(true)}
+                                className="w-12 h-12 rounded-full bg-gradient-to-br from-[#ff4d00] to-[#ff8c00] flex items-center justify-center text-white font-bold shadow-lg overflow-hidden cursor-pointer hover:scale-105 transition-transform duration-350"
+                            >
+                                {profile?.avatar_url ? (
+                                    <img src={profile.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+                                ) : (
+                                    (profile?.full_name || 'AC').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+                                )}
                             </div>
                             <div>
                                 <div className="px-4 py-1.5 rounded-full bg-[#ff4d00]/10 border border-[#ff4d00]/20 inline-block mb-2">
                                     <span className="text-xs font-bold text-[#ff4d00] tracking-wide">ACCOUNTS</span>
                                 </div>
                                 <h1 className="text-2xl font-bold text-[#1e293b]">{greeting}</h1>
-                                <p className="text-sm text-[#64748b]">Ready to record today's flow</p>
+                                <p className="text-sm text-[#64748b]">Ready to record today&apos;s flow</p>
                             </div>
                         </div>
                         <div className="flex items-center gap-4">
@@ -358,8 +367,15 @@ export default function AccountsPage() {
                     {/* Top Row: Avatar, Badge, Clock */}
                     <div className="flex items-center justify-between mb-4">
                         {/* User Avatar */}
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#ff4d00] to-[#ff8c00] flex items-center justify-center text-white font-bold text-sm shadow-lg">
-                            AC
+                        <div 
+                            onClick={() => setIsProfileModalOpen(true)}
+                            className="w-10 h-10 rounded-full bg-gradient-to-br from-[#ff4d00] to-[#ff8c00] flex items-center justify-center text-white font-bold text-sm shadow-lg overflow-hidden cursor-pointer hover:scale-105 transition-transform duration-350"
+                        >
+                            {profile?.avatar_url ? (
+                                <img src={profile.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+                            ) : (
+                                (profile?.full_name || 'AC').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+                            )}
                         </div>
                         
                         {/* ACCOUNTS Badge */}
@@ -384,7 +400,7 @@ export default function AccountsPage() {
                                 </div>
                                 <div>
                                     <h1 className="text-xl font-bold text-[#1e293b]">{greeting}</h1>
-                                    <p className="text-xs text-[#64748b]">Ready to record today's flow</p>
+                                    <p className="text-xs text-[#64748b]">Ready to record today&apos;s flow</p>
                                 </div>
                             </div>
                             <div className="px-3 py-1.5 rounded-full bg-white/80 border border-orange-200">
@@ -621,6 +637,11 @@ export default function AccountsPage() {
                     
                 </div>
             </div>
+            
+            <ProfileModal
+                isOpen={isProfileModalOpen}
+                onClose={() => setIsProfileModalOpen(false)}
+            />
         </div>
     );
 }

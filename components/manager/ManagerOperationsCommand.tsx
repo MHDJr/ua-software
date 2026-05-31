@@ -155,6 +155,7 @@ export function ManagerOperationsCommand({ className }: ManagerOperationsCommand
     useEffect(() => {
         calculateStats();
         fetchConversions();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [staffData, tasksData]);
 
     const fetchConversions = async () => {

@@ -100,6 +100,7 @@ export function LoaderOverlay({
                             }}
                             className="mb-12"
                         >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                                 src="/images/usthadacademylogo2.svg"
                                 alt="UA Logo"

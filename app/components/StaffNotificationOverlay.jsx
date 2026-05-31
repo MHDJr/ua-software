@@ -106,7 +106,7 @@ export default function StaffNotificationOverlay({ event = {}, onClose }) {
                                     <div className="space-y-1">
                                         <p className="text-xs text-slate-500 uppercase font-black tracking-widest font-mono">Message from Saleem Pa</p>
                                         <p className="text-lg text-white font-medium italic">
-                                            "{event.message || "Executive presence requested in my office. Proceed without delay."}"
+                                            &quot;{event.message || 'Executive presence requested in my office. Proceed without delay.'}&quot;
                                         </p>
                                     </div>
                                 </div>

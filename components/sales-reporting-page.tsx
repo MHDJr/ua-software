@@ -44,9 +44,9 @@ import { toast } from "sonner";
 import MobileNavigation from "@/components/mobile-navigation";
 import { MonthlyProgressGauge } from "@/components/monthly-progress-gauge";
 import { MonthlyConversionTracker } from "@/components/monthly-conversion-tracker";
-import { SetMonthlyTargetModal } from "@/components/set-monthly-target-modal";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
+import { ProfileModal } from "@/components/ProfileModal";
 
 // Brand colors matching Staff Hub exactly
 const BRAND = {
@@ -148,6 +148,7 @@ export function SalesReportingPage() {
     const [hasSubmittedToday, setHasSubmittedToday] = useState(false);
     const [todayReportId, setTodayReportId] = useState<string | null>(null);
     const [monthlyTarget, setMonthlyTarget] = useState<MonthlyTarget | null>(null);
+    const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
     // Form states with localStorage persistence
     const [totalLeads, setTotalLeads] = useState(() => {
@@ -360,6 +361,7 @@ export function SalesReportingPage() {
         };
 
         checkTodaySubmission();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user, profile]);
 
     // Daily reset at midnight
@@ -424,6 +426,7 @@ export function SalesReportingPage() {
         const qualityWeight = (leadQuality[0] / 10) * 20;
         
         return Math.round(convWeight + evalWeight + qualityWeight);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [totalLeads, conversions, evaluations, leadQuality]);
 
     const handleTransmitReport = async () => {
@@ -586,6 +589,7 @@ export function SalesReportingPage() {
             <header className="md:hidden h-16 bg-white/90 backdrop-blur-xl border-b border-slate-200 flex items-center justify-between px-4 sticky top-0 z-50">
                 <div className="flex items-center gap-3">
                     <div className="relative h-10 w-10">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                             src="/images/usthadacademylogo2.svg"
                             alt="UA Logo"
@@ -604,10 +608,15 @@ export function SalesReportingPage() {
                         <p className="text-[8px] text-slate-400 font-bold uppercase">{agentName}</p>
                     </div>
                     <div
+                        onClick={() => setIsProfileModalOpen(true)}
                         style={{ backgroundColor: BRAND.navy }}
-                        className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shadow-md"
+                        className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shadow-md overflow-hidden cursor-pointer hover:scale-105 transition-transform duration-300"
                     >
-                        {profile?.full_name?.[0] || profile?.email?.[0] || "U"}
+                        {profile?.avatar_url ? (
+                            <img src={profile.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+                        ) : (
+                            profile?.full_name?.[0] || profile?.email?.[0] || "U"
+                        )}
                     </div>
                 </div>
             </header>
@@ -619,6 +628,7 @@ export function SalesReportingPage() {
                         {/* Logo */}
                         <div className="relative">
                             <div className="relative h-12 w-12">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
                                     src="/images/usthadacademylogo2.svg"
                                     alt="UA Logo"
@@ -627,6 +637,7 @@ export function SalesReportingPage() {
                             </div>
                         </div>
                         <div className="hidden md:block h-12 relative w-48">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                                 src="/images/verticallogo.svg"
                                 alt="Usthad Academy"
@@ -670,10 +681,15 @@ export function SalesReportingPage() {
                         </p>
                     </div>
                     <div
+                        onClick={() => setIsProfileModalOpen(true)}
                         style={{ backgroundColor: BRAND.navy }}
-                        className="w-11 h-11 rounded-2xl flex items-center justify-center text-white font-bold shadow-md"
+                        className="w-11 h-11 rounded-2xl flex items-center justify-center text-white font-bold shadow-md overflow-hidden cursor-pointer hover:scale-105 transition-transform duration-300"
                     >
-                        {profile?.full_name?.[0] || profile?.email?.[0] || "U"}
+                        {profile?.avatar_url ? (
+                            <img src={profile.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+                        ) : (
+                            profile?.full_name?.[0] || profile?.email?.[0] || "U"
+                        )}
                     </div>
                 </div>
             </header>
@@ -694,7 +710,7 @@ export function SalesReportingPage() {
                                     Daily Metrics
                                     <Target className="w-5 h-5" style={{ color: BRAND.orange }} />
                                 </h2>
-                                <p className="text-xs text-slate-400 font-medium">Record today's performance data</p>
+                                <p className="text-xs text-slate-400 font-medium">Record today&apos;s performance data</p>
                             </div>
                             <Badge
                                 variant="outline"
@@ -967,6 +983,11 @@ export function SalesReportingPage() {
 
             {/* Spacer for mobile bottom nav */}
             <div className="md:hidden h-20"></div>
+
+            <ProfileModal
+                isOpen={isProfileModalOpen}
+                onClose={() => setIsProfileModalOpen(false)}
+            />
         </div>
     );
 }

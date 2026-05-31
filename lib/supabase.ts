@@ -63,6 +63,7 @@ export type Task = {
     is_draft?: boolean;
     signal_cleared?: boolean;
     reviewed_at?: string | null;
+    reviewed_by_info?: string | null;
     assigned_to_user?: {
         full_name: string;
         department: string;

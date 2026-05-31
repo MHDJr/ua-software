@@ -157,6 +157,7 @@ export function AuthPage() {
                     <div className="relative z-10 pt-4">
                         <div className="mb-10 sm:mb-14">
                             <div className="w-16 h-16 mb-6 sm:mb-8 p-3 rounded-2xl bg-white border border-slate-200 shadow-sm mx-auto lg:mx-0">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
                                     src="/images/usthadacademylogo2.svg"
                                     alt="Usthad Academy Logo"

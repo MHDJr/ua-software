@@ -827,7 +827,7 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                 return new Date(b.time).getTime() - new Date(a.time).getTime();
             })
             .slice(0, 50); // Increased from 20 to 50
-    }, [tasks, ideas, requests, demoRequests, leads, staff, completedTasks, meetings, clearedNotifications]);
+    }, [tasks, ideas, requests, demoRequests, leads, staff, completedTasks, clearedNotifications]);
 
     
     // Clear Signal Feed
@@ -938,7 +938,7 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
             console.log('Executive view activated - syncing data');
             fetchData(true, true);
         }
-    }, [currentView]);
+    }, [currentView, fetchData]);
 
     // Visibility and Initial Load
     useEffect(() => {
@@ -1428,27 +1428,57 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
             // Wake up auth session at the millisecond of mutation to prevent transient freezes
             await supabase.auth.getSession();
 
-            console.log('Marking task as reviewed:', id);
+            // Get current task to see existing reviewers
+            const { data: currentTask } = await supabase
+                .from("tasks")
+                .select("reviewed_by_info")
+                .eq("id", id)
+                .single();
+
+            const myRole = profile?.role === "ceo" ? "CEO" : (profile?.designation || profile?.role || "Administrator");
+            let newInfo = myRole;
+            if (currentTask?.reviewed_by_info) {
+                const existing = currentTask.reviewed_by_info;
+                if (!existing.toLowerCase().includes(myRole.toLowerCase())) {
+                    newInfo = `${existing} & ${myRole}`;
+                } else {
+                    newInfo = existing;
+                }
+            }
+
+            console.log("Marking task as reviewed:", id);
             const reviewedAt = new Date().toISOString();
-            
-            // Cache current tasks
+
+            // Cache current tasks for rollback
             const previousTasks = [...realtimeTasks];
 
             // Optimistically update local state immediately
-            setRealtimeTasks(prev => 
-                prev.map(t => t.id === id ? { ...t, reviewed_at: reviewedAt, ceo_reviewed: true } : t)
+            setRealtimeTasks((prev) =>
+                prev.map((t) =>
+                    t.id === id
+                        ? {
+                              ...t,
+                              reviewed_at: reviewedAt,
+                              ceo_reviewed: true,
+                              reviewed_by_info: newInfo,
+                          }
+                        : t,
+                ),
             );
-            
-            toast.success("Task reviewed and permanently removed from CEO view");
 
-            const updateData = { reviewed_at: reviewedAt };
-            
+            toast.success("Task reviewed and marked in system");
+
+            const updateData = {
+                reviewed_at: reviewedAt,
+                reviewed_by_info: newInfo,
+            };
+
             // Try to also update ceo_reviewed if the column exists
             const { error: reviewedError } = await supabase
                 .from("tasks")
-                .update({ 
+                .update({
                     ...updateData,
-                    ceo_reviewed: true
+                    ceo_reviewed: true,
                 })
                 .eq("id", id);
 
@@ -1647,6 +1677,7 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                                 ? "bg-white dark:bg-zinc-800 border-amber-200/50 dark:border-amber-900/30 ring-4 ring-amber-500/5" 
                                 : "bg-white dark:bg-zinc-800 border-indigo-50/50 dark:border-zinc-700/30"
                         )}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                                 src="/images/usthadacademylogo2.svg"
                                 alt="UA"
@@ -1654,6 +1685,7 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                             />
                         </div>
                         <div className="h-[50px] w-[200px]">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                                 src={
                                     theme === "light"
@@ -1874,7 +1906,7 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                             </div>
                         </div>
                         <div>
-                            <p className="text-[10px] font-black text-slate-400 dark:text-zinc-400 uppercase tracking-[0.2em] mb-1 italic">Today's Revenue</p>
+                            <p className="text-[10px] font-black text-slate-400 dark:text-zinc-400 uppercase tracking-[0.2em] mb-1 italic">Today&apos;s Revenue</p>
                             <h2 className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tighter">
                                 ${(stats.paymentsReceivedToday * 250).toLocaleString()}
                             </h2>

@@ -98,6 +98,7 @@ export function MonthlyConversionTracker({
             fetchMonthlyTarget();
             fetchCurrentMonthConversions().then(setActualMonthlyConversions);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [profile]);
 
     const handleTargetUpdated = () => {

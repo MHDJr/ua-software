@@ -46,6 +46,7 @@ export const FocusProvider: React.FC<{ children: ReactNode }> = ({
         document.addEventListener("visibilitychange", handleVisibility);
         return () =>
             document.removeEventListener("visibilitychange", handleVisibility);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isLockdownActive]);
 
     const playBinauralBeat = (frequency: number) => {

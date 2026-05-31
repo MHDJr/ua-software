@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, Task, Profile } from "@/lib/supabase";
@@ -54,6 +56,7 @@ import {
     User,
     Wallet,
     Circle,
+    Crown,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -613,6 +616,66 @@ export default function StaffPortal() {
     // Task filter tabs state
     const [activeTab, setActiveTab] = useState("ALL");
     const [showCompleted, setShowCompleted] = useState(false);
+
+    // Manager task assignment state
+    const [isAssignTaskOpen, setIsAssignTaskOpen] = useState(false);
+    const [newTaskTitle, setNewTaskTitle] = useState("");
+    const [newTaskDesc, setNewTaskDesc] = useState("");
+    const [newTaskPriority, setNewTaskPriority] = useState<"urgent" | "daily" | "routine">("daily");
+    const [newTaskAssignee, setNewTaskAssignee] = useState("");
+    const [isDeployingTask, setIsDeployingTask] = useState(false);
+
+    const handleAssignTask = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newTaskTitle.trim()) {
+            toast.error("Please enter a task title");
+            return;
+        }
+        if (!newTaskAssignee) {
+            toast.error("Please select a staff member");
+            return;
+        }
+        if (!profile) return;
+
+        setIsDeployingTask(true);
+        try {
+            const { error } = await supabase
+                .from('tasks')
+                .insert({
+                    assigned_to: newTaskAssignee,
+                    title: newTaskTitle.trim(),
+                    description: newTaskDesc.trim() || newTaskTitle.trim(),
+                    priority: newTaskPriority === 'urgent' ? 'urgent' : newTaskPriority === 'daily' ? 'medium' : 'low',
+                    priority_level: newTaskPriority,
+                    task_type: 'assignment',
+                    created_by: profile.id,
+                    status: 'pending'
+                });
+
+            if (error) {
+                console.error("Error creating task:", error);
+                toast.error("Failed to assign task: " + error.message);
+            } else {
+                const assignedUser = profiles.find(p => p.id === newTaskAssignee);
+                toast.success(`Task successfully assigned to ${assignedUser?.full_name || 'staff'}`);
+                
+                // Reset form
+                setNewTaskTitle("");
+                setNewTaskDesc("");
+                setNewTaskPriority("daily");
+                setNewTaskAssignee("");
+                setIsAssignTaskOpen(false);
+
+                // Refresh data
+                fetchData();
+            }
+        } catch (error) {
+            console.error("Error in handleAssignTask:", error);
+            toast.error("Failed to assign task");
+        } finally {
+            setIsDeployingTask(false);
+        }
+    };
     // Mobile bottom nav state
     const [mobileNavTab, setMobileNavTab] = useState("home");
 
@@ -956,6 +1019,7 @@ export default function StaffPortal() {
             clearInterval(interval);
             supabase.removeChannel(channel);
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [profile?.id, fetchData]);
 
 
@@ -1215,6 +1279,7 @@ export default function StaffPortal() {
             <div className="hidden md:hidden bg-white border-b border-slate-200 px-4 py-2 flex items-center justify-between sticky top-0 z-40">
                 <div className="flex items-center gap-2">
                     <div className="relative h-8 w-8">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                             src="/images/usthadacademylogo2.svg"
                             alt="UA Logo"
@@ -1252,6 +1317,7 @@ export default function StaffPortal() {
                         {/* Logo with new image */}
                         <div className="relative">
                             <div className="relative h-12 w-12">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
                                     src="/images/usthadacademylogo2.svg"
                                     alt="UA Logo"
@@ -1260,6 +1326,7 @@ export default function StaffPortal() {
                             </div>
                         </div>
                         <div className="hidden md:block h-12 relative w-48">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                                 src="/images/verticallogo.svg"
                                 alt="Usthad Academy"
@@ -1269,11 +1336,20 @@ export default function StaffPortal() {
                                 }}
                             />
                         </div>
-                        <div className="hidden md:flex items-center px-3 py-1.5 bg-[#2F1E73]/10 rounded-lg">
-                            <span className="text-sm font-semibold text-[#2F1E73] uppercase tracking-wider">
-                                STAFF HUB | COMMAND CENTER
-                            </span>
-                        </div>
+                        {profile?.is_manager ? (
+                            <div className="hidden md:flex items-center px-3 py-1.5 bg-[#F15A29]/10 rounded-lg border border-[#F15A29]/20 animate-pulse">
+                                <span className="text-sm font-bold text-[#F15A29] uppercase tracking-wider flex items-center gap-1.5">
+                                    <Crown className="w-4 h-4 text-[#F15A29]" />
+                                    {profile?.department?.toUpperCase()} MANAGER CONTROL CENTER
+                                </span>
+                            </div>
+                        ) : (
+                            <div className="hidden md:flex items-center px-3 py-1.5 bg-[#2F1E73]/10 rounded-lg">
+                                <span className="text-sm font-semibold text-[#2F1E73] uppercase tracking-wider">
+                                    STAFF HUB | COMMAND CENTER
+                                </span>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -1386,19 +1462,36 @@ export default function StaffPortal() {
                                 {React.cloneElement(getGreeting().icon as React.ReactElement, { className: "w-5 h-5 md:w-8 md:h-8 text-orange-400" })}
                             </div>
                             <div className="min-w-0 flex-1">
-                                <h2 className="text-lg md:text-3xl font-black text-slate-900 tracking-tighter uppercase leading-tight">
-                                    {getGreeting().text},{" "}
-                                    <span style={{ color: brand.navy }}>
-                                        {profile?.full_name
-                                            ?.split(" ")[0]
-                                            ?.toUpperCase() || "USER"}
-                                    </span>
-                                </h2>
-                                <p className="hidden md:flex text-slate-400 font-bold text-sm mt-2 items-center gap-2 italic">
-                                    &quot;Your focus is the academy&apos;s greatest asset
-                                    today.&quot;{" "}
-                                    <Sparkles className="w-4 h-4 text-orange-400" />
-                                </p>
+                                {profile?.is_manager ? (
+                                    <>
+                                        <h2 className="text-lg md:text-3xl font-black text-slate-900 tracking-tighter uppercase leading-tight flex items-center gap-2 md:gap-3 flex-wrap">
+                                            <span className="bg-gradient-to-r from-[#2F1E73] to-[#F15A29] bg-clip-text text-transparent flex items-center gap-2">
+                                                <Crown className="w-5 h-5 md:w-8 md:h-8 text-[#F15A29] animate-bounce" />
+                                                {profile?.department || "DEPARTMENT"} MANAGER COMMAND
+                                            </span>
+                                        </h2>
+                                        <p className="hidden md:flex text-slate-400 font-bold text-sm mt-2 items-center gap-2 italic">
+                                            &quot;Oversight, alignment, and velocity command console.&quot;{" "}
+                                            <Sparkles className="w-4 h-4 text-orange-500 animate-pulse" />
+                                        </p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <h2 className="text-lg md:text-3xl font-black text-slate-900 tracking-tighter uppercase leading-tight">
+                                            {getGreeting().text},{" "}
+                                            <span style={{ color: brand.navy }}>
+                                                {profile?.full_name
+                                                    ?.split(" ")[0]
+                                                    ?.toUpperCase() || "USER"}
+                                            </span>
+                                        </h2>
+                                        <p className="hidden md:flex text-slate-400 font-bold text-sm mt-2 items-center gap-2 italic">
+                                            &quot;Your focus is the academy&apos;s greatest asset
+                                            today.&quot;{" "}
+                                            <Sparkles className="w-4 h-4 text-orange-400" />
+                                        </p>
+                                    </>
+                                )}
                             </div>
                         </div>
 
@@ -1763,6 +1856,78 @@ export default function StaffPortal() {
 
                 {/* Middle Column - MISSION CONTROL */}
                 <div className="col-span-12 lg:col-span-6 space-y-4 md:space-y-6 order-2 lg:order-none">
+                    {profile?.is_manager && (
+                        <div className="bg-white rounded-3xl p-6 md:p-8 border border-slate-100 shadow-[0_10px_30px_rgba(44,33,113,0.04)] relative overflow-hidden">
+                            {/* Decorative elements */}
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-[#F15A29]/10 to-transparent rounded-full pointer-events-none"></div>
+                            <div className="absolute -bottom-10 -left-10 w-24 h-24 bg-[#2C2171]/5 rounded-full pointer-events-none"></div>
+                            
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-4 mb-6">
+                                <div>
+                                    <h3 className="text-sm font-black uppercase tracking-widest text-[#2C2171] flex items-center gap-2">
+                                        <Crown className="w-4 h-4 text-[#F15A29]" />
+                                        Manager Control Room
+                                    </h3>
+                                    <p className="text-[11px] text-slate-400 font-semibold uppercase mt-0.5 tracking-wide">
+                                        Department: {profile.department}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => setIsAssignTaskOpen(true)}
+                                    className="h-10 px-5 text-[10px] font-black uppercase tracking-widest text-white rounded-2xl flex items-center gap-2 bg-gradient-to-r from-[#2C2171] to-[#3F348C] hover:from-[#3F348C] hover:to-[#2C2171] shadow-lg shadow-[#2C2171]/25 hover:shadow-xl transition-all duration-300 transform active:scale-95"
+                                >
+                                    <Plus className="w-4 h-4 text-orange-400" /> Assign Department Task
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {/* Department Intelligence Access Link */}
+                                <Link
+                                    href={profile.department === "Finance" ? "/ceo/financial-intelligence" : "/ceo/sales"}
+                                    className="group relative rounded-2xl p-5 border border-slate-100 hover:border-orange-200 bg-gradient-to-br from-slate-50/50 to-white hover:from-white hover:to-white transition-all duration-300 flex items-start gap-4 shadow-sm hover:shadow-md cursor-pointer overflow-hidden"
+                                >
+                                    {/* Glowing hover state */}
+                                    <div className="absolute inset-0 bg-gradient-to-r from-orange-500/0 via-orange-500/5 to-orange-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 ease-out"></div>
+                                    
+                                    <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center text-orange-500 shrink-0 shadow-inner group-hover:scale-110 transition-transform duration-300">
+                                        <TrendingUp className="w-5 h-5" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide group-hover:text-[#2C2171] transition-colors">
+                                            Access {profile.department === "Finance" ? "Finance" : "Sales"} Intelligence
+                                        </h4>
+                                        <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-1">
+                                            Review strategic metrics, active daily signals, conversions, and departmental analytics.
+                                        </p>
+                                    </div>
+                                    <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-orange-500 group-hover:translate-x-1 transition-all self-center shrink-0" />
+                                </Link>
+
+                                {/* Department Staff List Overview Link or Summary */}
+                                <div className="rounded-2xl p-5 border border-slate-100 bg-gradient-to-br from-slate-50/50 to-white flex items-start gap-4 shadow-sm relative overflow-hidden">
+                                    <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0 shadow-inner">
+                                        <Users className="w-5 h-5" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide">
+                                            Department Workforce
+                                        </h4>
+                                        <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-1">
+                                            Total personnel under your command:{" "}
+                                            <span className="font-bold text-slate-800">
+                                                {profiles.filter(p => p.department === profile.department && !p.is_manager && p.role !== 'ceo').length}
+                                            </span>
+                                        </p>
+                                        <p className="text-[9px] text-emerald-600 font-bold uppercase tracking-wider mt-1.5 flex items-center gap-1">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                                            All systems operational
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="bg-white rounded-2xl md:rounded-[2.5rem] p-4 md:p-0 border border-slate-100 md:border-0 md:bg-transparent shadow-sm md:shadow-none">
                         <div className="flex flex-col gap-3 md:px-2">
                             <div>
@@ -1959,10 +2124,13 @@ export default function StaffPortal() {
                                                         <X className="w-4 h-4" />{" "}
                                                         Delete Permanently
                                                     </button>
-                                                    {(task as any).ceo_reviewed && (
+                                                    {((task as any).ceo_reviewed || (task as any).reviewed_at) && (
                                                         <div className="px-3 py-2 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-2xl text-[9px] font-black uppercase border border-blue-500/20 flex items-center gap-2 animate-pulse">
                                                             <Check className="w-3 h-3" />
-                                                            CEO Reviewed
+                                                            Reviewed by{" "}
+                                                            {(task as any)
+                                                                .reviewed_by_info ||
+                                                                "Management"}
                                                         </div>
                                                     )}
                                                 </>
@@ -2395,6 +2563,131 @@ export default function StaffPortal() {
                     </div>
                 </div>
             </main>
+
+            {/* Manager Task Assignment Modal */}
+            <Dialog open={isAssignTaskOpen} onOpenChange={setIsAssignTaskOpen}>
+                <DialogContent className="bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 text-slate-900 dark:text-zinc-100 max-w-md rounded-3xl shadow-2xl overflow-hidden p-0 flex flex-col max-h-[85vh]">
+                    <div className="px-6 pt-7 pb-4 flex items-start justify-between flex-shrink-0 border-b dark:border-zinc-800">
+                        <div>
+                            <DialogTitle className="text-lg font-black tracking-tight text-[#2C2171] dark:text-white flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-xl bg-orange-50 dark:bg-zinc-800 flex items-center justify-center">
+                                    <Target className="w-4 h-4 text-orange-500" />
+                                </div>
+                                Deploy Department Task
+                            </DialogTitle>
+                            <p className="text-[11px] text-gray-400 dark:text-white/40 font-semibold mt-1 ml-10 uppercase tracking-widest">
+                                Assign objectives to your department team
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => setIsAssignTaskOpen(false)}
+                            className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-all"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+
+                    <form onSubmit={handleAssignTask} className="flex-1 flex flex-col overflow-hidden">
+                        <ScrollArea className="flex-1 px-6 py-4 custom-scrollbar">
+                            <div className="space-y-5 pb-6">
+                                {/* Task Title */}
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                        Task Title
+                                    </label>
+                                    <input
+                                        placeholder="e.g. Follow up on morning conversions"
+                                        value={newTaskTitle}
+                                        onChange={(e) => setNewTaskTitle(e.target.value)}
+                                        className="w-full h-12 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+                                        required
+                                    />
+                                </div>
+
+                                {/* Description */}
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                        Objective / Description
+                                    </label>
+                                    <textarea
+                                        placeholder="Detail the instructions or specific milestones..."
+                                        value={newTaskDesc}
+                                        onChange={(e) => setNewTaskDesc(e.target.value)}
+                                        rows={3}
+                                        className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all resize-none leading-relaxed"
+                                    />
+                                </div>
+
+                                {/* Assignee & Priority */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    {/* Select Staff assignee (filtered by department) */}
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                            Assign Staff
+                                        </label>
+                                        <select
+                                            value={newTaskAssignee}
+                                            onChange={(e) => setNewTaskAssignee(e.target.value)}
+                                            className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all cursor-pointer"
+                                            required
+                                        >
+                                            <option value="">Select Personnel...</option>
+                                            {profiles
+                                                .filter(p => p.department === profile?.department && !p.is_manager && p.role !== 'ceo')
+                                                .map((s) => (
+                                                    <option key={s.id} value={s.id}>
+                                                        {s.full_name} ({s.designation || s.role || 'Staff'})
+                                                    </option>
+                                                ))
+                                            }
+                                        </select>
+                                    </div>
+
+                                    {/* Priority Level */}
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                            Priority Level
+                                        </label>
+                                        <select
+                                            value={newTaskPriority}
+                                            onChange={(e) => setNewTaskPriority(e.target.value as any)}
+                                            className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all cursor-pointer"
+                                        >
+                                            <option value="routine">Routine Objective</option>
+                                            <option value="daily">Daily Mission</option>
+                                            <option value="urgent">Urgent Escalation</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </ScrollArea>
+
+                        <div className="px-6 py-4 bg-slate-50 border-t flex gap-3 flex-shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setIsAssignTaskOpen(false)}
+                                className="flex-1 py-3 border border-slate-200 rounded-xl text-slate-500 font-bold text-xs uppercase tracking-widest hover:bg-slate-100 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={isDeployingTask}
+                                style={{ backgroundColor: brand.orange }}
+                                className="flex-1 py-3 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-orange-100 flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-50"
+                            >
+                                {isDeployingTask ? (
+                                    <>Deploying...</>
+                                ) : (
+                                    <>
+                                        <Send className="w-3.5 h-3.5" /> Deploy
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </form>
+                </DialogContent>
+            </Dialog>
 
             {/* Leave Request Modal */}
             <LeaveRequestModal

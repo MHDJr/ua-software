@@ -158,6 +158,7 @@ export function CEOStaffVelocity() {
 
     useEffect(() => {
         loadStaffVelocity();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [timeframe]);
 
     const loadStaffVelocity = async () => {

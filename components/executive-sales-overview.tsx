@@ -1023,7 +1023,7 @@ export function ExecutiveSalesOverview() {
                                 Sales Intelligence
                             </h1>
                             <p className="text-xs md:text-sm italic text-slate-400 dark:text-zinc-400 mt-0.5 md:mt-1 line-clamp-2">
-                                "Real-time visibility into the acquisition pipeline."
+                                &quot;Real-time visibility into the acquisition pipeline.&quot;
                             </p>
                         </div>
                     </div>
@@ -1218,7 +1218,7 @@ export function ExecutiveSalesOverview() {
                                 className="text-xs"
                                 style={{ borderColor: BRAND_COLORS.indigo, color: BRAND_COLORS.indigo }}
                             >
-                                Today's Reports
+                                Today&apos;s Reports
                             </Badge>
                         </div>
                         {(userRole === 'CEO' || userRole === 'MANAGER') && (
