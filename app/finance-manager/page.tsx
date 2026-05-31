@@ -20,6 +20,7 @@ export default function FinanceManagerPage() {
                 if (profile.is_manager) {
                     if (profile.department === "Sales") router.replace("/sales-manager");
                     else if (profile.department === "Marketing") router.replace("/marketing-manager");
+                    else router.replace("/staff");
                 } else {
                     router.replace("/staff");
                 }
