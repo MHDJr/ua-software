@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { useTabResiliency } from "./tab-resiliency-engine";
+import { useAuth } from "@/lib/auth-context";
 
 // Brand colors
 const BRAND_COLORS = {
@@ -38,8 +39,10 @@ interface Victory {
 }
 
 export function CEOInbox() {
+    const { profile, userRole } = useAuth();
     const [ideas, setIdeas] = useState<Idea[]>([]);
-    const [victories, setVictories] = useState<Victory[]>([]);
+    const [sentMessages, setSentMessages] = useState<any[]>([]);
+    const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [clearingAll, setClearingAll] = useState(false);
     const [inboxFilter, setInboxFilter] = useState<'all' | 'directives' | 'alerts'>('all');
@@ -49,7 +52,7 @@ export function CEOInbox() {
     useTabResiliency(
         () => {
             fetchIdeas();
-            fetchVictories();
+            fetchSentMessages();
         },
         loading,
         setLoading
@@ -57,32 +60,7 @@ export function CEOInbox() {
 
     useEffect(() => {
         fetchIdeas();
-        fetchVictories();
-
-        // Set up daily refresh at midnight to clear the victory feed
-        const now = new Date();
-        const tomorrow = new Date(now);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        tomorrow.setHours(0, 0, 0, 0);
-        const msUntilMidnight = tomorrow.getTime() - now.getTime();
-
-        const midnightTimer = setTimeout(() => {
-            fetchIdeas();
-            fetchVictories(); // Refresh at midnight to clear previous day's victories
-
-            // Set up recurring daily refresh
-            dailyIntervalRef.current = setInterval(() => {
-                fetchIdeas();
-                fetchVictories();
-            }, 24 * 60 * 60 * 1000);
-        }, msUntilMidnight);
-
-        return () => {
-            clearTimeout(midnightTimer);
-            if (dailyIntervalRef.current) {
-                clearInterval(dailyIntervalRef.current);
-            }
-        };
+        fetchSentMessages();
     }, []);
 
     const fetchIdeas = async () => {
@@ -206,68 +184,44 @@ export function CEOInbox() {
         }
     };
 
-    const fetchVictories = async () => {
+    const fetchSentMessages = async () => {
         try {
-            // Fetch completed tasks from today only
-            const today = new Date();
-            const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-            const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-            
-            const { data: completedTasks, error } = await supabase
-                .from("tasks")
-                .select(`
-                    *,
-                    profiles!tasks_assigned_to_fkey (
-                        full_name,
-                        username
-                    )
-                `)
-                .eq("status", "completed")
-                .gte("updated_at", startOfDay.toISOString())
-                .lt("updated_at", endOfDay.toISOString())
-                .order("updated_at", { ascending: false })
-                .limit(20);
-
-            if (error) throw error;
-
-            // Transform tasks to victories
-            const transformedVictories: Victory[] = (completedTasks || []).map((task: any) => {
-                const staffName = task.profiles?.full_name || task.profiles?.username || "Unknown Staff";
-                
-                // Calculate points based on task priority and complexity
-                let points = 50; // Base points
-                if (task.priority === "urgent") points = 200;
-                else if (task.priority === "high") points = 150;
-                else if (task.priority === "medium") points = 100;
-                
-                // Add bonus for complex tasks
-                if (task.description && task.description.length > 100) points += 25;
-
-                // Format time
-                const taskTime = new Date(task.updated_at);
-                const now = new Date();
-                const diffInHours = Math.floor((now.getTime() - taskTime.getTime()) / (1000 * 60 * 60));
-                
-                let timeString;
-                if (diffInHours < 1) timeString = "Just now";
-                else if (diffInHours < 24) timeString = `${diffInHours} hour${diffInHours > 1 ? 's' : ''} ago`;
-                else timeString = `${Math.floor(diffInHours / 24)} day${Math.floor(diffInHours / 24) > 1 ? 's' : ''} ago`;
-
-                return {
-                    id: task.id,
-                    staff: staffName,
-                    achievement: task.title || "Completed a task",
-                    time: timeString,
-                    points
-                };
-            });
-
-            setVictories(transformedVictories);
+            const { data, error } = await supabase
+                .from("notifications")
+                .select("*, recipient:profiles!user_id(id, full_name, avatar_url)")
+                .or("title.ilike.%FROM CEO%,title.ilike.%FROM ADMINISTRATOR%")
+                .order("created_at", { ascending: false });
+            if (!error && data) {
+                setSentMessages(data);
+            }
         } catch (error) {
-            console.error("Error fetching victories:", error);
-            setVictories([]);
+            console.error("Error fetching sent messages:", error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleDeleteMessage = async (msgId: string) => {
+        if (!confirm("Are you sure you want to permanently delete this message?")) return;
+        setDeletingMessageId(msgId);
+        try {
+            const { error } = await supabase
+                .from("notifications")
+                .delete()
+                .eq("id", msgId);
+            
+            if (error) {
+                console.error("Error deleting message:", error);
+                toast.error("Failed to delete message: " + error.message);
+            } else {
+                toast.success("Message deleted successfully");
+                setSentMessages(prev => prev.filter(m => m.id !== msgId));
+            }
+        } catch (err: any) {
+            console.error("Exception deleting message:", err);
+            toast.error("Error: " + err.message);
+        } finally {
+            setDeletingMessageId(null);
         }
     };
 
@@ -417,45 +371,68 @@ export function CEOInbox() {
                     </div>
                 </div>
 
-                {/* Victory Feed - Right Sidebar */}
+                {/* Sent Messages Feed - Right Sidebar */}
                 <div className="flex-1 lg:max-w-md backdrop-blur-lg border border-white/20 rounded-2xl p-6 shadow-xl overflow-y-auto" style={{ background: `linear-gradient(180deg, ${BRAND_COLORS.indigo} 0%, #1E1A5C 100%)` }}>
                     <h2 className="text-xl font-bold mb-6 text-white">
-                        Victory Feed
+                        Executive Sent Messages
                     </h2>
-                    <p className="text-indigo-200 text-sm mb-8">Daily wins from the team</p>
+                    <p className="text-indigo-200 text-sm mb-8">Communications dispatched to staff</p>
 
                     <div className="space-y-4">
                         {loading ? (
                             <div className="flex items-center justify-center py-8">
                                 <div className="flex items-center gap-3">
                                     <Loader2 className="w-5 h-5 animate-spin text-white/70" />
-                                    <span className="text-white/70 text-sm">Loading victories...</span>
+                                    <span className="text-white/70 text-sm">Loading messages...</span>
                                 </div>
                             </div>
-                        ) : victories.length === 0 ? (
+                        ) : sentMessages.length === 0 ? (
                             <div className="text-center py-8">
-                                <Trophy className="w-12 h-12 text-white/30 mx-auto mb-3" />
-                                <p className="text-white/50 text-sm">No victories today yet</p>
-                                <p className="text-white/30 text-xs mt-1">Completed tasks will appear here</p>
+                                <Mail className="w-12 h-12 text-white/30 mx-auto mb-3" />
+                                <p className="text-white/50 text-sm">No sent messages found</p>
+                                <p className="text-white/30 text-xs mt-1">Direct messages sent to staff will appear here</p>
                             </div>
                         ) : (
-                            victories.map((victory: Victory) => (
-                                <div
-                                    key={victory.id}
-                                    className="bg-white/10 border border-white/20 rounded-xl p-5 hover:bg-white/15 hover:translate-x-1 transition-all duration-200"
-                                >
-                                    <div className="flex items-start gap-3">
-                                        <Trophy className="w-6 h-6 text-yellow-400 flex-shrink-0 mt-1" />
-                                        <div className="flex-1">
-                                            <h4 className="font-semibold text-white text-base">{victory.staff}</h4>
-                                            <p className="text-indigo-200 text-sm mt-2 leading-relaxed">{victory.achievement}</p>
-                                            <div className="flex items-center justify-between mt-4">
-                                                <span className="text-xs text-indigo-300/80">{victory.time}</span>
+                            sentMessages.map((msg: any) => {
+                                const isAnnouncement = msg.title?.toLowerCase().includes("announcement") || msg.title?.toLowerCase().includes("broadcast");
+                                const msgTime = new Date(msg.created_at);
+                                const formattedTime = msgTime.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " at " + msgTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+                                
+                                return (
+                                    <div
+                                        key={msg.id}
+                                        className="bg-white/10 border border-white/25 rounded-xl p-5 hover:bg-white/15 hover:translate-x-1 transition-all duration-200"
+                                    >
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div className="flex-1 min-w-0">
+                                                <h4 className="font-semibold text-white text-base truncate">
+                                                    To: {msg.recipient?.full_name || msg.recipient?.email || "All Staff"}
+                                                </h4>
+                                                <span className="text-[9px] font-black tracking-widest text-[#F14D24] uppercase block mt-1">
+                                                    {msg.title}
+                                                </span>
+                                                <p className="text-indigo-100 text-xs mt-3 leading-relaxed break-words">{msg.message}</p>
+                                                <span className="text-[10px] text-indigo-300/80 block mt-4">{formattedTime}</span>
                                             </div>
+                                            
+                                            {!isAnnouncement && (
+                                                <button
+                                                    onClick={() => handleDeleteMessage(msg.id)}
+                                                    disabled={deletingMessageId === msg.id}
+                                                    className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-all duration-200 active:scale-95 shrink-0 self-start mt-0.5"
+                                                    title="Delete Message"
+                                                >
+                                                    {deletingMessageId === msg.id ? (
+                                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                    ) : (
+                                                        <Trash2 className="w-3.5 h-3.5 stroke-[2px]" />
+                                                    )}
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
-                                </div>
-                            ))
+                                );
+                            })
                         )}
                     </div>
                 </div>

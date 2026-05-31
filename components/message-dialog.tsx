@@ -240,7 +240,7 @@ export function MessageDialog({ isOpen, onClose, defaultType = "direct", onSucce
     if (loading) {
         return (
             <div className="fixed inset-0 bg-black/30 backdrop-blur-[2px] z-[9999] flex items-center justify-center p-4">
-                <div className="bg-white rounded-3xl p-8 shadow-2xl max-w-lg w-full">
+                <div className="bg-white rounded-3xl p-8 shadow-2xl max-w-md w-full">
                     <div className="text-center py-8">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-4"></div>
                         <p className="text-gray-650 font-semibold">Loading staff...</p>
@@ -252,7 +252,7 @@ export function MessageDialog({ isOpen, onClose, defaultType = "direct", onSucce
 
     return (
         <div className="fixed inset-0 bg-black/30 backdrop-blur-[2px] z-[9999] flex items-start justify-center pt-[10vh] p-4">
-            <div className="backdrop-blur-2xl bg-white/95 border border-white/25 rounded-3xl p-8 shadow-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto my-auto relative">
+            <div className="backdrop-blur-2xl bg-white/95 border border-white/25 rounded-3xl p-8 shadow-2xl max-w-md w-full max-h-[85vh] overflow-y-auto my-auto relative">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-6">
                     <h2 className="text-2xl font-black text-gray-900 uppercase tracking-tight">Communications Center</h2>
@@ -369,22 +369,7 @@ export function MessageDialog({ isOpen, onClose, defaultType = "direct", onSucce
                             />
                         </div>
 
-                        <div className="flex items-center pl-2 pb-6 animate-in fade-in slide-in-from-top-1 duration-200">
-                            <label className="flex items-center gap-3 cursor-pointer select-none group">
-                                <input
-                                    type="checkbox"
-                                    checked={isUrgent}
-                                    onChange={(e) => setIsUrgent(e.target.checked)}
-                                    className="w-5 h-5 rounded border-gray-300 text-red-650 focus:ring-red-500 cursor-pointer accent-[#31267D]"
-                                />
-                                <div className="flex items-center gap-2 text-red-650 group-hover:text-red-750 transition-colors">
-                                    <Bell className={cn("w-4 h-4", isUrgent ? "animate-bounce" : "")} />
-                                    <span className="text-xs font-black uppercase tracking-wider">
-                                        Send Notification Alert (Urgent)
-                                    </span>
-                                </div>
-                            </label>
-                        </div>
+
                     </>
                 )}
 
@@ -435,22 +420,7 @@ export function MessageDialog({ isOpen, onClose, defaultType = "direct", onSucce
                             </div>
                         </div>
 
-                        <div className="flex items-center pl-2 pt-2 animate-in fade-in slide-in-from-top-1 duration-200">
-                            <label className="flex items-center gap-3 cursor-pointer select-none group">
-                                <input
-                                    type="checkbox"
-                                    checked={isUrgent}
-                                    onChange={(e) => setIsUrgent(e.target.checked)}
-                                    className="w-5 h-5 rounded border-gray-355 text-red-650 focus:ring-red-500 cursor-pointer accent-[#F14D24]"
-                                />
-                                <div className="flex items-center gap-2 text-red-650 group-hover:text-red-750 transition-colors">
-                                    <Bell className={cn("w-4 h-4", isUrgent ? "animate-bounce" : "")} />
-                                    <span className="text-xs font-black uppercase tracking-wider">
-                                        Send Notification Alert (Urgent)
-                                    </span>
-                                </div>
-                            </label>
-                        </div>
+
                     </div>
                 )}
 

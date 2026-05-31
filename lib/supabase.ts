@@ -62,6 +62,15 @@ export type Task = {
     attachment_url?: string;
     is_draft?: boolean;
     signal_cleared?: boolean;
+    reviewed_at?: string | null;
+    assigned_to_user?: {
+        full_name: string;
+        department: string;
+    };
+    creator?: {
+        role: "ceo" | "staff" | "sales" | "accounts" | "manager" | "tutor";
+        is_manager: boolean;
+    };
 };
 
 export type Request = {

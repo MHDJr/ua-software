@@ -168,7 +168,7 @@ function CEOPageContent() {
                             className="flex items-center gap-3 bg-theme-card text-theme-text border border-theme-border-10 px-4 py-3 rounded-2xl shadow-lg hover:bg-theme-bg-white-5 hover:border-theme-brand/30 transition-all hover:-translate-x-1"
                         >
                             <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
-                                Send Announcement/Notification
+                                Send Broadcast
                             </span>
                             <div className="p-1.5 bg-[#F14D24]/10 text-[#F14D24] rounded-lg">
                                 <Megaphone className="w-4 h-4" />

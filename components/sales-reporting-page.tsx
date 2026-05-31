@@ -684,19 +684,7 @@ export function SalesReportingPage() {
                 {/* LEFT COLUMN: Data Tracking & Core Inputs */}
                 <div className="col-span-1 lg:col-span-8 flex flex-col gap-6">
                     
-                    {/* Monthly Conversion Tracker */}
-                    {profile && (
-                        <div className="w-full">
-                            <MonthlyConversionTracker 
-                                currentMonthConversions={parseInt(conversions) || 0}
-                                profile={profile}
-                                onTargetUpdated={() => {
-                                    // Refresh monthly target data
-                                    fetchSalesMonthlyTarget().then(setMonthlyTarget);
-                                }}
-                            />
-                        </div>
-                    )}
+
                     
                     {/* Daily Metrics Input Card */}
                     <div className="bg-white/80 backdrop-blur-md border border-slate-100 shadow-[0_8px_30px_rgba(0,0,0,0.015)] rounded-2xl p-6">

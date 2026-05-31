@@ -28,6 +28,16 @@ import { useAuth } from "@/lib/auth-context";
 import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 import { MobileFAB } from "@/components/mobile-fab";
 import { CEOSidebar } from "@/components/ceo-sidebar";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 
 // Types
 interface DailyMetrics {
@@ -660,6 +670,114 @@ export default function CEOFinancialIntelligence() {
         balance: 0,
     });
 
+    // Academy targets set by CEO
+    const [targets, setTargets] = useState({
+        usthadTarget: 2500000,
+        uloomxTarget: 3000000,
+        expenseTarget: 1500000,
+    });
+    const [isTargetsModalOpen, setIsTargetsModalOpen] = useState(false);
+
+    // Load academy targets with self-healing local storage fallback
+    const loadTargets = async () => {
+        const currentMonth = new Date();
+        currentMonth.setDate(1);
+        const monthStr = currentMonth.toISOString().split('T')[0];
+        
+        let localSaved: { usthadTarget: number; uloomxTarget: number; expenseTarget: number } | null = null;
+        try {
+            const localStr = localStorage.getItem('ua_financial_targets');
+            if (localStr) {
+                const parsed = JSON.parse(localStr);
+                if (parsed.month === monthStr) {
+                    localSaved = {
+                        usthadTarget: Number(parsed.usthadTarget) || 2500000,
+                        uloomxTarget: Number(parsed.uloomxTarget) || 3000000,
+                        expenseTarget: Number(parsed.expenseTarget) || 1500000
+                    };
+                }
+            }
+        } catch (e) {
+            console.error("Local load targets error:", e);
+        }
+        
+        try {
+            const { data, error } = await supabase
+                .from('academy_financial_targets')
+                .select('*')
+                .eq('target_month', monthStr)
+                .maybeSingle();
+                
+            if (data && !error) {
+                const dbTargets = {
+                    usthadTarget: Number(data.usthad_target) || 2500000,
+                    uloomxTarget: Number(data.uloomx_target) || 3000000,
+                    expenseTarget: Number(data.expense_target) || 1500000
+                };
+                setTargets(dbTargets);
+                localStorage.setItem('ua_financial_targets', JSON.stringify({ ...dbTargets, month: monthStr }));
+                return;
+            }
+        } catch (err) {
+            console.warn("Academy financial targets DB load fallback:", err);
+        }
+        
+        if (localSaved) {
+            setTargets(localSaved);
+        } else {
+            setTargets({
+                usthadTarget: 2500000,
+                uloomxTarget: 3000000,
+                expenseTarget: 1500000
+            });
+        }
+    };
+
+    useEffect(() => {
+        if (profile) {
+            loadTargets();
+        }
+    }, [profile]);
+
+    const handleSaveTargets = async (usthadVal: number, uloomxVal: number, expenseVal: number) => {
+        const currentMonth = new Date();
+        currentMonth.setDate(1);
+        const monthStr = currentMonth.toISOString().split('T')[0];
+        
+        const targetData = {
+            target_month: monthStr,
+            usthad_target: usthadVal,
+            uloomx_target: uloomxVal,
+            expense_target: expenseVal,
+            updated_at: new Date().toISOString()
+        };
+        
+        const localObj = {
+            usthadTarget: usthadVal,
+            uloomxTarget: uloomxVal,
+            expenseTarget: expenseVal,
+            month: monthStr
+        };
+        localStorage.setItem('ua_financial_targets', JSON.stringify(localObj));
+        setTargets({ usthadTarget: usthadVal, uloomxTarget: uloomxVal, expenseTarget: expenseVal });
+        
+        try {
+            const { error } = await supabase
+                .from('academy_financial_targets')
+                .upsert(targetData, { onConflict: 'target_month' });
+                
+            if (error) {
+                console.warn("Database targets save warning:", error.message);
+                toast.success("Targets updated successfully (saved locally)!");
+            } else {
+                toast.success("Targets updated and synchronized successfully!");
+            }
+        } catch (err) {
+            console.warn("Database targets save catch error:", err);
+            toast.success("Targets updated successfully (saved locally)!");
+        }
+    };
+
     // Animated values for daily metrics
     const animatedUloomxIncome = useCounterAnimation(dailyMetrics.uloomxIncome, 2000);
     const animatedUsthadIncome = useCounterAnimation(dailyMetrics.usthadIncome, 1800);
@@ -696,6 +814,35 @@ export default function CEOFinancialIntelligence() {
         staleTime: 60000,
     });
 
+    // Helper to calculate exact percentage comparison against yesterday
+    const getTrendProps = (todayVal: number, yesterdayVal: number, isExpense: boolean = false) => {
+        if (yesterdayVal === 0) {
+            if (todayVal === 0) return { trend: undefined, trendValue: undefined };
+            return { 
+                trend: isExpense ? ("down" as const) : ("up" as const), 
+                trendValue: "+100.0%" 
+            };
+        }
+        const diff = todayVal - yesterdayVal;
+        const percentage = (diff / yesterdayVal) * 100;
+        const prefix = percentage >= 0 ? "+" : "";
+        const trendValue = `${prefix}${percentage.toFixed(1)}%`;
+        
+        return {
+            trend: isExpense 
+                ? (percentage <= 0 ? ("up" as const) : ("down" as const)) // For expense: decrease is positive signal (green, up), increase is negative (red, down)
+                : (percentage >= 0 ? ("up" as const) : ("down" as const)),
+            trendValue
+        };
+    };
+
+    const [yesterdayMetrics, setYesterdayMetrics] = useState({
+        uloomxIncome: 0,
+        usthadIncome: 0,
+        combinedExpense: 0,
+        netProfit: 0
+    });
+
     useEffect(() => {
         if (!financialEntries || financialEntries.length === 0) return;
 
@@ -712,6 +859,23 @@ export default function CEOFinancialIntelligence() {
             usthadIncome: todayUsthad,
             combinedExpense: todayExpenses,
             netProfit: todayUloomx + todayUsthad - todayExpenses,
+        });
+
+        // Calculate yesterday's metrics dynamically by checking yesterday's calendar day
+        const yesterdayDate = new Date();
+        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+        const yesterdayStr = yesterdayDate.toISOString().split('T')[0];
+        const yesterdayEntries = financialEntries.filter(entry => entry.entry_date === yesterdayStr);
+
+        const yesterdayUloomx = yesterdayEntries.reduce((sum, entry) => sum + (parseFloat(entry.uloomx_income) || 0), 0);
+        const yesterdayUsthad = yesterdayEntries.reduce((sum, entry) => sum + (parseFloat(entry.usthad_income) || 0), 0);
+        const yesterdayExpenses = yesterdayEntries.reduce((sum, entry) => sum + (parseFloat(entry.total_expenses) || 0), 0);
+
+        setYesterdayMetrics({
+            uloomxIncome: yesterdayUloomx,
+            usthadIncome: yesterdayUsthad,
+            combinedExpense: yesterdayExpenses,
+            netProfit: yesterdayUloomx + yesterdayUsthad - yesterdayExpenses
         });
         
         // Calculate monthly metrics (current month)
@@ -760,9 +924,10 @@ export default function CEOFinancialIntelligence() {
         financialEntriesLength: financialEntries.length 
     });
 
-    // Anomaly detection calculations
-    const expenseRatio = (monthlyMetrics.totalExpense / (monthlyMetrics.uloomxTotal + monthlyMetrics.usthadTotal)) * 100;
-    const targetAchievement = (monthlyMetrics.balance / 5500000) * 100; // Assuming 55L target
+    // Anomaly detection calculations using CEO dynamic targets
+    const balanceTarget = targets.uloomxTarget + targets.usthadTarget - targets.expenseTarget;
+    const expenseRatio = (monthlyMetrics.totalExpense / (Math.max(1, monthlyMetrics.uloomxTotal + monthlyMetrics.usthadTotal))) * 100;
+    const targetAchievement = (monthlyMetrics.balance / (Math.max(1, balanceTarget))) * 100;
 
     const router = useRouter();
 
@@ -873,32 +1038,32 @@ export default function CEOFinancialIntelligence() {
                             title="Today's UloomX Income"
                             value={formatCurrency(animatedUloomxIncome.currentValue)}
                             imageUrl="/images/uloomx.png"
-                            trend={dailyMetrics.uloomxIncome > 0 ? "up" : undefined}
-                            trendValue={dailyMetrics.uloomxIncome > 0 ? "+12%" : undefined}
+                            trend={getTrendProps(dailyMetrics.uloomxIncome, yesterdayMetrics.uloomxIncome).trend}
+                            trendValue={getTrendProps(dailyMetrics.uloomxIncome, yesterdayMetrics.uloomxIncome).trendValue}
                             color="#ff4d00"
                         />
                         <MetricCard
                             title="Today's Usthad Income"
                             value={formatCurrency(animatedUsthadIncome.currentValue)}
                             imageUrl="/images/usthadacademylogo2.svg"
-                            trend={dailyMetrics.usthadIncome > 0 ? "up" : undefined}
-                            trendValue={dailyMetrics.usthadIncome > 0 ? "+8%" : undefined}
+                            trend={getTrendProps(dailyMetrics.usthadIncome, yesterdayMetrics.usthadIncome).trend}
+                            trendValue={getTrendProps(dailyMetrics.usthadIncome, yesterdayMetrics.usthadIncome).trendValue}
                             color="#ff4d00"
                         />
                         <MetricCard
                             title="Today's Combined Expense"
                             value={formatCurrency(animatedCombinedExpense.currentValue)}
                             icon={Wallet}
-                            trend="down"
-                            trendValue="+5%"
+                            trend={getTrendProps(dailyMetrics.combinedExpense, yesterdayMetrics.combinedExpense, true).trend}
+                            trendValue={getTrendProps(dailyMetrics.combinedExpense, yesterdayMetrics.combinedExpense, true).trendValue}
                             color="#ef4444"
                         />
                         <MetricCard
                             title="Today's Net Profit"
                             value={formatCurrency(animatedNetProfit.currentValue)}
                             icon={TrendingUp}
-                            trend="up"
-                            trendValue="+15%"
+                            trend={getTrendProps(dailyMetrics.netProfit, yesterdayMetrics.netProfit).trend}
+                            trendValue={getTrendProps(dailyMetrics.netProfit, yesterdayMetrics.netProfit).trendValue}
                             color="#10b981"
                         />
                     </div>
@@ -906,51 +1071,149 @@ export default function CEOFinancialIntelligence() {
 
                 {/* Tier 2: Monthly Cumulative Overview */}
                 <div className="mb-8">
-                    <h2 className="text-lg md:text-xl font-semibold text-[#1e293b] mb-4">Monthly Cumulative Overview</h2>
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 select-none">
+                        <h2 className="text-lg md:text-xl font-semibold text-[#1e293b]">Monthly Cumulative Overview</h2>
+                        {profile?.role === 'ceo' && (
+                            <button
+                                onClick={() => setIsTargetsModalOpen(true)}
+                                className="flex items-center gap-2 px-4 py-2.5 text-xs md:text-sm font-bold text-white rounded-xl shadow-md active:scale-95 transition-all duration-200"
+                                style={{
+                                    background: "linear-gradient(135deg, #ff4d00 0%, #dc2626 100%)",
+                                    boxShadow: "0 4px 15px rgba(255, 77, 0, 0.25)"
+                                }}
+                            >
+                                <Target className="w-4 h-4 text-white" />
+                                <span>Set Monthly Targets</span>
+                            </button>
+                        )}
+                    </div>
                     <div className="bg-white rounded-[20px] md:rounded-[24px] border border-gray-100 shadow-lg p-4 md:p-6 lg:p-10">
                         <div className="flex flex-col lg:flex-row gap-6 lg:gap-10">
                             {/* Left Side: Statistical Blocks */}
                             <div className="flex-1">
                                 <h3 className="text-lg md:text-xl font-bold text-[#1e293b] mb-4 md:mb-8">Monthly Fiscal Performance</h3>
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
-                                    <div className="p-4 md:p-6 rounded-[16px] md:rounded-[20px] bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 hover:shadow-md transition-all">
-                                        <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-[#ff4d00]/10 flex items-center justify-center mb-2 md:mb-3">
-                                            <Building className="w-4 h-4 md:w-5 md:h-5 text-[#ff4d00]" />
+                                    {/* UloomX Card */}
+                                    <div className="p-4 md:p-6 rounded-[16px] md:rounded-[20px] bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 hover:shadow-md transition-all flex flex-col justify-between">
+                                        <div>
+                                            <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-[#ff4d00]/10 flex items-center justify-center mb-2 md:mb-3">
+                                                <Building className="w-4 h-4 md:w-5 md:h-5 text-[#ff4d00]" />
+                                            </div>
+                                            <p className="text-xs md:text-sm text-[#64748b] mb-1">Monthly UloomX Total</p>
+                                            <p className="text-xl md:text-2xl font-black text-[#1e293b]">{formatCurrency(animatedMonthlyUloomx.currentValue)}</p>
                                         </div>
-                                        <p className="text-xs md:text-sm text-[#64748b] mb-1">Monthly UloomX Total</p>
-                                        <p className="text-xl md:text-2xl font-black text-[#1e293b]">{formatCurrency(animatedMonthlyUloomx.currentValue)}</p>
+                                        <div className="mt-4 pt-3 border-t border-gray-200/50 flex flex-col gap-1.5 w-full">
+                                            <div className="flex justify-between items-center text-[10px] md:text-xs font-bold">
+                                                <span className="text-[#64748b]">Target: {formatCurrency(targets.uloomxTarget)}</span>
+                                                <span className="text-[#ff4d00]">
+                                                    {((monthlyMetrics.uloomxTotal / (targets.uloomxTarget || 1)) * 100).toFixed(1)}%
+                                                </span>
+                                            </div>
+                                            <div className="w-full bg-slate-200 dark:bg-zinc-800 rounded-full h-1.5 overflow-hidden">
+                                                <div 
+                                                    className="h-1.5 rounded-full transition-all duration-500" 
+                                                    style={{ 
+                                                        width: `${Math.min(100, (monthlyMetrics.uloomxTotal / (targets.uloomxTarget || 1)) * 100)}%`,
+                                                        background: 'linear-gradient(90deg, #ff4d00 0%, #ff6b35 100%)'
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="p-4 md:p-6 rounded-[16px] md:rounded-[20px] bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 hover:shadow-md transition-all">
-                                        <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-[#ffb088]/20 flex items-center justify-center mb-2 md:mb-3">
-                                            <Landmark className="w-4 h-4 md:w-5 md:h-5 text-[#ff6b35]" />
+
+                                    {/* Usthad Academy Card */}
+                                    <div className="p-4 md:p-6 rounded-[16px] md:rounded-[20px] bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 hover:shadow-md transition-all flex flex-col justify-between">
+                                        <div>
+                                            <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-[#ffb088]/20 flex items-center justify-center mb-2 md:mb-3">
+                                                <Landmark className="w-4 h-4 md:w-5 md:h-5 text-[#ff6b35]" />
+                                            </div>
+                                            <p className="text-xs md:text-sm text-[#64748b] mb-1">Monthly Usthad Total</p>
+                                            <p className="text-xl md:text-2xl font-black text-[#1e293b]">{formatCurrency(animatedMonthlyUsthad.currentValue)}</p>
                                         </div>
-                                        <p className="text-xs md:text-sm text-[#64748b] mb-1">Monthly Usthad Total</p>
-                                        <p className="text-xl md:text-2xl font-black text-[#1e293b]">{formatCurrency(animatedMonthlyUsthad.currentValue)}</p>
+                                        <div className="mt-4 pt-3 border-t border-gray-200/50 flex flex-col gap-1.5 w-full">
+                                            <div className="flex justify-between items-center text-[10px] md:text-xs font-bold">
+                                                <span className="text-[#64748b]">Target: {formatCurrency(targets.usthadTarget)}</span>
+                                                <span className="text-[#ff6b35]">
+                                                    {((monthlyMetrics.usthadTotal / (targets.usthadTarget || 1)) * 100).toFixed(1)}%
+                                                </span>
+                                            </div>
+                                            <div className="w-full bg-slate-200 dark:bg-zinc-800 rounded-full h-1.5 overflow-hidden">
+                                                <div 
+                                                    className="h-1.5 rounded-full transition-all duration-500" 
+                                                    style={{ 
+                                                        width: `${Math.min(100, (monthlyMetrics.usthadTotal / (targets.usthadTarget || 1)) * 100)}%`,
+                                                        background: 'linear-gradient(90deg, #ffb088 0%, #ff8c52 100%)'
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="p-4 md:p-6 rounded-[16px] md:rounded-[20px] bg-gradient-to-br from-red-50 to-red-100 border border-red-200 hover:shadow-md transition-all">
-                                        <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-red-100 flex items-center justify-center mb-2 md:mb-3">
-                                            <Wallet className="w-4 h-4 md:w-5 md:h-5 text-red-500" />
+
+                                    {/* Combined Expense Card */}
+                                    <div className="p-4 md:p-6 rounded-[16px] md:rounded-[20px] bg-gradient-to-br from-red-50 to-red-100 border border-red-200 hover:shadow-md transition-all flex flex-col justify-between">
+                                        <div>
+                                            <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-red-100 flex items-center justify-center mb-2 md:mb-3">
+                                                <Wallet className="w-4 h-4 md:w-5 md:h-5 text-red-500" />
+                                            </div>
+                                            <p className="text-xs md:text-sm text-[#64748b] mb-1">Monthly Total Expense</p>
+                                            <p className="text-xl md:text-2xl font-black text-[#1e293b]">{formatCurrency(animatedMonthlyExpense.currentValue)}</p>
                                         </div>
-                                        <p className="text-xs md:text-sm text-[#64748b] mb-1">Monthly Total Expense</p>
-                                        <p className="text-xl md:text-2xl font-black text-[#1e293b]">{formatCurrency(animatedMonthlyExpense.currentValue)}</p>
+                                        <div className="mt-4 pt-3 border-t border-red-200/50 flex flex-col gap-1.5 w-full">
+                                            <div className="flex justify-between items-center text-[10px] md:text-xs font-bold">
+                                                <span className="text-red-700">Limit: {formatCurrency(targets.expenseTarget)}</span>
+                                                <span className="text-red-600">
+                                                    {((monthlyMetrics.totalExpense / (targets.expenseTarget || 1)) * 100).toFixed(1)}%
+                                                </span>
+                                            </div>
+                                            <div className="w-full bg-red-200/60 dark:bg-zinc-800 rounded-full h-1.5 overflow-hidden">
+                                                <div 
+                                                    className="h-1.5 rounded-full transition-all duration-500" 
+                                                    style={{ 
+                                                        width: `${Math.min(100, (monthlyMetrics.totalExpense / (targets.expenseTarget || 1)) * 100)}%`,
+                                                        background: 'linear-gradient(90deg, #ef4444 0%, #dc2626 100%)'
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Right Side: Current Monthly Balance */}
                             <div className="lg:w-[420px]">
-                                <div className="h-full p-4 md:p-8 rounded-[16px] md:rounded-[20px] border-2 flex flex-col justify-center" 
+                                <div className="h-full p-4 md:p-8 rounded-[16px] md:rounded-[20px] border-2 flex flex-col justify-between" 
                                      style={{ 
                                          borderColor: "#ff4d00", 
                                          background: "linear-gradient(135deg, rgba(255,77,0,0.08) 0%, rgba(255,107,53,0.03) 100%)" 
                                      }}>
-                                    <p className="text-xs md:text-sm text-[#64748b] font-medium mb-1 md:mb-2">Current Monthly Balance</p>
-                                    <p className="text-2xl md:text-4xl font-black" style={{ color: "#ff4d00" }}>
-                                        {formatCurrency(monthlyMetrics.balance)}
-                                    </p>
-                                    <div className="mt-4 md:mt-6 flex items-center gap-2 text-xs md:text-sm text-green-600 bg-green-50 px-3 py-2 rounded-full w-fit">
-                                        <ArrowUpRight className="w-3 h-3 md:w-4 md:h-4" />
-                                        <span className="font-semibold">18% growth from last month</span>
+                                    <div>
+                                        <p className="text-xs md:text-sm text-[#64748b] font-medium mb-1 md:mb-2">Current Monthly Balance</p>
+                                        <p className="text-2xl md:text-4xl font-black" style={{ color: "#ff4d00" }}>
+                                            {formatCurrency(monthlyMetrics.balance)}
+                                        </p>
+                                        <div className="mt-4 flex items-center gap-2 text-xs md:text-sm text-green-600 bg-green-50 px-3 py-2 rounded-full w-fit border border-green-200">
+                                            <ArrowUpRight className="w-3 h-3 md:w-4 md:h-4" />
+                                            <span className="font-semibold">Healthy financial trajectory</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Current Monthly Balance Target Progress */}
+                                    <div className="mt-6 pt-4 border-t border-[#ff4d00]/20 flex flex-col gap-1.5 w-full">
+                                        <div className="flex justify-between items-center text-[10px] md:text-xs font-bold">
+                                            <span className="text-[#64748b]">Net Target: {formatCurrency(balanceTarget)}</span>
+                                            <span style={{ color: "#ff4d00" }}>
+                                                {targetAchievement.toFixed(1)}%
+                                            </span>
+                                        </div>
+                                        <div className="w-full bg-[#ff4d00]/10 rounded-full h-1.5 overflow-hidden">
+                                            <div 
+                                                className="h-1.5 rounded-full transition-all duration-500" 
+                                                style={{ 
+                                                    width: `${Math.min(100, targetAchievement)}%`,
+                                                    backgroundColor: "#ff4d00"
+                                                }}
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -993,17 +1256,17 @@ export default function CEOFinancialIntelligence() {
                             <div className="space-y-4">
                                 {/* Expense Alert */}
                                 <div className={`p-4 md:p-5 rounded-[16px] md:rounded-[20px] border transition-all ${
-                                    expenseRatio > 35 
+                                    monthlyMetrics.totalExpense > targets.expenseTarget 
                                         ? 'bg-amber-50 border-amber-200' 
                                         : 'bg-green-50 border-green-200'
                                 }`}>
                                     <div className="flex items-start gap-3">
                                         <div className={`w-8 h-8 md:w-10 md:h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                                            expenseRatio > 35 
+                                            monthlyMetrics.totalExpense > targets.expenseTarget 
                                                 ? 'bg-amber-100' 
                                                 : 'bg-green-100'
                                         }`}>
-                                            {expenseRatio > 35 ? (
+                                            {monthlyMetrics.totalExpense > targets.expenseTarget ? (
                                                 <AlertTriangle className="w-4 h-4 md:w-5 md:h-5 text-amber-600" />
                                             ) : (
                                                 <CheckCircle2 className="w-4 h-4 md:w-5 md:h-5 text-green-600" />
@@ -1011,14 +1274,14 @@ export default function CEOFinancialIntelligence() {
                                         </div>
                                         <div className="min-w-0">
                                             <p className={`text-xs md:text-sm font-bold ${
-                                                expenseRatio > 35 ? 'text-amber-700' : 'text-green-700'
+                                                monthlyMetrics.totalExpense > targets.expenseTarget ? 'text-amber-700' : 'text-green-700'
                                             }`}>
-                                                {expenseRatio > 35 ? 'Expense Alert' : 'Expense Normal'}
+                                                {monthlyMetrics.totalExpense > targets.expenseTarget ? 'Expense Target Exceeded' : 'Expense Normal'}
                                             </p>
                                             <p className="text-xs text-[#64748b] mt-1">
-                                                {expenseRatio > 35 
-                                                    ? `${expenseRatio.toFixed(1)}% of revenue - above 35% threshold`
-                                                    : `${expenseRatio.toFixed(1)}% of revenue - within normal range`
+                                                {monthlyMetrics.totalExpense > targets.expenseTarget 
+                                                    ? `Spent ${formatCurrency(monthlyMetrics.totalExpense)} - above budget cap of ${formatCurrency(targets.expenseTarget)}`
+                                                    : `Spent ${formatCurrency(monthlyMetrics.totalExpense)} - within target limit of ${formatCurrency(targets.expenseTarget)}`
                                                 }
                                             </p>
                                         </div>
@@ -1027,7 +1290,7 @@ export default function CEOFinancialIntelligence() {
 
                                 {/* Revenue Milestone */}
                                 <div className={`p-4 md:p-5 rounded-[16px] md:rounded-[20px] border transition-all ${
-                                    targetAchievement >= 90 
+                                    targetAchievement >= 100 
                                         ? 'bg-green-50 border-green-200' 
                                         : targetAchievement >= 75 
                                             ? 'bg-blue-50 border-blue-200'
@@ -1035,13 +1298,13 @@ export default function CEOFinancialIntelligence() {
                                 }`}>
                                     <div className="flex items-start gap-3">
                                         <div className={`w-8 h-8 md:w-10 md:h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                                            targetAchievement >= 90 
+                                            targetAchievement >= 100 
                                                 ? 'bg-green-100' 
                                                 : targetAchievement >= 75 
                                                     ? 'bg-blue-100'
                                                     : 'bg-orange-100'
                                         }`}>
-                                            {targetAchievement >= 90 ? (
+                                            {targetAchievement >= 100 ? (
                                                 <Sparkles className="w-4 h-4 md:w-5 md:h-5 text-green-600" />
                                             ) : targetAchievement >= 75 ? (
                                                 <Target className="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
@@ -1051,13 +1314,13 @@ export default function CEOFinancialIntelligence() {
                                         </div>
                                         <div className="min-w-0">
                                             <p className={`text-xs md:text-sm font-bold ${
-                                                targetAchievement >= 90 
+                                                targetAchievement >= 100 
                                                     ? 'text-green-700' 
                                                     : targetAchievement >= 75 
                                                         ? 'text-blue-700'
                                                         : 'text-orange-700'
                                             }`}>
-                                                {targetAchievement >= 90 
+                                                {targetAchievement >= 100 
                                                     ? 'Revenue Milestone Achieved!' 
                                                     : targetAchievement >= 75 
                                                         ? 'On Track to Target'
@@ -1065,8 +1328,8 @@ export default function CEOFinancialIntelligence() {
                                                 }
                                             </p>
                                             <p className="text-xs text-[#64748b] mt-1">
-                                                Monthly target {targetAchievement.toFixed(0)}% achieved
-                                                {targetAchievement < 90 && ` - ₹${formatCurrency(5500000 - monthlyMetrics.balance).replace('₹', '')} more needed`}
+                                                Monthly net target {targetAchievement.toFixed(1)}% achieved
+                                                {targetAchievement < 100 && ` - ₹${formatCurrency(balanceTarget - monthlyMetrics.balance).replace('₹', '')} more needed`}
                                             </p>
                                         </div>
                                     </div>
@@ -1075,10 +1338,78 @@ export default function CEOFinancialIntelligence() {
                         </div>
                     </div>
                 </div>
-                    </>
-                )}
+
+                {/* Tier 4: Financial Transmission Log History */}
+                <div className="mt-8">
+                    <div className="bg-white rounded-[20px] md:rounded-[24px] border border-gray-100 shadow-lg overflow-hidden select-none">
+                        <div className="p-4 md:p-6 border-b border-gray-50 flex items-center justify-between">
+                            <h3 className="text-base md:text-lg font-bold text-[#1e293b]">Financial Transmission Log History (Last 30 Days)</h3>
+                            <span className="text-xs text-[#64748b] bg-slate-100 px-3 py-1 rounded-full font-bold">
+                                {financialEntries.length} Records Found
+                            </span>
+                        </div>
+                        
+                        {financialEntries.length === 0 ? (
+                            <div className="p-12 text-center">
+                                <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                    <ReceiptText className="w-8 h-8 text-gray-300" />
+                                </div>
+                                <p className="text-gray-500 font-medium">No ledger entries recorded</p>
+                                <p className="text-gray-400 text-sm mt-1">Financial logs will appear once submitted by accounts personnel.</p>
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-50/50 border-b border-gray-100">
+                                            <th className="p-4 md:p-5 text-xs font-bold uppercase tracking-wider text-[#64748b]">Date</th>
+                                            <th className="p-4 md:p-5 text-xs font-bold uppercase tracking-wider text-[#64748b]">UloomX Income</th>
+                                            <th className="p-4 md:p-5 text-xs font-bold uppercase tracking-wider text-[#64748b]">Usthad Income</th>
+                                            <th className="p-4 md:p-5 text-xs font-bold uppercase tracking-wider text-[#64748b]">Combined Expense</th>
+                                            <th className="p-4 md:p-5 text-xs font-bold uppercase tracking-wider text-[#64748b]">Net Profit</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {financialEntries.map((entry: any) => {
+                                            const uloomxVal = parseFloat(entry.uloomx_income) || 0;
+                                            const usthadVal = parseFloat(entry.usthad_income) || 0;
+                                            const expenseVal = parseFloat(entry.total_expenses) || 0;
+                                            const netVal = uloomxVal + usthadVal - expenseVal;
+                                            
+                                            return (
+                                                <tr key={entry.id} className="hover:bg-slate-50/60 transition-colors">
+                                                    <td className="p-4 md:p-5 text-xs md:text-sm font-semibold text-[#1e293b] whitespace-nowrap">
+                                                        {new Date(entry.entry_date).toLocaleDateString('en-IN', {
+                                                            day: 'numeric',
+                                                            month: 'short',
+                                                            year: 'numeric'
+                                                        })}
+                                                    </td>
+                                                    <td className="p-4 md:p-5 text-xs md:text-sm font-bold text-[#ff4d00] whitespace-nowrap">
+                                                        {formatCurrency(uloomxVal)}
+                                                    </td>
+                                                    <td className="p-4 md:p-5 text-xs md:text-sm font-bold text-[#ffb088] whitespace-nowrap">
+                                                        {formatCurrency(usthadVal)}
+                                                    </td>
+                                                    <td className="p-4 md:p-5 text-xs md:text-sm font-bold text-red-500 whitespace-nowrap">
+                                                        {formatCurrency(expenseVal)}
+                                                    </td>
+                                                    <td className={`p-4 md:p-5 text-xs md:text-sm font-black whitespace-nowrap ${netVal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                        {formatCurrency(netVal)}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
                 </div>
-            </div>
+            </>
+        )}
+        </div>
+    </div>
             
             {/* Mobile Bottom Navigation */}
             <MobileBottomNav
@@ -1103,6 +1434,228 @@ export default function CEOFinancialIntelligence() {
             
             {/* Mobile FAB */}
             <MobileFAB variant="default" />
+
+            {/* Set Academy Targets Modal */}
+            <SetAcademyTargetsModal
+                isOpen={isTargetsModalOpen}
+                onClose={() => setIsTargetsModalOpen(false)}
+                currentTargets={targets}
+                onSave={handleSaveTargets}
+            />
         </div>
+    );
+}
+
+// =====================================================
+// DIALOG / MODAL FOR SETTING ACADEMY FINANCIAL TARGETS
+// =====================================================
+interface SetAcademyTargetsModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    currentTargets: {
+        usthadTarget: number;
+        uloomxTarget: number;
+        expenseTarget: number;
+    };
+    onSave: (usthad: number, uloomx: number, expense: number) => Promise<void>;
+}
+
+function SetAcademyTargetsModal({
+    isOpen,
+    onClose,
+    currentTargets,
+    onSave
+}: SetAcademyTargetsModalProps) {
+    const [usthadVal, setUsthadVal] = useState(currentTargets.usthadTarget.toString());
+    const [uloomxVal, setUloomxVal] = useState(currentTargets.uloomxTarget.toString());
+    const [expenseVal, setExpenseVal] = useState(currentTargets.expenseTarget.toString());
+    const [isSaving, setIsSaving] = useState(false);
+
+    useEffect(() => {
+        setUsthadVal(currentTargets.usthadTarget.toString());
+        setUloomxVal(currentTargets.uloomxTarget.toString());
+        setExpenseVal(currentTargets.expenseTarget.toString());
+    }, [currentTargets, isOpen]);
+
+    const handleFormSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const u = parseFloat(usthadVal);
+        const x = parseFloat(uloomxVal);
+        const ex = parseFloat(expenseVal);
+        
+        if (isNaN(u) || u < 0 || isNaN(x) || x < 0 || isNaN(ex) || ex < 0) {
+            toast.error("Please enter valid positive target values.");
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            await onSave(u, x, ex);
+            onClose();
+        } catch (error) {
+            console.error("Targets save error:", error);
+            toast.error("Failed to save financial targets.");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="max-w-md bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border border-slate-200 dark:border-zinc-800 rounded-3xl shadow-2xl p-6 text-slate-900 dark:text-white">
+                <DialogHeader className="mb-4">
+                    <DialogTitle className="flex items-center gap-3">
+                        <div 
+                            className="w-10 h-10 rounded-2xl flex items-center justify-center shadow-md flex-shrink-0"
+                            style={{
+                                background: 'linear-gradient(135deg, #ff4d00 0%, #dc2626 100%)'
+                            }}
+                        >
+                            <Target className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                            <div className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">
+                                Academy Targets
+                            </div>
+                            <div className="text-xs font-semibold text-[#64748b] dark:text-zinc-400">
+                                Set monthly global goals
+                            </div>
+                        </div>
+                    </DialogTitle>
+                </DialogHeader>
+
+                <form onSubmit={handleFormSubmit} className="space-y-5">
+                    {/* Usthad Academy Target Control */}
+                    <div className="space-y-2.5 p-3.5 bg-slate-50/50 dark:bg-zinc-800/30 rounded-2xl border border-slate-100 dark:border-zinc-800/50">
+                        <div className="flex justify-between items-center select-none">
+                            <Label htmlFor="target-usthad" className="text-xs font-black uppercase text-slate-500 dark:text-zinc-400">
+                                Usthad Academy Target
+                            </Label>
+                            <span className="text-xs font-black text-[#ff4d00]">
+                                {formatCurrency(parseFloat(usthadVal) || 0)}
+                            </span>
+                        </div>
+                        
+                        {/* Interactive Range Slider */}
+                        <input
+                            type="range"
+                            min="0"
+                            max="10000000"
+                            step="50000"
+                            value={usthadVal || "0"}
+                            onChange={(e) => setUsthadVal(e.target.value)}
+                            className="w-full h-1.5 bg-slate-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-[#ff4d00] focus:outline-none"
+                        />
+                        
+                        {/* Precision Input Field */}
+                        <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs font-black text-slate-400 select-none">₹</span>
+                            <Input
+                                id="target-usthad"
+                                type="number"
+                                value={usthadVal}
+                                onChange={(e) => setUsthadVal(e.target.value)}
+                                placeholder="Enter custom amount"
+                                className="h-8 rounded-lg text-xs font-semibold border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-950 dark:text-white placeholder:text-slate-400 focus-visible:ring-orange-500"
+                                required
+                            />
+                        </div>
+                    </div>
+
+                    {/* UloomX Target Control */}
+                    <div className="space-y-2.5 p-3.5 bg-slate-50/50 dark:bg-zinc-800/30 rounded-2xl border border-slate-100 dark:border-zinc-800/50">
+                        <div className="flex justify-between items-center select-none">
+                            <Label htmlFor="target-uloomx" className="text-xs font-black uppercase text-slate-500 dark:text-zinc-400">
+                                UloomX Target
+                            </Label>
+                            <span className="text-xs font-black text-[#ff4d00]">
+                                {formatCurrency(parseFloat(uloomxVal) || 0)}
+                            </span>
+                        </div>
+                        
+                        {/* Interactive Range Slider */}
+                        <input
+                            type="range"
+                            min="0"
+                            max="10000000"
+                            step="50000"
+                            value={uloomxVal || "0"}
+                            onChange={(e) => setUloomxVal(e.target.value)}
+                            className="w-full h-1.5 bg-slate-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-[#ff4d00] focus:outline-none"
+                        />
+                        
+                        {/* Precision Input Field */}
+                        <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs font-black text-slate-400 select-none">₹</span>
+                            <Input
+                                id="target-uloomx"
+                                type="number"
+                                value={uloomxVal}
+                                onChange={(e) => setUloomxVal(e.target.value)}
+                                placeholder="Enter custom amount"
+                                className="h-8 rounded-lg text-xs font-semibold border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-950 dark:text-white placeholder:text-slate-400 focus-visible:ring-orange-500"
+                                required
+                            />
+                        </div>
+                    </div>
+
+                    {/* Combined Expenses Target Control */}
+                    <div className="space-y-2.5 p-3.5 bg-slate-50/50 dark:bg-zinc-800/30 rounded-2xl border border-slate-100 dark:border-zinc-800/50">
+                        <div className="flex justify-between items-center select-none">
+                            <Label htmlFor="target-expense" className="text-xs font-black uppercase text-slate-500 dark:text-zinc-400">
+                                Combined Expense Limit
+                            </Label>
+                            <span className="text-xs font-black text-red-500 dark:text-red-400">
+                                {formatCurrency(parseFloat(expenseVal) || 0)}
+                            </span>
+                        </div>
+                        
+                        {/* Interactive Range Slider */}
+                        <input
+                            type="range"
+                            min="0"
+                            max="5000000"
+                            step="25000"
+                            value={expenseVal || "0"}
+                            onChange={(e) => setExpenseVal(e.target.value)}
+                            className="w-full h-1.5 bg-slate-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-red-500 focus:outline-none"
+                        />
+                        
+                        {/* Precision Input Field */}
+                        <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs font-black text-slate-400 select-none">₹</span>
+                            <Input
+                                id="target-expense"
+                                type="number"
+                                value={expenseVal}
+                                onChange={(e) => setExpenseVal(e.target.value)}
+                                placeholder="Enter custom amount"
+                                className="h-8 rounded-lg text-xs font-semibold border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-950 dark:text-white placeholder:text-slate-400 focus-visible:ring-red-500"
+                                required
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex gap-3 pt-3">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={onClose}
+                            disabled={isSaving}
+                            className="flex-1 h-11 rounded-xl font-bold border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-300"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="submit"
+                            disabled={isSaving}
+                            className="flex-1 h-11 rounded-xl font-bold text-white bg-[#ff4d00] hover:bg-[#ff4d00]/90 transition-all shadow-md"
+                        >
+                            {isSaving ? "Saving..." : "Save Targets"}
+                        </Button>
+                    </div>
+                </form>
+            </DialogContent>
+        </Dialog>
     );
 }

@@ -124,23 +124,9 @@ Deno.serve(async (req) => {
         }
 
         // --- 24-HOUR AUTO-CLEANUP LOGIC ---
-        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-
-        // 1. Delete completed tasks older than 24h
-        const { error: taskCleanupError } = await supabase
-            .from("tasks")
-            .delete()
-            .eq("status", "completed")
-            .lt("created_at", twentyFourHoursAgo); // Since we don't have updated_at, using created_at as proxy for old tasks
-
-        // 2. Delete approved/rejected requests older than 24h
-        const { error: requestCleanupError } = await supabase
-            .from("requests")
-            .delete()
-            .in("status", ["approved", "rejected"])
-            .lt("reviewed_at", twentyFourHoursAgo);
-
-        console.log("Cleanup performed", { taskCleanupError, requestCleanupError });
+        // Completed tasks and requests cleanup has been deferred to the end of the month
+        // inside the monthly-report Edge Function to guarantee complete monthly reporting metrics.
+        console.log("Daily task scheduler cleanup skipped (deferred to monthly-report function).");
         // --- END CLEANUP ---
 
         return new Response(

@@ -1925,14 +1925,12 @@ export default function StaffPortal() {
                                             )}
                                             {taskCreators[task.created_by] && (
                                                 <div className="flex items-center gap-1.5 mt-2 text-slate-500 dark:text-zinc-400 text-[9px] font-black tracking-widest uppercase">
-                                                    <User className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />
+                                                    <User className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500 animate-pulse" />
                                                     <span>
-                                                        Assigned by: <span className="text-slate-800 dark:text-zinc-200 font-extrabold">{
+                                                        Assigned by: <span className="text-indigo-600 dark:text-indigo-400 font-extrabold">{
                                                             taskCreators[task.created_by].role === 'ceo' 
-                                                                ? 'CEO' 
-                                                                : (taskCreators[task.created_by].is_manager || taskCreators[task.created_by].role === 'manager')
-                                                                    ? 'Administrator'
-                                                                    : taskCreators[task.created_by].full_name || 'System'
+                                                                ? `${taskCreators[task.created_by].full_name || 'Saleem'} (CEO)` 
+                                                                : `${taskCreators[task.created_by].full_name || 'Administrator'} (${taskCreators[task.created_by].designation || 'Administrator'})`
                                                         }</span>
                                                     </span>
                                                 </div>
@@ -2538,6 +2536,11 @@ export default function StaffPortal() {
                             </div>
                         </div>
 
+                        {/* File Size Warning Label */}
+                        <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 text-center max-w-[240px] mt-1 select-none">
+                            ⚠️ <span className="font-bold text-amber-600 dark:text-amber-500">Note:</span> Maximum image size is <span className="font-bold text-slate-700 dark:text-slate-200">3MB</span>. Recommended formats: PNG, JPG, or WEBP.
+                        </p>
+
                         {/* Interactive Profile Information List */}
                         <div className="w-full space-y-4">
                             <div className="p-4 rounded-xl bg-slate-50 dark:bg-zinc-800/40 border border-slate-100 dark:border-zinc-800/50">
@@ -2749,7 +2752,7 @@ export default function StaffPortal() {
                                 <input
                                     type="text"
                                     name="cost"
-                                    placeholder="e.g., $500, 3 Hours, Team of 2"
+                                    placeholder="e.g., ₹5000, 3 Hours, Team of 2"
                                     className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-orange-500 outline-none text-sm font-bold"
                                 />
                             </div>

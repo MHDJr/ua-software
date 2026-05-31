@@ -104,8 +104,8 @@ import { format, parseISO, isPast, isToday, isTomorrow } from "date-fns";
 import { useTabResiliency } from "./tab-resiliency-engine";
 import { useIdeas } from "@/hooks/use-ideas";
 import { useQueryClient } from "@tanstack/react-query";
+import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import { 
-    useTasks, 
     useStaff, 
     useLeads, 
     useRequests, 
@@ -342,8 +342,15 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
     // 1. STATE DECLARATIONS (TOP-LEVEL)
     // ============================================
     
-    // TanStack Query Hooks (Primary Data Source)
-    const { activeTasks: tasks = [], completedTasks = [], isFetching: isTasksFetching } = useTasks();
+    // Unified Real-Time Data Source with self-healing recovery
+    const { data: realtimeTasks, setData: setRealtimeTasks, isOnline } = useRealtimeTable<Task>("tasks");
+    
+    // Deriving UI sets cleanly from the unified real-time data array
+    const tasks = useMemo(() => realtimeTasks.filter(t => !['completed', 'deleted', 'COMPLETED'].includes(t.status || '')), [realtimeTasks]);
+    const completedTasks = useMemo(() => realtimeTasks.filter(t => ['completed', 'COMPLETED'].includes(t.status || '') && !t.reviewed_at), [realtimeTasks]);
+    
+    // Simulate isFetching state since realtime is instant
+    const isTasksFetching = false;
     const { data: staff = [], isFetching: isStaffFetching } = useStaff();
     const { data: requests = [], isFetching: isRequestsFetching } = useRequests();
     const { data: meetings = [], isFetching: isMeetingsFetching } = useMeetings();
@@ -384,6 +391,10 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
     const [isDeployingAnnouncement, setIsDeployingAnnouncement] = useState(false);
     const [channelDestination, setChannelDestination] = useState<"CEO_BROADCAST" | "COMMUNITY_BOARD">("CEO_BROADCAST");
     const [announcementType, setAnnouncementType] = useState<"MEETING" | "NOTICE" | "DEADLINE">("NOTICE");
+    
+    // Broadcast Board States
+    const [broadcasts, setBroadcasts] = useState<any[]>([]);
+    const [isDeletingBroadcast, setIsDeletingBroadcast] = useState<string | null>(null);
     
     // Tracking Sets
     const [completedIdeas, setCompletedIdeas] = useState<Set<string>>(new Set());
@@ -484,6 +495,44 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
     // 3. ACTIONS & LOGIC
     // ============================================
 
+    const fetchBroadcasts = useCallback(async () => {
+        try {
+            const { data, error } = await supabase
+                .from("broadcasts")
+                .select("*, profile:profiles!created_by(id, full_name, avatar_url)")
+                .order("created_at", { ascending: false });
+            if (!error && data) {
+                setBroadcasts(data);
+            }
+        } catch (err) {
+            console.error("Failed to fetch broadcasts:", err);
+        }
+    }, []);
+
+    const handleDeleteBroadcast = async (id: string) => {
+        if (!confirm("Are you sure you want to permanently delete this broadcast?")) return;
+        setIsDeletingBroadcast(id);
+        try {
+            const { error } = await supabase
+                .from("broadcasts")
+                .delete()
+                .eq("id", id);
+            
+            if (error) {
+                console.error("Failed to delete broadcast:", error);
+                toast.error("Failed to delete broadcast: " + error.message);
+            } else {
+                toast.success("Broadcast deleted successfully!");
+                setBroadcasts(prev => prev.filter(b => b.id !== id));
+            }
+        } catch (err: any) {
+            console.error("Exception deleting broadcast:", err);
+            toast.error("Error: " + err.message);
+        } finally {
+            setIsDeletingBroadcast(null);
+        }
+    };
+
     const fetchData = useCallback(async (force = false, silent = false) => {
         if (!silent) setIsRefreshing(true);
         try {
@@ -497,20 +546,17 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                     query.queryKey[0] === 'meetings' ||
                     query.queryKey[0] === 'ceo_directives'
             });
+            fetchBroadcasts();
         } catch (e) {
             console.error("Telemetry sync failed:", e);
         } finally {
             setIsRefreshing(false);
         }
-    }, [queryClient]);
+    }, [queryClient, fetchBroadcasts]);
 
     const setupRealtime = useCallback(() => {
         channelsRef.current.forEach(ch => supabase.removeChannel(ch));
         
-        const taskChannel = supabase.channel("tasks-updates")
-            .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, () => queryClient.invalidateQueries({ queryKey: ["tasks"] }))
-            .subscribe();
-
         const requestChannel = supabase.channel("requests-updates")
             .on("postgres_changes", { event: "*", schema: "public", table: "requests" }, () => queryClient.invalidateQueries({ queryKey: ["requests"] }))
             .subscribe();
@@ -519,8 +565,14 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
             .on("postgres_changes", { event: "*", schema: "public", table: "ideas" }, () => queryClient.invalidateQueries({ queryKey: ["ideas"] }))
             .subscribe();
 
-        channelsRef.current = [taskChannel, requestChannel, ideaChannel];
-    }, [queryClient]);
+        const broadcastChannel = supabase.channel("broadcast-updates-exec")
+            .on("postgres_changes", { event: "*", schema: "public", table: "broadcasts" }, () => {
+                fetchBroadcasts();
+            })
+            .subscribe();
+
+        channelsRef.current = [requestChannel, ideaChannel, broadcastChannel];
+    }, [queryClient, fetchBroadcasts]);
 
     useEffect(() => {
         setupRealtime();
@@ -1094,30 +1146,73 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
 
         console.log('Insert payload:', insertPayload);
 
+        // Construct a mock task for optimistic insertion immediately
+        const mockTask: Task = {
+            id: `temp-${Date.now()}`,
+            title: newTask.title,
+            description: taskDescription || undefined,
+            assigned_to: newTask.assignedTo,
+            priority: newTask.priority as any,
+            status: "pending",
+            created_by: profile?.id || "",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            due_date: dueDateTime || undefined,
+            is_draft: draft,
+            is_new: true,
+            assigned_to_user: staff.find(s => s.id === newTask.assignedTo) ? {
+                full_name: staff.find(s => s.id === newTask.assignedTo)?.full_name || "",
+                department: staff.find(s => s.id === newTask.assignedTo)?.department || ""
+            } : undefined,
+            creator: profile ? {
+                role: profile.role as any,
+                is_manager: profile.is_manager
+            } : undefined
+        } as any;
+
+        // Cache previous state
+        const previousTasks = [...realtimeTasks];
+
+        // Optimistically insert mock task to local state immediately
+        setRealtimeTasks(prev => [mockTask, ...prev]);
+
         // Optimistically clear the form to prevent UI freeze
         setIsAssignTaskOpen(false);
         toast.info(draft ? "Saving draft..." : "Assigning task...");
         resetTaskForm();
 
         try {
+            // Wake up auth session at the millisecond of mutation to prevent transient freezes
+            await supabase.auth.getSession();
+
             const executeInsert = async () => {
-                const { error } = await supabase.from("tasks").insert(insertPayload);
+                const { data, error } = await supabase
+                    .from("tasks")
+                    .insert(insertPayload)
+                    .select();
+                
                 if (error) throw error;
+                
+                if (data && data[0]) {
+                    // Update state to use the actual inserted DB ID while preserving relations
+                    setRealtimeTasks(prev => 
+                        prev.map(t => t.id === mockTask.id ? { ...data[0], assigned_to_user: mockTask.assigned_to_user, creator: mockTask.creator } : t)
+                    );
+                }
             };
 
             await Promise.race([
                 executeInsert(),
-                new Promise((_, reject) => setTimeout(() => reject(new Error("Network timeout: The server took too long to respond. The task is queued.")), 15000))
+                new Promise((_, reject) => setTimeout(() => reject(new Error("Network timeout: The server took too long to respond.")), 15000))
             ]);
 
             console.log('Task assigned successfully');
             toast.success(draft ? "DRAFT SAVED" : "✓ Task assigned successfully");
-            queryClient.invalidateQueries({ queryKey: ["tasks"] });
-            fetchData();
         } catch (error: any) {
             console.error("Assign task error:", error);
             toast.error("Failed to assign task: " + error.message);
-            // Even if it failed, the UI is not locked and user can retry if they saved draft manually or we could add an offline queue
+            // Revert state if failed
+            setRealtimeTasks(previousTasks);
         }
     };
 
@@ -1240,212 +1335,59 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
         // Add to deleting set
         setDeletingTaskIds(prev => new Set(prev).add(id));
         
-        // Check current user session
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        console.log("Current session:", { session, sessionError });
+        // Cache current tasks
+        const previousTasks = [...realtimeTasks];
         
-        if (!session) {
-            console.error("No active session found");
-            toast.error("You must be logged in to delete tasks");
-            setDeletingTaskIds(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(id);
-                return newSet;
-            });
-            return;
-        }
-        
-        // First, remove task from local state immediately for better UX
-        queryClient.invalidateQueries({ queryKey: ["tasks"] });
-        
+        // Optimistically remove task from local state immediately for instant responsive feel
+        setRealtimeTasks(prev => prev.filter(t => t.id !== id));
+        toast.success("TASK ANNULLED");
+
         try {
-            // First, let's check if the task actually exists before trying to delete it
-            console.log("Checking if task exists before deletion...");
-            const { data: existingTask, error: checkError } = await supabase
+            // Check current user session
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                throw new Error("You must be logged in to delete tasks");
+            }
+            
+            // Background check existence & delete attachment if any
+            const { data: existingTask } = await supabase
                 .from("tasks")
                 .select("*")
                 .eq("id", id)
                 .single();
             
-            console.log("Task existence check:", { existingTask, checkError });
-            console.log("Existing task details:", JSON.stringify(existingTask, null, 2));
-            console.log("Check error details:", JSON.stringify(checkError, null, 2));
-            
-            if (checkError) {
-                console.error("Error checking task existence:", checkError);
-                toast.error("Failed to verify task: " + checkError.message);
-                fetchData();
-                return;
-            }
-            
-            if (!existingTask) {
-                console.warn("Task does not exist in database:", id);
-                toast.error("Task not found in database");
-                fetchData();
-                return;
-            }
-            
-            // Delete attachment if it exists in storage
-            if (existingTask.attachment_url && existingTask.attachment_url.includes('/storage/v1/object/public/')) {
-                try {
-                    await deleteFile('attachments', existingTask.attachment_url);
-                    console.log("Deleted task attachment from storage");
-                } catch (e) {
-                    console.warn("Failed to delete attachment from storage:", e);
-                    // Proceed with DB deletion even if file removal fails, 
-                    // though strictly speaking we should perhaps abort or retry.
+            if (existingTask) {
+                if (existingTask.attachment_url && existingTask.attachment_url.includes('/storage/v1/object/public/')) {
+                    try {
+                        await deleteFile('attachments', existingTask.attachment_url);
+                        console.log("Deleted task attachment from storage");
+                    } catch (e) {
+                        console.warn("Failed to delete attachment from storage:", e);
+                    }
                 }
             }
             
-            // Now attempt the deletion - try multiple approaches
-            console.log("Attempting to delete existing task:", existingTask);
-            
-            // Approach 1: Simple deletion without .select()
+            // Delete from DB - Try Approach 1
             let { error: error1, count: count1 } = await supabase
                 .from("tasks")
                 .delete({ count: 'exact' })
                 .eq("id", id);
             
-            console.log("Approach 1 - Simple deletion result:", { error1, count1 });
-            console.log("Error1 details:", JSON.stringify(error1, null, 2));
-            console.log("Count1:", count1);
-            
-            if (!error1 && count1 !== null && count1 > 0) {
-                console.log("Task successfully deleted with approach 1");
-                toast.success("TASK ANNULLED");
-                return;
-            }
-            
-            // Approach 2: Deletion with .select()
-            let { error: error2, data } = await supabase.from("tasks").delete().eq("id", id).select();
-            
-            console.log("Approach 2 - Deletion with select result:", { error2, data });
-            console.log("Error2 details:", JSON.stringify(error2, null, 2));
-            console.log("Data:", data);
-            
-            // Combine errors from both approaches
-            const hasError = error1 || error2;
-            const hasDeletion = (count1 && count1 > 0) || (data && data.length > 0);
-            
-            // If deletion fails due to permissions, try with service role (if available)
-            if (hasError && (error1?.code === '42501' || error2?.code === '42501' || 
-                error1?.message?.includes('permission') || error2?.message?.includes('permission'))) {
-                console.log("Trying service role deletion...");
-                const serviceKey = process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;
-                console.log("Service role key available:", !!serviceKey);
-                console.log("Service role key length:", serviceKey?.length || 0);
+            if (error1 || count1 === 0) {
+                // Try Approach 2
+                let { error: error2, data } = await supabase.from("tasks").delete().eq("id", id).select();
                 
-                if (serviceKey) {
-                    try {
-                        const serviceClient = createClient(
-                            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-                            serviceKey,
-                            {
-                                auth: {
-                                    autoRefreshToken: false,
-                                    persistSession: false
-                                }
-                            }
-                        );
-                        
-                        const { error: serviceError, data: serviceData } = await serviceClient
-                            .from("tasks")
-                            .delete()
-                            .eq("id", id)
-                            .select();
-                        
-                        console.log("Service role deletion result:", { serviceError, serviceData });
-                        
-                        if (!serviceError && serviceData && serviceData.length > 0) {
-                            console.log("Task successfully deleted with service role:", serviceData);
-                            toast.success("TASK ANNULLED");
-                            return;
-                        }
-                    } catch (serviceErr) {
-                        console.error("Service role deletion failed:", serviceErr);
-                    }
+                if (error2 && error2.code === '42501') {
+                    // Fallback to update status: deleted
+                    const { error: updateError } = await supabase.from("tasks").update({ status: 'deleted' }).eq("id", id);
+                    if (updateError) throw updateError;
                 }
             }
-            
-            if (hasError) {
-                console.error("Delete task error:", { error1, error2 });
-                
-                // Restore task to local state if deletion failed
-                fetchData();
-                
-                // Check if it's an RLS policy error
-                if (error1?.code === '42501' || error2?.code === '42501' || 
-                    error1?.message?.includes('row-level security') || error2?.message?.includes('row-level security')) {
-                    toast.error("Permission denied: You don't have rights to delete this task");
-                } else {
-                    toast.error("Failed to delete task: " + (error1?.message || error2?.message));
-                }
-            } else if (!hasDeletion) {
-                console.warn("No task was deleted with either approach - checking RLS policies");
-                // Try a different approach - check if we can at least update it
-                const { error: updateError } = await supabase
-                    .from("tasks")
-                    .update({ status: 'deleted' })
-                    .eq("id", id);
-                
-                console.log("Update fallback result:", { updateError });
-                console.log("Update error details:", JSON.stringify(updateError, null, 2));
-                
-                if (updateError) {
-                    console.error("Also failed to update task:", updateError);
-                    
-                    // Final attempt - try service role for update
-                    console.log("Trying service role for update...");
-                    try {
-                        const serviceKey = process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;
-                        if (serviceKey) {
-                            const serviceClient = createClient(
-                                process.env.NEXT_PUBLIC_SUPABASE_URL!,
-                                serviceKey,
-                                { auth: { autoRefreshToken: false, persistSession: false } }
-                            );
-                            
-                            const { error: serviceUpdateError } = await serviceClient
-                                .from("tasks")
-                                .update({ status: 'deleted' })
-                                .eq("id", id);
-                            
-                            console.log("Service role update result:", { serviceUpdateError });
-                            
-                            if (!serviceUpdateError) {
-                                console.log("Task marked as deleted with service role");
-                                toast.success("Task marked as deleted");
-                                fetchData();
-                            } else {
-                                console.error("Service role update also failed:", serviceUpdateError);
-                                toast.error("Cannot delete or modify task - check database permissions");
-                                fetchData();
-                            }
-                        } else {
-                            console.error("No service role key available");
-                            toast.error("Cannot delete or modify task - check database permissions");
-                            fetchData();
-                        }
-                    } catch (serviceErr) {
-                        console.error("Service role update exception:", serviceErr);
-                        toast.error("Cannot delete or modify task - check database permissions");
-                        fetchData();
-                    }
-                } else {
-                    console.log("Task marked as deleted instead");
-                    toast.success("Task marked as deleted");
-                    fetchData();
-                }
-            } else {
-                console.log("Task successfully deleted with one of the approaches");
-                toast.success("TASK ANNULLED");
-                // fetchData() is not needed here since we already updated local state
-            }
-        } catch (error) {
+        } catch (error: any) {
             console.error("Delete task exception:", error);
-            // Restore task to local state if deletion failed
-            fetchData();
-            toast.error("Something went wrong deleting task");
+            toast.error("Failed to delete task. Reverting...");
+            // Revert state on exception
+            setRealtimeTasks(previousTasks);
         } finally {
             // Remove from deleting set
             setDeletingTaskIds(prev => {
@@ -1469,48 +1411,48 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
 
     const markTaskAsReviewed = async (id: string) => {
         try {
+            // Wake up auth session at the millisecond of mutation to prevent transient freezes
+            await supabase.auth.getSession();
+
             console.log('Marking task as reviewed:', id);
             const reviewedAt = new Date().toISOString();
             
-            // Always update reviewed_at - this is what the query uses to filter
+            // Cache current tasks
+            const previousTasks = [...realtimeTasks];
+
+            // Optimistically update local state immediately
+            setRealtimeTasks(prev => 
+                prev.map(t => t.id === id ? { ...t, reviewed_at: reviewedAt, ceo_reviewed: true } : t)
+            );
+            
+            toast.success("Task reviewed and permanently removed from CEO view");
+
             const updateData = { reviewed_at: reviewedAt };
             
             // Try to also update ceo_reviewed if the column exists
-            const { error: reviewedError, data: reviewedData } = await supabase
+            const { error: reviewedError } = await supabase
                 .from("tasks")
                 .update({ 
                     ...updateData,
                     ceo_reviewed: true
                 })
-                .eq("id", id)
-                .select();
+                .eq("id", id);
 
             if (reviewedError) {
                 console.error("Mark as reviewed error (ceo_reviewed column):", reviewedError);
                 
                 // If ceo_reviewed column doesn't exist, update just reviewed_at
-                const { error: fallbackError, data: fallbackData } = await supabase
+                const { error: fallbackError } = await supabase
                     .from("tasks")
                     .update(updateData)
-                    .eq("id", id)
-                    .select();
+                    .eq("id", id);
 
                 if (fallbackError) {
                     console.error("Fallback update also failed:", fallbackError);
                     toast.error("Failed to mark task as reviewed: " + fallbackError.message);
-                    return;
+                    setRealtimeTasks(previousTasks);
                 }
-                
-                console.log('Task marked as reviewed (fallback):', fallbackData);
-                toast.success("Task reviewed and permanently removed from CEO view");
-            } else {
-                console.log('Task marked as reviewed successfully:', reviewedData);
-                toast.success("Task reviewed and permanently removed from CEO view");
             }
-            
-            // Also remove from local completed tasks immediately for better UX
-            queryClient.invalidateQueries({ queryKey: ["tasks"] });
-            fetchData();
         } catch (error) {
             console.error("Mark as reviewed exception:", error);
             toast.error("Something went wrong marking task as reviewed");
@@ -1518,10 +1460,23 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
     };
 
     const approveAndCloseTask = async (id: string) => {
+        console.log('Approve and close task:', id);
+        
+        // Cache current tasks
+        const previousTasks = [...realtimeTasks];
+
+        // Optimistically update local state status to COMPLETED immediately
+        setRealtimeTasks(prev => 
+            prev.map(t => t.id === id ? { ...t, status: "COMPLETED", progress: 100, updated_at: new Date().toISOString() } : t)
+        );
+        
+        toast.success("Task approved and marked as completed!");
+
         try {
-            console.log('Approve and close task:', id);
-            
-            const { error, data } = await supabase
+            // Wake up auth session at the millisecond of mutation to prevent transient freezes
+            await supabase.auth.getSession();
+
+            const { error } = await supabase
                 .from("tasks")
                 .update({ 
                     status: "COMPLETED",
@@ -1529,24 +1484,17 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                     updated_at: new Date().toISOString(),
                     updatedAt: new Date().toISOString()
                 })
-                .eq("id", id)
-                .select();
+                .eq("id", id);
 
             if (error) {
                 console.error("Approve and close error:", error);
                 toast.error("Failed to approve and close task: " + error.message);
-                return;
+                setRealtimeTasks(previousTasks);
             }
-            
-            console.log('Task approved and closed successfully:', data);
-            toast.success("Task approved and marked as completed!");
-            
-            // Invalidate queries to trigger real-time refresh instantly
-            queryClient.invalidateQueries({ queryKey: ["tasks"] });
-            fetchData();
         } catch (error) {
             console.error("Approve and close exception:", error);
             toast.error("Something went wrong approving and closing the task");
+            setRealtimeTasks(previousTasks);
         }
     };
 
@@ -1757,6 +1705,19 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                     </div>
 
                     <ThemeToggle />
+                    
+                    {/* Visual Online/Offline Connection State Dot */}
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-zinc-800/80 border border-slate-200 dark:border-zinc-700/80 shadow-sm transition-all duration-300">
+                        <div className={cn(
+                            "w-2 h-2 rounded-full transition-all duration-500",
+                            isOnline 
+                                ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)] animate-pulse" 
+                                : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.7)]"
+                        )} />
+                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 dark:text-zinc-400 select-none">
+                            {isOnline ? "Online" : "Offline"}
+                        </span>
+                    </div>
                     
                     <Button
                         variant="ghost"
@@ -2315,20 +2276,20 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                                                     </h4>
                                                     {(t as any).creator && (
                                                         <Badge variant="outline" className={cn(
-                                                            "text-[9px] px-2.5 py-0 h-5 border-none font-black uppercase tracking-widest flex items-center gap-1.5",
+                                                            "text-[9px] px-2.5 py-0.5 h-5 border-none font-black uppercase tracking-widest flex items-center gap-1.5",
                                                             (t as any).creator.role === 'ceo' 
-                                                                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" 
-                                                                : "bg-slate-500/10 text-slate-600 dark:text-slate-400"
+                                                                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.05)]" 
+                                                                : "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.05)]"
                                                         )}>
                                                             {(t as any).creator.role === 'ceo' ? (
                                                                 <>
-                                                                    <Crown className="w-2.5 h-2.5" />
-                                                                    Assigned by CEO
+                                                                    <Crown className="w-2.5 h-2.5 text-amber-500 animate-pulse" />
+                                                                    {(t as any).creator.full_name || "Saleem"} (CEO)
                                                                 </>
                                                             ) : (
                                                                 <>
-                                                                    <Zap className="w-2.5 h-2.5" />
-                                                                    Assigned by Administrator
+                                                                    <Zap className="w-2.5 h-2.5 text-indigo-500 animate-pulse" />
+                                                                    {(t as any).creator.full_name || "Administrator"} ({(t as any).creator.designation || "Administrator"})
                                                                 </>
                                                             )}
                                                         </Badge>
@@ -2390,11 +2351,9 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                                                     </div>
                                                     <span className="text-[10px] font-bold text-theme-text-60 group-hover/staff:text-theme-text transition-colors uppercase">
                                                         {assignee?.full_name || "Unassigned"}
-                                                        {assignee?.department && (
-                                                            <span className="ml-1 opacity-50 font-medium">
-                                                                ({assignee.department})
-                                                            </span>
-                                                        )}
+                                                        <span className="ml-1 opacity-50 font-medium">
+                                                            ({assignee?.designation || assignee?.department || assignee?.role || "Staff"})
+                                                        </span>
                                                     </span>
                                                 </button>
                                                 {t.due_date && (
@@ -2574,6 +2533,84 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                             )}
                         </div>
                     </CommandCard>
+                    
+                    {/* Community Board & Broadcasts Section */}
+                    <CommandCard className="flex flex-col gap-6">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <SectionHeader
+                                    title="Community Board & Broadcasts"
+                                    color="bg-indigo-500"
+                                    className="mb-0"
+                                />
+                                <div className="flex items-center justify-center w-6 h-6 rounded-full bg-indigo-500 text-[10px] font-black text-white shadow-lg shadow-indigo-500/20">
+                                    {broadcasts.length}
+                                </div>
+                            </div>
+                        </div>
+
+                        {broadcasts.length === 0 ? (
+                            <div className="p-8 text-center bg-gray-50/50 dark:bg-zinc-900/10 rounded-2xl border border-dashed border-gray-200 dark:border-zinc-800">
+                                <p className="text-[10px] text-gray-400 dark:text-zinc-500 font-bold uppercase tracking-widest">No active broadcasts found</p>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col gap-3 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
+                                {broadcasts.map((b) => {
+                                    const isCommunity = b.target === "COMMUNITY_BOARD";
+                                    const isCeo = userRole === 'CEO' || profile?.role === 'ceo';
+                                    return (
+                                        <div
+                                            key={b.id}
+                                            className="p-4 rounded-2xl border border-white/60 dark:border-zinc-800/50 bg-white/40 dark:bg-zinc-900/20 backdrop-blur-md hover:bg-white/60 dark:hover:bg-zinc-900/40 hover:shadow-md transition-all group relative overflow-hidden"
+                                        >
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                                                        <Badge className={cn(
+                                                            "text-[8px] font-black uppercase tracking-wider px-2 py-0.5 border-none",
+                                                            isCommunity 
+                                                                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" 
+                                                                : "bg-[#31267D]/10 text-[#31267D] dark:text-indigo-400"
+                                                        )}>
+                                                            {isCommunity ? "Community Board" : "CEO Broadcast"}
+                                                        </Badge>
+                                                        {b.type && (
+                                                            <Badge className="text-[8px] font-bold uppercase tracking-wide bg-gray-150/50 text-gray-650 dark:bg-zinc-800 dark:text-zinc-400 px-2 py-0.5 border-none">
+                                                                {b.type}
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-xs font-semibold text-slate-800 dark:text-zinc-200 leading-relaxed break-words">{b.message}</p>
+                                                    
+                                                    <div className="flex items-center gap-2 mt-3 text-[8px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-tight">
+                                                        <span>Sent by {b.profile?.full_name || "Executive"}</span>
+                                                        <span>•</span>
+                                                        <span>{format(new Date(b.created_at), 'MMM d, h:mm a')}</span>
+                                                    </div>
+                                                </div>
+
+                                                {isCeo && (
+                                                    <button
+                                                        onClick={() => handleDeleteBroadcast(b.id)}
+                                                        disabled={isDeletingBroadcast === b.id}
+                                                        className="p-1.5 rounded-xl bg-red-500/5 text-red-500 hover:bg-red-500 hover:text-white transition-all duration-200 active:scale-95 shrink-0 self-start animate-in fade-in zoom-in-50 duration-200"
+                                                        title="Delete Broadcast"
+                                                    >
+                                                        {isDeletingBroadcast === b.id ? (
+                                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                        ) : (
+                                                            <Trash2 className="w-3.5 h-3.5 stroke-[2px]" />
+                                                        )}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </CommandCard>
+
                     <ExecutivePerformanceEngine tasks={tasks} completedTasks={completedTasks} />
                 </aside>
             </main>
@@ -2599,7 +2636,7 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
             />
             {/* Instruction Dispatch Modal */}
             <Dialog open={isAssignTaskOpen} onOpenChange={setIsAssignTaskOpen}>
-                <DialogContent className="bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 text-slate-900 dark:text-zinc-100 max-w-[560px] rounded-3xl shadow-2xl overflow-hidden p-0 flex flex-col max-h-[85vh]">
+                <DialogContent className="bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 text-slate-900 dark:text-zinc-100 max-w-md rounded-3xl shadow-2xl overflow-hidden p-0 flex flex-col max-h-[85vh]">
                     <div className="px-6 pt-7 pb-4 flex items-start justify-between flex-shrink-0 border-b dark:border-zinc-800">
                         <div>
                             <DialogTitle className="text-lg font-black tracking-tight text-[#1a1a2e] dark:text-white flex items-center gap-2">
@@ -2989,7 +3026,7 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
             </Dialog>
             {/* Ideas Modal */}
             <Dialog open={isIdeasOpen} onOpenChange={setIsIdeasOpen}>
-                <DialogContent className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-slate-900 dark:text-zinc-100 max-w-2xl rounded-3xl shadow-2xl overflow-hidden p-0 flex flex-col max-h-[90vh]">
+                <DialogContent className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-slate-900 dark:text-zinc-100 max-w-lg rounded-3xl shadow-2xl overflow-hidden p-0 flex flex-col max-h-[90vh]">
                     {/* Top gradient accent bar */}
                     <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#e86123] to-[#351e6a] z-50" />
 
@@ -3206,7 +3243,7 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                 open={showStaffOverview}
                 onOpenChange={setShowStaffOverview}
             >
-                <DialogContent className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-slate-900 dark:text-zinc-100 max-w-4xl rounded-3xl shadow-2xl overflow-hidden p-0 flex flex-col max-h-[90vh]">
+                <DialogContent className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-slate-900 dark:text-zinc-100 max-w-2xl rounded-3xl shadow-2xl overflow-hidden p-0 flex flex-col max-h-[90vh]">
                     {/* Top gradient accent bar */}
                     <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#e86123] to-[#351e6a] z-50" />
 
@@ -3395,7 +3432,7 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
             </Dialog>
             {/* Delegation Modal */}
             <Dialog open={isDelegationModalOpen} onOpenChange={setIsDelegationModalOpen}>
-                <DialogContent className="bg-white/95 backdrop-blur-2xl border-slate-200 text-slate-900 max-w-lg rounded-3xl shadow-2xl p-6 overflow-hidden">
+                <DialogContent className="bg-white/95 backdrop-blur-2xl border-slate-200 text-slate-900 max-w-md rounded-3xl shadow-2xl p-6 overflow-hidden">
                     {/* Top gradient accent bar */}
                     <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600" />
                     

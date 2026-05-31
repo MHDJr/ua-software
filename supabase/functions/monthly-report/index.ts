@@ -33,6 +33,15 @@ Deno.serve(async (req) => {
 
         if (tasksError) throw tasksError;
 
+        // Fetch leave requests for month end leaves auditing
+        const { data: leaves, error: leavesError } = await supabase
+            .from("requests")
+            .select("*, submitted_by:profiles!submitted_by(id, full_name, username, role, department)")
+            .eq("type", "leave")
+            .order("created_at", { ascending: false });
+
+        if (leavesError) throw leavesError;
+
         // 3. Compute stats per staff member
         const taskMap = new Map();
         tasks?.forEach((t) => {
@@ -230,13 +239,18 @@ Deno.serve(async (req) => {
             .map((m) => m.email)
             .filter((email): email is string => !!email);
 
+        // Explicitly include the CEO's webmail as requested
+        if (!recipientEmails.includes("ceo@usthadacademy.com")) {
+            recipientEmails.push("ceo@usthadacademy.com");
+        }
+
         if (recipientEmails.length === 0) {
             recipientEmails.push("admin@usthadacademy.com"); // Fallback
         }
 
-        // 8. Dispatch Email via Resend
+        // 8. Dispatch Emails via Resend & Perform Database Storage Cleanup
         if (resendApiKey) {
-            console.log(`Sending Monthly Report to recipients:`, recipientEmails);
+            console.log(`Sending Monthly Performance Report to recipients:`, recipientEmails);
             const resendResponse = await fetch("https://api.resend.com/emails", {
                 method: "POST",
                 headers: {
@@ -253,11 +267,182 @@ Deno.serve(async (req) => {
 
             if (!resendResponse.ok) {
                 const errorText = await resendResponse.text();
-                throw new Error(`Resend API error: ${errorText}`);
+                throw new Error(`Resend API error sending monthly report: ${errorText}`);
             }
-            console.log("Monthly Report email dispatched successfully!");
+            console.log("Monthly Performance Report email dispatched successfully!");
+
+            // 8b. Construct and dispatch Monthly Leaves Report
+            let leavesBreakdownRows = "";
+            const leavesList = leaves || [];
+            leavesList.forEach((req: any) => {
+                const reqDate = new Date(req.created_at).toLocaleDateString("en-IN", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric"
+                });
+                const staffName = req.submitted_by?.full_name || req.submitted_by?.username || "Unknown Staff";
+                const dept = req.submitted_by?.department || "General";
+                const role = req.submitted_by?.role || "Staff";
+                const leaveTitle = req.title || "Leave Request";
+                
+                let desc = req.description || "";
+                let cleanedReason = desc.replace(/^\[[^\]]+\]\s*/, "").trim();
+                if (cleanedReason.includes("Reason:")) {
+                    cleanedReason = cleanedReason.split("Reason:")[1]?.trim() || cleanedReason;
+                }
+                
+                const statusStr = (req.status || "PENDING").toUpperCase();
+                let statusBadgeColor = "color: #D97706; background-color: #FEF3C7;"; // yellow
+                if (statusStr === "APPROVED") {
+                    statusBadgeColor = "color: #059669; background-color: #D1FAE5;"; // green
+                } else if (statusStr === "REJECTED" || statusStr === "DECLINED") {
+                    statusBadgeColor = "color: #DC2626; background-color: #FEE2E2;"; // red
+                }
+
+                leavesBreakdownRows += `
+                    <tr style="border-bottom: 1px solid #E5E7EB;">
+                        <td style="padding: 12px 16px; font-size: 11px; color: #4B5563;">${reqDate}</td>
+                        <td style="padding: 12px 16px; font-size: 11px; font-weight: bold; color: #111827;">
+                            <div>${staffName}</div>
+                            <div style="font-size: 9px; color: #6B7280; margin-top: 2px;">${role} • ${dept}</div>
+                        </td>
+                        <td style="padding: 12px 16px; font-size: 11px; color: #111827; font-weight: 500;">${leaveTitle}</td>
+                        <td style="padding: 12px 16px; font-size: 11px; color: #4B5563; max-width: 200px; word-break: break-word;">${cleanedReason}</td>
+                        <td style="padding: 12px 16px; font-size: 11px; text-align: right;">
+                            <span style="font-size: 9px; font-weight: bold; padding: 4px 8px; border-radius: 9999px; ${statusBadgeColor}">${statusStr}</span>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            const leavesHtmlContent = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <title>Monthly Leave Requests & Audit Report</title>
+            </head>
+            <body style="margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #F3F4F6;">
+                <table align="center" border="0" cellpadding="0" cellspacing="0" width="650" style="border-collapse: collapse; margin-top: 40px; margin-bottom: 40px; background-color: #FFFFFF; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); border: 1px solid #E5E7EB;">
+                    <tr>
+                        <td bgcolor="#F14D24" style="padding: 24px 32px;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                <tr>
+                                    <td>
+                                        <h1 style="margin: 0; color: #FFFFFF; font-size: 17px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase;">MONTHLY LEAVE AUDIT BRIEFING</h1>
+                                        <p style="margin: 4px 0 0 0; color: #FFFFFF; opacity: 0.8; font-size: 9px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase;">Usthad Academy OS • Command Center</p>
+                                    </td>
+                                    <td align="right" style="color: #FFFFFF; opacity: 0.8; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+                                        ${reportMonth}
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 32px;">
+                            <h4 style="margin: 0 0 12px 0; font-size: 11px; font-weight: 900; text-transform: uppercase; color: #9CA3AF; letter-spacing: 1.5px;">Leaves Summary</h4>
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 32px;">
+                                <tr>
+                                    <td width="31%" style="background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 16px; text-align: center;">
+                                        <div style="font-size: 8px; font-weight: 900; color: #9CA3AF; text-transform: uppercase; letter-spacing: 1px;">Total Requests</div>
+                                        <div style="font-size: 20px; font-weight: 900; color: #111827; margin-top: 4px;">${leavesList.length}</div>
+                                    </td>
+                                    <td width="3%"></td>
+                                    <td width="31%" style="background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 16px; text-align: center;">
+                                        <div style="font-size: 8px; font-weight: 900; color: #9CA3AF; text-transform: uppercase; letter-spacing: 1px;">Approved</div>
+                                        <div style="font-size: 20px; font-weight: 900; color: #059669; margin-top: 4px;">${leavesList.filter((l: any) => l.status === 'approved').length}</div>
+                                    </td>
+                                    <td width="3%"></td>
+                                    <td width="31%" style="background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 16px; text-align: center;">
+                                        <div style="font-size: 8px; font-weight: 900; color: #9CA3AF; text-transform: uppercase; letter-spacing: 1px;">Rejected</div>
+                                        <div style="font-size: 20px; font-weight: 900; color: #DC2626; margin-top: 4px;">${leavesList.filter((l: any) => l.status === 'rejected').length}</div>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <h4 style="margin: 0 0 12px 0; font-size: 11px; font-weight: 900; text-transform: uppercase; color: #9CA3AF; letter-spacing: 1.5px;">Detailed Leave Directives</h4>
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; border: 1px solid #E5E7EB; border-radius: 12px; overflow: hidden; background-color: #FFFFFF;">
+                                <thead style="background-color: #F9FAFB; border-bottom: 1px solid #E5E7EB;">
+                                    <tr>
+                                        <th style="padding: 12px 16px; font-size: 9px; font-weight: 900; color: #9CA3AF; text-align: left; text-transform: uppercase; letter-spacing: 1px;">Date</th>
+                                        <th style="padding: 12px 16px; font-size: 9px; font-weight: 900; color: #9CA3AF; text-align: left; text-transform: uppercase; letter-spacing: 1px;">Staff Profile</th>
+                                        <th style="padding: 12px 16px; font-size: 9px; font-weight: 900; color: #9CA3AF; text-align: left; text-transform: uppercase; letter-spacing: 1px;">Leave Type</th>
+                                        <th style="padding: 12px 16px; font-size: 9px; font-weight: 900; color: #9CA3AF; text-align: left; text-transform: uppercase; letter-spacing: 1px;">Reason / Note</th>
+                                        <th style="padding: 12px 16px; font-size: 9px; font-weight: 900; color: #9CA3AF; text-align: right; text-transform: uppercase; letter-spacing: 1px;">Decision</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${leavesBreakdownRows || `<tr><td colspan="5" style="padding: 24px; text-align: center; color: #6B7280; font-size: 12px;">No leave requests recorded for this period.</td></tr>`}
+                                </tbody>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td bgcolor="#1F2937" style="padding: 24px; text-align: center; color: #9CA3AF; font-size: 11px;">
+                            <p style="margin: 0; text-transform: uppercase; letter-spacing: 1.5px; font-weight: bold;">Usthad Academy OS • Command Center</p>
+                            <p style="margin: 4px 0 0 0; font-size: 9px; color: #6B7280;">This is an official leaves audit. Confidentiality required.</p>
+                        </td>
+                    </tr>
+                </table>
+            </body>
+            </html>
+            `;
+
+            console.log(`Sending Monthly Leaves Report to recipients:`, recipientEmails);
+            const leavesResendResponse = await fetch("https://api.resend.com/emails", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${resendApiKey}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    from: "Usthad Academy OS <onboarding@resend.dev>",
+                    to: recipientEmails,
+                    subject: `MONTHLY LEAVE AUDIT BRIEFING • ${reportMonth}`,
+                    html: leavesHtmlContent,
+                }),
+            });
+
+            if (!leavesResendResponse.ok) {
+                const errorText = await leavesResendResponse.text();
+                throw new Error(`Resend API error sending monthly leaves report: ${errorText}`);
+            }
+            console.log("Monthly Leaves Report email dispatched successfully!");
+
+            // 9. PERFORM MONTH-END DATA PURGING (CEO COMMANDS TO CLEAR STORAGE)
+            console.log("Both monthly reports sent successfully. Initiating database cleanup...");
+
+            // 9a. Delete all completed tasks
+            const { data: clearedTasks, error: taskCleanupError } = await supabase
+                .from("tasks")
+                .delete()
+                .in("status", ["completed", "COMPLETED"])
+                .select("id");
+
+            if (taskCleanupError) {
+                console.error("Month-end completed tasks deletion failure:", taskCleanupError);
+            } else {
+                console.log(`Successfully purged ${clearedTasks?.length || 0} completed tasks from database.`);
+            }
+
+            // 9b. Delete all old leave requests to save space (created before the current month)
+            const firstDayOfCurrentMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+            const { data: clearedLeaves, error: leavesCleanupError } = await supabase
+                .from("requests")
+                .delete()
+                .eq("type", "leave")
+                .lt("created_at", firstDayOfCurrentMonth)
+                .select("id");
+
+            if (leavesCleanupError) {
+                console.error("Month-end leave requests deletion failure:", leavesCleanupError);
+            } else {
+                console.log(`Successfully purged ${clearedLeaves?.length || 0} leave request archives from database.`);
+            }
+
         } else {
-            console.warn("RESEND_API_KEY secret is not configured in Supabase. Email dispatch skipped.");
+            console.warn("RESEND_API_KEY secret is not configured in Supabase. Email dispatch and cleanup skipped.");
         }
 
         return new Response(

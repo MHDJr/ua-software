@@ -538,33 +538,7 @@ export default function AccountsPage() {
                 {/* RIGHT GRID SECTION (Overview & Actions) */}
                 <div className="lg:col-span-5 flex flex-col gap-6">
                     
-                    {/* Monthly Progress Card */}
-                    <div className="bg-white rounded-[24px] border border-gray-100 shadow-sm p-5 md:p-6">
-                        <div className="flex items-center gap-3 mb-5">
-                            <div className="w-10 h-10 rounded-xl bg-[#ff4d00]/10 flex items-center justify-center">
-                                <Target className="w-5 h-5 text-[#ff4d00]" />
-                            </div>
-                            <div>
-                                <h2 className="text-base font-bold text-[#1e293b]">Monthly Target</h2>
-                                <p className="text-xs text-[#64748b]">Revenue progress</p>
-                            </div>
-                        </div>
 
-                        <div className="flex justify-center">
-                            <MonthlyProgressGauge
-                                percentage={monthlyTarget?.achievement_percentage || 0}
-                                current={monthlyTarget?.current_progress || 0}
-                                target={monthlyTarget?.target_value || 0}
-                                department="accounts"
-                                size="md"
-                                onTargetUpdated={() => {
-                                    if (profile) {
-                                        fetchMonthlyTarget(profile.id).then(setMonthlyTarget);
-                                    }
-                                }}
-                            />
-                        </div>
-                    </div>
 
                     {/* Transmission Verification Card */}
                     <div className="bg-white rounded-[24px] border border-gray-100 shadow-sm p-5 md:p-6">

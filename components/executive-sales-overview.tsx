@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Users,
@@ -31,7 +31,15 @@ import { CEOStaffVelocity } from "./ceo-staff-velocity";
 import { useAuth } from "@/lib/auth-context";
 import { useTabResiliency } from "./tab-resiliency-engine";
 import { supabase, DailyReport, Profile } from "@/lib/supabase";
-
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 // Brand colors
 const BRAND_COLORS = {
     indigo: "#2F1E73",
@@ -165,6 +173,82 @@ const MetricCard = ({
     </motion.div>
 );
 
+// Target metric card component showing only target and monthly progress
+const TargetMetricCard = ({
+    title,
+    achieved,
+    target,
+    percentage,
+    unit = "",
+    icon: Icon,
+    delay,
+}: {
+    title: string;
+    achieved: number;
+    target: number;
+    percentage: number;
+    unit?: string;
+    icon: React.ElementType;
+    delay: number;
+}) => {
+    // Determine progress bar color based on percentage
+    const barColor = percentage >= 100 ? "bg-green-500" : percentage >= 75 ? "bg-indigo-600" : percentage >= 50 ? "bg-amber-500" : "bg-red-500";
+    
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay, duration: 0.5 }}
+            className="glass-card-ua rounded-2xl p-5 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group"
+        >
+            <div className="flex items-start justify-between relative z-10">
+                <div className="flex-1">
+                    <p className="text-xs font-black text-gray-500 dark:text-zinc-400 uppercase tracking-wider mb-2">
+                        {title}
+                    </p>
+                    
+                    {/* Achieved vs Target */}
+                    <div className="flex items-baseline gap-1.5 mb-2">
+                        <span className="text-3xl font-black text-gray-900 dark:text-white">
+                            {achieved}{unit}
+                        </span>
+                        <span className="text-sm font-semibold text-gray-400 dark:text-zinc-500">
+                            / {target}{unit}
+                        </span>
+                    </div>
+
+                    {/* Progress Bar & Percentage */}
+                    <div className="mt-3">
+                        <div className="flex items-center justify-between text-[10px] font-bold mb-1">
+                            <span className="text-gray-400 dark:text-zinc-500 uppercase tracking-wider">Achievement</span>
+                            <span className={percentage >= 100 ? "text-green-600 dark:text-green-400" : percentage >= 50 ? "text-amber-500" : "text-red-500"}>
+                                {percentage}%
+                            </span>
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                            <motion.div 
+                                className={`h-full rounded-full ${barColor}`}
+                                initial={{ width: 0 }}
+                                animate={{ width: `${Math.min(100, percentage)}%` }}
+                                transition={{ delay: delay + 0.1, duration: 0.8, ease: "easeOut" }}
+                            />
+                        </div>
+                    </div>
+                </div>
+                
+                <div
+                    className="p-3 rounded-xl transition-colors group-hover:bg-[#2F1E73]/20 flex-shrink-0"
+                    style={{ backgroundColor: `${BRAND_COLORS.indigo}10` }}
+                >
+                    <Icon className="w-5 h-5" style={{ color: BRAND_COLORS.indigo }} />
+                </div>
+            </div>
+        </motion.div>
+    );
+};
+
+
+
 // Funnel step component
 const FunnelStep = ({
     stage,
@@ -174,6 +258,8 @@ const FunnelStep = ({
     isFirst,
     isLast,
     delay,
+    footer,
+    trendUp,
 }: {
     stage: string;
     count: number;
@@ -182,11 +268,11 @@ const FunnelStep = ({
     isFirst: boolean;
     isLast: boolean;
     delay: number;
+    footer: string;
+    trendUp?: boolean;
 }) => {
-    // Determine color tier based on stage/conversion
-    const isLoss = stage === "Not Converted";
-    const tagBg = isLoss ? "bg-red-500/10 dark:bg-red-500/20" : "bg-indigo-500/10 dark:bg-indigo-500/20";
-    const tagText = isLoss ? "text-red-600 dark:text-red-400" : "text-indigo-600 dark:text-indigo-400";
+    const tagBg = "bg-indigo-500/10 dark:bg-indigo-500/20";
+    const tagText = "text-indigo-600 dark:text-indigo-400";
 
     return (
         <motion.div
@@ -195,9 +281,9 @@ const FunnelStep = ({
             transition={{ delay, duration: 0.4 }}
             className="flex-1 relative flex items-center"
         >
-            <div className="flex-1 rounded-2xl p-4 md:p-5 text-center relative hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group z-10 bg-white/75 dark:bg-zinc-900/60 backdrop-blur-xl border border-white/40 dark:border-zinc-800/50 shadow-sm flex flex-col items-center justify-between h-full min-h-[140px]">
+            <div className="flex-1 rounded-2xl p-4 md:p-5 text-center relative hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group z-10 bg-white/75 dark:bg-zinc-900/60 backdrop-blur-xl border border-white/40 dark:border-zinc-800/50 shadow-sm flex flex-col items-center justify-between h-full min-h-[165px]">
                 <div
-                    className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center mx-auto mb-3 transition-transform duration-300 group-hover:scale-110 shadow-sm"
+                    className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center mx-auto mb-2 transition-transform duration-300 group-hover:scale-110 shadow-sm"
                     style={{ backgroundColor: `${BRAND_COLORS.indigo}15` }}
                 >
                     <Icon className="w-5 h-5 md:w-6 md:h-6" style={{ color: BRAND_COLORS.indigo }} />
@@ -210,10 +296,21 @@ const FunnelStep = ({
                 </div>
                 
                 {/* Polished tag indicator */}
-                <div className={`inline-flex items-center justify-center px-3 py-1 rounded-full ${tagBg}`}>
+                <div className={`inline-flex items-center justify-center px-3 py-1 rounded-full ${tagBg} mb-2`}>
                     <span className={`text-[10px] font-black tracking-widest ${tagText}`}>
                         {conversion}
                     </span>
+                </div>
+
+                {/* Comparison Footer */}
+                <div className={`text-[10px] font-bold tracking-wide ${
+                    trendUp === undefined 
+                        ? "text-gray-500 dark:text-zinc-400" 
+                        : trendUp 
+                            ? "text-green-600 dark:text-green-400" 
+                            : "text-red-500 dark:text-red-400"
+                }`}>
+                    {footer}
                 </div>
             </div>
 
@@ -226,8 +323,6 @@ const FunnelStep = ({
         </motion.div>
     );
 };
-
-// Sales rep row component
 const SalesRepRow = ({ rep, index }: { rep: SalesRepData; index: number }) => (
     <motion.tr
         initial={{ opacity: 0, x: -20 }}
@@ -351,7 +446,7 @@ const DeploymentItem = ({ deployment, index }: { deployment: any; index: number 
 );
 
 export function ExecutiveSalesOverview() {
-    const { userRole } = useAuth();
+    const { profile, userRole } = useAuth();
     const [currentTime, setCurrentTime] = useState(new Date());
     const [salesReps, setSalesReps] = useState<SalesRepData[]>([]);
     const [assignments, setAssignments] = useState<any[]>([]);
@@ -364,17 +459,309 @@ export function ExecutiveSalesOverview() {
     const [pipelineFilter, setPipelineFilter] = useState<'today' | 'week' | 'month'>('month');
     const [pipelineData, setPipelineData] = useState<SalesRepData[]>([]);
 
+    // Sales targets and historical data
+    const [targets, setTargets] = useState({
+        leadsTarget: 1000,
+        evalTarget: 70,
+        conversionTarget: 15,
+    });
+    const [isTargetsModalOpen, setIsTargetsModalOpen] = useState(false);
+    const [historicalReports, setHistoricalReports] = useState<any[]>([]);
+
+    // Load academy targets with self-healing local storage fallback
+    const loadTargets = async () => {
+        const currentMonth = new Date();
+        currentMonth.setDate(1);
+        const monthStr = currentMonth.toISOString().split('T')[0];
+        
+        let localSaved: any = null;
+        try {
+            const localStr = localStorage.getItem('ua_sales_targets');
+            if (localStr) {
+                const parsed = JSON.parse(localStr);
+                if (parsed.month === monthStr) {
+                    localSaved = {
+                        leadsTarget: Number(parsed.leadsTarget) || 1000,
+                        evalTarget: Number(parsed.evalTarget) || 70,
+                        conversionTarget: Number(parsed.conversionTarget) || 15
+                    };
+                }
+            }
+        } catch (e) {
+            console.error("Local load sales targets error:", e);
+        }
+        
+        try {
+            const { data, error } = await supabase
+                .from('academy_sales_targets')
+                .select('*')
+                .eq('target_month', monthStr)
+                .maybeSingle();
+                
+            if (data && !error) {
+                const dbTargets = {
+                    leadsTarget: Number(data.leads_target) || 1000,
+                    evalTarget: Number(data.evaluation_target) || 70,
+                    conversionTarget: Number(data.conversion_target) || 15
+                };
+                setTargets(dbTargets);
+                localStorage.setItem('ua_sales_targets', JSON.stringify({ ...dbTargets, month: monthStr }));
+                return;
+            }
+        } catch (err) {
+            console.warn("Academy sales targets DB load fallback:", err);
+        }
+        
+        if (localSaved) {
+            setTargets(localSaved);
+        } else {
+            setTargets({
+                leadsTarget: 1000,
+                evalTarget: 70,
+                conversionTarget: 15
+            });
+        }
+    };
+
+    const handleSaveTargets = async (leadsVal: number, evalVal: number, convVal: number) => {
+        const currentMonth = new Date();
+        currentMonth.setDate(1);
+        const monthStr = currentMonth.toISOString().split('T')[0];
+        
+        const targetData = {
+            target_month: monthStr,
+            leads_target: leadsVal,
+            evaluation_target: evalVal,
+            conversion_target: convVal,
+            updated_at: new Date().toISOString()
+        };
+        
+        const localObj = {
+            leadsTarget: leadsVal,
+            evalTarget: evalVal,
+            conversionTarget: convVal,
+            month: monthStr
+        };
+        localStorage.setItem('ua_sales_targets', JSON.stringify(localObj));
+        setTargets({ leadsTarget: leadsVal, evalTarget: evalVal, conversionTarget: convVal });
+        
+        try {
+            const { error } = await supabase
+                .from('academy_sales_targets')
+                .upsert(targetData, { onConflict: 'target_month' });
+                
+            if (error) {
+                console.warn("Database targets save warning:", error.message);
+                toast.success("Targets updated successfully (saved locally)!");
+            } else {
+                toast.success("Targets updated and synchronized successfully!");
+            }
+        } catch (err) {
+            console.warn("Database targets save catch error:", err);
+            toast.success("Targets updated successfully (saved locally)!");
+        }
+    };
+
+    const fetchHistoricalReports = async () => {
+        try {
+            const sixtyDaysAgo = new Date();
+            sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+            const sixtyDaysAgoStr = sixtyDaysAgo.toISOString().split('T')[0];
+            
+            const { data, error } = await supabase
+                .from('daily_reports')
+                .select('*')
+                .gte('report_date', sixtyDaysAgoStr)
+                .order('report_date', { ascending: false });
+                
+            if (error) {
+                console.error("Error fetching historical reports:", error);
+                return;
+            }
+            
+            setHistoricalReports(data || []);
+        } catch (e) {
+            console.error("Exception in fetchHistoricalReports:", e);
+        }
+    };
+
+    useEffect(() => {
+        if (profile) {
+            loadTargets();
+        }
+    }, [profile]);
+
+
     // Tab Resiliency Engine Integration
     useTabResiliency(
         () => {
             fetchDailyReports();
             fetchAssignments();
+            fetchHistoricalReports();
         },
         loading,
         setLoading
     );
 
-    // Calculate real metrics from sales data
+    const computedMetrics = useMemo(() => {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
+        
+        // Helper: aggregate data for a list of entries
+        const aggregate = (entries: any[]) => {
+            const leads = entries.reduce((sum, r) => sum + (r.total_leads || 0), 0);
+            const evals = entries.reduce((sum, r) => sum + (r.evaluations_taken || 0), 0);
+            const convs = entries.reduce((sum, r) => sum + (r.conversions || 0), 0);
+            const evalRate = leads > 0 ? Math.round((evals / leads) * 100) : 0;
+            const closeRate = leads > 0 ? Math.round((convs / leads) * 100) : 0;
+            return { leads, evals, convs, evalRate, closeRate };
+        };
+        
+        // 1. Today's entries
+        const todayEntries = historicalReports.filter(r => r.report_date === todayStr);
+        const todayData = aggregate(todayEntries);
+        
+        // 2. Yesterday's entries
+        const yesterdayEntries = historicalReports.filter(r => r.report_date === yesterdayStr);
+        const yesterdayData = aggregate(yesterdayEntries);
+        
+        // 3. This Week's entries (last 7 days, including today)
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+        const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+        const thisWeekEntries = historicalReports.filter(r => r.report_date >= sevenDaysAgoStr && r.report_date <= todayStr);
+        const thisWeekData = aggregate(thisWeekEntries);
+        
+        // 4. Previous Week's entries (7 days before that)
+        const fourteenDaysAgo = new Date();
+        fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13);
+        const fourteenDaysAgoStr = fourteenDaysAgo.toISOString().split('T')[0];
+        const prevWeekEntries = historicalReports.filter(r => r.report_date >= fourteenDaysAgoStr && r.report_date < sevenDaysAgoStr);
+        const prevWeekData = aggregate(prevWeekEntries);
+        
+        // 5. Monthly entries (last 30 days)
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+        const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+        const monthlyEntries = historicalReports.filter(r => r.report_date >= thirtyDaysAgoStr && r.report_date <= todayStr);
+        const monthlyData = aggregate(monthlyEntries);
+        
+        // 6. Previous Month's entries (days 30 to 59 ago)
+        const sixtyDaysAgo = new Date();
+        sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 59);
+        const sixtyDaysAgoStr = sixtyDaysAgo.toISOString().split('T')[0];
+        const prevMonthlyEntries = historicalReports.filter(r => r.report_date >= sixtyDaysAgoStr && r.report_date < thirtyDaysAgoStr);
+        const prevMonthlyData = aggregate(prevMonthlyEntries);
+        
+        // Compute difference percentage function
+        const getDiffPercent = (curr: number, prev: number) => {
+            if (prev === 0) return curr > 0 ? "+100%" : "0%";
+            const diff = ((curr - prev) / prev) * 100;
+            return `${diff >= 0 ? '+' : ''}${diff.toFixed(0)}%`;
+        };
+        
+        const getDiffRatePercent = (currRate: number, prevRate: number) => {
+            const diff = currRate - prevRate;
+            return `${diff >= 0 ? '+' : ''}${diff.toFixed(0)}%`;
+        };
+        
+        // Month View: target achievement percentages (now all treated as raw counts/numbers instead of percentages)
+        const leadsAchievement = targets.leadsTarget > 0 ? Math.round((monthlyData.leads / targets.leadsTarget) * 100) : 0;
+        const evalAchievement = targets.evalTarget > 0 ? Math.round((monthlyData.evals / targets.evalTarget) * 100) : 0;
+        const conversionAchievement = targets.conversionTarget > 0 ? Math.round((monthlyData.convs / targets.conversionTarget) * 100) : 0;
+
+        const baseMonthly = {
+            monthlyLeads: monthlyData.leads,
+            monthlyEvals: monthlyData.evals,
+            monthlyConvs: monthlyData.convs,
+            leadsAchievement,
+            evalAchievement,
+            conversionAchievement,
+        };
+
+        if (pipelineFilter === 'today') {
+            return {
+                ...baseMonthly,
+                leads: todayData.leads,
+                evals: todayData.evals,
+                convs: todayData.convs,
+                evalRate: todayData.evalRate,
+                closeRate: todayData.closeRate,
+                leadsSub: `${getDiffPercent(todayData.leads, yesterdayData.leads)} vs yesterday`,
+                evalSub: `${getDiffPercent(todayData.evals, yesterdayData.evals)} vs yesterday`,
+                closeSub: `${getDiffPercent(todayData.convs, yesterdayData.convs)} vs yesterday`,
+                leadsTrendUp: todayData.leads >= yesterdayData.leads,
+                evalTrendUp: todayData.evals >= yesterdayData.evals,
+                closeTrendUp: todayData.convs >= yesterdayData.convs
+            };
+        } else if (pipelineFilter === 'week') {
+            return {
+                ...baseMonthly,
+                leads: thisWeekData.leads,
+                evals: thisWeekData.evals,
+                convs: thisWeekData.convs,
+                evalRate: thisWeekData.evalRate,
+                closeRate: thisWeekData.closeRate,
+                leadsSub: `${getDiffPercent(thisWeekData.leads, prevWeekData.leads)} vs last week`,
+                evalSub: `${getDiffPercent(thisWeekData.evals, prevWeekData.evals)} vs last week`,
+                closeSub: `${getDiffPercent(thisWeekData.convs, prevWeekData.convs)} vs last week`,
+                leadsTrendUp: thisWeekData.leads >= prevWeekData.leads,
+                evalTrendUp: thisWeekData.evals >= prevWeekData.evals,
+                closeTrendUp: thisWeekData.convs >= prevWeekData.convs
+            };
+        } else {
+            return {
+                ...baseMonthly,
+                leads: monthlyData.leads,
+                evals: monthlyData.evals,
+                convs: monthlyData.convs,
+                evalRate: monthlyData.evalRate,
+                closeRate: monthlyData.closeRate,
+                leadsSub: `${leadsAchievement}% achieved of target (${targets.leadsTarget})`,
+                evalSub: `${evalAchievement}% achieved of target (${targets.evalTarget})`,
+                closeSub: `${conversionAchievement}% achieved of target (${targets.conversionTarget})`,
+                leadsTrendUp: monthlyData.leads >= prevMonthlyData.leads,
+                evalTrendUp: monthlyData.evals >= prevMonthlyData.evals,
+                closeTrendUp: monthlyData.convs >= prevMonthlyData.convs
+            };
+        }
+    }, [historicalReports, pipelineFilter, targets]);
+
+    const dailyLedgerLog = useMemo(() => {
+        const dateGroups: { [date: string]: { leads: number, evals: number, convs: number } } = {};
+        
+        historicalReports.forEach((r: any) => {
+            const dateStr = r.report_date;
+            if (!dateGroups[dateStr]) {
+                dateGroups[dateStr] = { leads: 0, evals: 0, convs: 0 };
+            }
+            dateGroups[dateStr].leads += r.total_leads || 0;
+            dateGroups[dateStr].evals += r.evaluations_taken || 0;
+            dateGroups[dateStr].convs += r.conversions || 0;
+        });
+        
+        return Object.entries(dateGroups)
+            .map(([date, data]) => {
+                const evalRate = data.leads > 0 ? Math.round((data.evals / data.leads) * 100) : 0;
+                const closeRate = data.leads > 0 ? Math.round((data.convs / data.leads) * 100) : 0;
+                return {
+                    date: new Date(date).toLocaleDateString('en-IN', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric'
+                    }),
+                    rawDate: date,
+                    ...data,
+                    evalRate,
+                    closeRate
+                };
+            })
+            .sort((a, b) => b.rawDate.localeCompare(a.rawDate))
+            .slice(0, 30);
+    }, [historicalReports]);
+
     const calculateMetrics = (reports: SalesRepData[]) => {
         const totalLeads = reports.reduce((sum, rep) => sum + rep.leadsClaimed, 0);
         const totalEvaluations = reports.reduce((sum, rep) => sum + rep.evaluations, 0);
@@ -601,11 +988,14 @@ export function ExecutiveSalesOverview() {
     useEffect(() => {
         fetchDailyReports();
         fetchAssignments();
+        fetchHistoricalReports();
     }, []);
 
     const handleRefresh = () => {
         setRefreshing(true);
         fetchDailyReports();
+        fetchAssignments();
+        fetchHistoricalReports();
     };
 
     return (
@@ -640,6 +1030,19 @@ export function ExecutiveSalesOverview() {
 
                     {/* Right Side: Functional Metrics */}
                     <div className="flex flex-row items-center gap-3 md:gap-4 w-full lg:w-auto justify-between lg:justify-end flex-shrink-0">
+                        {profile?.role === 'ceo' && (
+                            <button
+                                onClick={() => setIsTargetsModalOpen(true)}
+                                className="flex items-center gap-1.5 md:gap-2 px-3.5 py-2 text-[10px] md:text-xs font-bold text-white rounded-xl shadow-md active:scale-95 transition-all duration-200"
+                                style={{
+                                    background: "linear-gradient(135deg, #ff4d00 0%, #dc2626 100%)",
+                                    boxShadow: "0 2px 10px rgba(255, 77, 0, 0.2)"
+                                }}
+                            >
+                                <Target className="w-3.5 h-3.5 text-white" />
+                                <span className="whitespace-nowrap">Set Targets</span>
+                            </button>
+                        )}
                         {/* Advanced View Toggle */}
                         <AdvancedViewToggle
                             isAdvanced={isAdvancedView}
@@ -674,50 +1077,34 @@ export function ExecutiveSalesOverview() {
                 </div>
             </motion.div>
 
-            {/* Top Row: 4 Metric Cards */}
-            <div className="grid grid-cols-4 gap-5 mb-8">
-                {(() => {
-                    const metrics = calculateMetrics(salesReps);
-                    return (
-                        <>
-                            <MetricCard
-                                title="TOTAL LEADS"
-                                value={metrics.totalLeads.toString()}
-                                trend="+12%"
-                                trendUp={true}
-                                icon={Users}
-                                delay={0.1}
-                            />
-                            <MetricCard
-                                title="EVAL RATE"
-                                value={`${metrics.evalRate}%`}
-                                trend="+5%"
-                                trendUp={true}
-                                icon={Target}
-                                delay={0.2}
-                            />
-                            <MetricCard
-                                title="CLOSE RATE"
-                                value={`${metrics.closeRate}%`}
-                                trend="+2%"
-                                trendUp={true}
-                                icon={CheckCircle2}
-                                delay={0.3}
-                            />
-                            <MetricCard
-                                title="PENDING DEPLOYMENTS"
-                                value={metrics.pendingDeployments.toString()}
-                                trend="-1"
-                                trendUp={true}
-                                icon={Rocket}
-                                delay={0.4}
-                            />
-                        </>
-                    );
-                })()}
-            </div>
 
-            {/* Middle Section: The Funnel */}
+            {/* Top Row: 3 Metric Cards showing monthly achievements and targets */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
+                <TargetMetricCard
+                    title="Monthly Leads Target"
+                    achieved={computedMetrics.monthlyLeads}
+                    target={targets.leadsTarget}
+                    percentage={computedMetrics.leadsAchievement}
+                    icon={Users}
+                    delay={0.1}
+                />
+                <TargetMetricCard
+                    title="Monthly Evaluation Target"
+                    achieved={computedMetrics.monthlyEvals}
+                    target={targets.evalTarget}
+                    percentage={computedMetrics.evalAchievement}
+                    icon={Target}
+                    delay={0.2}
+                />
+                <TargetMetricCard
+                    title="Monthly Conversions Target"
+                    achieved={computedMetrics.monthlyConvs}
+                    target={targets.conversionTarget}
+                    percentage={computedMetrics.conversionAchievement}
+                    icon={CheckCircle2}
+                    delay={0.3}
+                />
+            </div>
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -731,7 +1118,7 @@ export function ExecutiveSalesOverview() {
                             style={{ backgroundColor: BRAND_COLORS.orange }}
                         />
                         <h3 className="text-xs font-black uppercase tracking-[0.2em] text-gray-400 dark:text-zinc-500">
-                            Pipeline Flow
+                            Sales Flow
                         </h3>
                     </div>
                     
@@ -771,19 +1158,41 @@ export function ExecutiveSalesOverview() {
                 </div>
 
                 <div className="flex flex-col md:flex-row items-center gap-3">
-                    {calculateFunnelData(pipelineData).map((step: any, index: number) => (
-                        <FunnelStep
-                            key={step.stage}
-                            stage={step.stage}
-                            count={step.count}
-                            conversion={step.conversion}
-                            icon={step.icon}
-                            isFirst={index === 0}
-                            isLast={index === calculateFunnelData(pipelineData).length - 1}
-                            delay={0.4 + index * 0.1}
-                        />
-                    ))}
+                    <FunnelStep
+                        stage="Leads"
+                        count={computedMetrics.leads}
+                        conversion="100%"
+                        icon={Users}
+                        isFirst={true}
+                        isLast={false}
+                        delay={0.4}
+                        footer={computedMetrics.leadsSub}
+                        trendUp={computedMetrics.leadsTrendUp}
+                    />
+                    <FunnelStep
+                        stage="Evaluations"
+                        count={computedMetrics.evals}
+                        conversion={`${computedMetrics.evalRate}%`}
+                        icon={FileText}
+                        isFirst={false}
+                        isLast={false}
+                        delay={0.5}
+                        footer={computedMetrics.evalSub}
+                        trendUp={computedMetrics.evalTrendUp}
+                    />
+                    <FunnelStep
+                        stage="Converted"
+                        count={computedMetrics.convs}
+                        conversion={`${computedMetrics.closeRate}%`}
+                        icon={CheckCircle2}
+                        isFirst={false}
+                        isLast={true}
+                        delay={0.6}
+                        footer={computedMetrics.closeSub}
+                        trendUp={computedMetrics.closeTrendUp}
+                    />
                 </div>
+
             </motion.div>
 
             {/* Bottom Grid: 2 Columns */}
@@ -870,17 +1279,7 @@ export function ExecutiveSalesOverview() {
                                                 </div>
                                             </td>
                                         </tr>
-                                        {/* Faint uniform rows for structured data skeleton */}
-                                        {[...Array(3)].map((_, i) => (
-                                            <tr key={`skeleton-${i}`} className="border-b border-gray-50/50 dark:border-zinc-800/30 opacity-40">
-                                                <td className="py-3 px-4"><div className="h-6 w-32 bg-gray-100 dark:bg-zinc-800 rounded animate-pulse" /></td>
-                                                <td className="py-3 px-4 text-center"><div className="h-6 w-8 bg-gray-100 dark:bg-zinc-800 rounded mx-auto animate-pulse" /></td>
-                                                <td className="py-3 px-4 text-center"><div className="h-6 w-8 bg-gray-100 dark:bg-zinc-800 rounded mx-auto animate-pulse" /></td>
-                                                <td className="py-3 px-4 text-center"><div className="h-6 w-8 bg-gray-100 dark:bg-zinc-800 rounded mx-auto animate-pulse" /></td>
-                                                <td className="py-3 px-4 text-center"><div className="h-6 w-8 bg-gray-100 dark:bg-zinc-800 rounded mx-auto animate-pulse" /></td>
-                                                <td className="py-3 px-4"><div className="h-6 w-16 bg-gray-100 dark:bg-zinc-800 rounded ml-auto animate-pulse" /></td>
-                                            </tr>
-                                        ))}
+
                                     </>
                                 ) : (
                                     salesReps.map((rep, index) => (
@@ -892,78 +1291,64 @@ export function ExecutiveSalesOverview() {
                     </div>
                 </motion.div>
 
-                {/* Column 2: Live Deployments */}
+                {/* Column 2: Sales Daily Ledger Log */}
                 <motion.div
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.6 }}
-                    className="rounded-2xl overflow-hidden"
-                    style={{ backgroundColor: BRAND_COLORS.indigo }}
+                    className="glass-card-ua rounded-2xl p-6 flex flex-col justify-between"
                 >
-                    <div className="p-6">
+                    <div>
                         <div className="flex items-center justify-between mb-6">
                             <div className="flex items-center gap-2">
-                                <div className="w-1 h-5 rounded-full bg-white/30" />
-                                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white/60">
-                                    Victory Feed
+                                <div
+                                    className="w-1 h-5 rounded-full"
+                                    style={{ backgroundColor: BRAND_COLORS.orange }}
+                                />
+                                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-gray-400 dark:text-zinc-500">
+                                    Sales Daily Ledger Log
                                 </h3>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                                <span className="text-xs text-white/60">Live</span>
-                            </div>
+                            <Badge
+                                variant="outline"
+                                className="text-xs"
+                                style={{ borderColor: BRAND_COLORS.orange, color: BRAND_COLORS.orange }}
+                            >
+                                Last 30 Days
+                            </Badge>
                         </div>
 
                         <ScrollArea className="h-[320px] pr-4">
-                            <div className="space-y-1">
-                                {assignments.map((deployment, index) => (
-                                    <DeploymentItem
-                                        key={deployment.id}
-                                        deployment={deployment}
-                                        index={index}
-                                    />
-                                ))}
-                                {assignments.length === 0 && (
-                                    <div className="text-center py-12 relative">
-                                        {/* Radial gradient aura */}
-                                        <div className="absolute top-12 left-1/2 -translate-x-1/2 w-24 h-24 bg-white/10 blur-xl rounded-full" />
-                                        
-                                        <div className="relative w-12 h-12 rounded-full bg-white/10 flex items-center justify-center mx-auto mb-4 border border-white/5 shadow-inner">
-                                            <Users className="w-6 h-6 text-white/80" />
+                            <div className="space-y-2">
+                                {dailyLedgerLog.map((day) => (
+                                    <div 
+                                        key={day.rawDate} 
+                                        className="p-3 rounded-xl bg-slate-50/50 dark:bg-zinc-900/40 border border-slate-100/60 dark:border-zinc-800/40 hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-all flex flex-col sm:flex-row justify-between sm:items-center gap-2"
+                                    >
+                                        <div>
+                                            <span className="text-xs font-bold text-[#1e293b] dark:text-zinc-200">{day.date}</span>
+                                            <div className="flex gap-3 text-[10px] font-semibold text-slate-500 mt-1 uppercase tracking-wider">
+                                                <span>Leads: {day.leads}</span>
+                                                <span>Evals: {day.evals}</span>
+                                                <span>Convs: {day.convs}</span>
+                                            </div>
                                         </div>
-                                        <p className="text-white/80 text-sm font-semibold tracking-wide">No student assignments yet</p>
-                                        <p className="text-white/40 text-xs mt-1">Assignments will appear here when administrators assign tutors</p>
+
+                                    </div>
+                                ))}
+                                {dailyLedgerLog.length === 0 && (
+                                    <div className="text-center py-12">
+                                        <AlertCircle className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                                        <p className="text-sm text-gray-500 font-medium">No sales ledger logs yet</p>
                                     </div>
                                 )}
                             </div>
                         </ScrollArea>
                     </div>
 
-                    {/* Bottom stats */}
-                    <div className="px-6 py-4 bg-white/5 border-t border-white/10">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                                <div className="flex items-center gap-2">
-                                    <CheckCircle2 className="w-4 h-4 text-green-400" />
-                                    <span className="text-sm text-white/80">
-                                        <strong className="text-white">{assignments.length}</strong> Total Assigned
-                                    </span>
-                                </div>
-                                <div className="w-px h-4 bg-white/20" />
-                                <div className="flex items-center gap-2">
-                                    <AlertCircle className="w-4 h-4 text-orange-400" />
-                                    <span className="text-sm text-white/80">
-                                        <strong className="text-white">{unassignedCount}</strong> Pending Assignment
-                                    </span>
-                                </div>
-                            </div>
-                            <Button
-                                size="sm"
-                                className="h-8 px-4 text-xs font-semibold bg-white/10 hover:bg-white/20 text-white border-0"
-                            >
-                                View All
-                            </Button>
-                        </div>
+                    <div className="pt-4 mt-4 border-t border-gray-100 dark:border-zinc-800/60 flex items-center justify-between text-xs text-gray-400 select-none">
+                        <span>Daily cumulative metrics</span>
+                        <span className="font-bold text-[#2F1E73] dark:text-purple-400">Total days: {dailyLedgerLog.length}</span>
                     </div>
                 </motion.div>
             </div>
@@ -1010,12 +1395,186 @@ export function ExecutiveSalesOverview() {
                                 <CEOStaffVelocity />
                             </motion.div>
                             
-                            <DetailedMatrix salesReps={salesReps} />
+                            <DetailedMatrix salesReps={salesReps} historicalReports={historicalReports} />
                         </motion.div>
                     </motion.div>
                 )}
             </AnimatePresence>
+            
+            {/* Set Sales Targets Modal */}
+            <SetSalesTargetsModal
+                isOpen={isTargetsModalOpen}
+                onClose={() => setIsTargetsModalOpen(false)}
+                currentTargets={targets}
+                onSave={handleSaveTargets}
+            />
         </div>
+    );
+}
+
+// =====================================================
+// DIALOG / MODAL FOR SETTING ACADEMY SALES TARGETS
+// =====================================================
+interface SetSalesTargetsModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    currentTargets: {
+        leadsTarget: number;
+        evalTarget: number;
+        conversionTarget: number;
+    };
+    onSave: (leads: number, evals: number, convs: number) => Promise<void>;
+}
+
+function SetSalesTargetsModal({
+    isOpen,
+    onClose,
+    currentTargets,
+    onSave
+}: SetSalesTargetsModalProps) {
+    const [leadsVal, setLeadsVal] = useState(currentTargets.leadsTarget.toString());
+    const [evalVal, setEvalVal] = useState(currentTargets.evalTarget.toString());
+    const [convVal, setConvVal] = useState(currentTargets.conversionTarget.toString());
+    const [isSaving, setIsSaving] = useState(false);
+
+    useEffect(() => {
+        setLeadsVal(currentTargets.leadsTarget.toString());
+        setEvalVal(currentTargets.evalTarget.toString());
+        setConvVal(currentTargets.conversionTarget.toString());
+    }, [currentTargets, isOpen]);
+
+    const handleSave = async () => {
+        const leads = Math.max(0, parseInt(leadsVal) || 0);
+        const ev = Math.max(0, parseInt(evalVal) || 0);
+        const cv = Math.max(0, parseInt(convVal) || 0);
+        
+        setIsSaving(true);
+        try {
+            await onSave(leads, ev, cv);
+            onClose();
+        } catch (e) {
+            console.error("Save targets error:", e);
+            toast.error("Failed to save sales targets.");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="max-w-md bg-white dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-3xl p-6 shadow-2xl">
+                <DialogHeader className="mb-4">
+                    <DialogTitle className="text-xl font-black text-slate-900 dark:text-zinc-100 flex items-center gap-2 uppercase tracking-wide">
+                        <Target className="w-5 h-5 text-[#FA4615]" />
+                        Set Monthly Sales Targets
+                    </DialogTitle>
+                    <p className="text-xs text-slate-400">Configure target values for the current active month</p>
+                </DialogHeader>
+
+                <div className="space-y-6 py-2">
+                    {/* Leads Target Card */}
+                    <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800">
+                        <div className="flex justify-between items-center mb-2">
+                            <Label htmlFor="leads-target-input" className="text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider">Leads Target</Label>
+                            <Input
+                                id="leads-target-input"
+                                type="number"
+                                value={leadsVal}
+                                onChange={(e) => setLeadsVal(e.target.value)}
+                                className="w-28 text-right font-mono font-bold text-slate-950 dark:text-white bg-white dark:bg-zinc-800 border-2 border-slate-300 dark:border-zinc-600 focus:border-[#FA4615] focus:ring-1 focus:ring-[#FA4615] rounded-xl h-9 px-3 transition-all"
+                            />
+                        </div>
+                        <input
+                            type="range"
+                            min="0"
+                            max="5000"
+                            step="50"
+                            value={leadsVal}
+                            onChange={(e) => setLeadsVal(e.target.value)}
+                            className="w-full h-1.5 bg-slate-200 dark:bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#FA4615]"
+                        />
+                        <div className="flex justify-between text-[10px] text-gray-400 mt-1 font-semibold">
+                            <span>0</span>
+                            <span>2,500</span>
+                            <span>5,000</span>
+                        </div>
+                    </div>
+
+                    {/* Evaluation Target Card */}
+                    <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800">
+                        <div className="flex justify-between items-center mb-2">
+                            <Label htmlFor="eval-target-input" className="text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider">Evaluation Target</Label>
+                            <Input
+                                id="eval-target-input"
+                                type="number"
+                                value={evalVal}
+                                onChange={(e) => setEvalVal(e.target.value)}
+                                className="w-28 text-right font-mono font-bold text-slate-950 dark:text-white bg-white dark:bg-zinc-800 border-2 border-slate-300 dark:border-zinc-600 focus:border-[#FA4615] focus:ring-1 focus:ring-[#FA4615] rounded-xl h-9 px-3 transition-all"
+                            />
+                        </div>
+                        <input
+                            type="range"
+                            min="0"
+                            max="1000"
+                            step="10"
+                            value={evalVal}
+                            onChange={(e) => setEvalVal(e.target.value)}
+                            className="w-full h-1.5 bg-slate-200 dark:bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#FA4615]"
+                        />
+                        <div className="flex justify-between text-[10px] text-gray-400 mt-1 font-semibold">
+                            <span>0</span>
+                            <span>500</span>
+                            <span>1,000</span>
+                        </div>
+                    </div>
+
+                    {/* Conversion Target Card */}
+                    <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800">
+                        <div className="flex justify-between items-center mb-2">
+                            <Label htmlFor="conv-target-input" className="text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider">Conversion Target</Label>
+                            <Input
+                                id="conv-target-input"
+                                type="number"
+                                value={convVal}
+                                onChange={(e) => setConvVal(e.target.value)}
+                                className="w-28 text-right font-mono font-bold text-slate-950 dark:text-white bg-white dark:bg-zinc-800 border-2 border-slate-300 dark:border-zinc-600 focus:border-[#FA4615] focus:ring-1 focus:ring-[#FA4615] rounded-xl h-9 px-3 transition-all"
+                            />
+                        </div>
+                        <input
+                            type="range"
+                            min="0"
+                            max="500"
+                            step="5"
+                            value={convVal}
+                            onChange={(e) => setConvVal(e.target.value)}
+                            className="w-full h-1.5 bg-slate-200 dark:bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#FA4615]"
+                        />
+                        <div className="flex justify-between text-[10px] text-gray-400 mt-1 font-semibold">
+                            <span>0</span>
+                            <span>250</span>
+                            <span>500</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex gap-3 justify-end mt-6">
+                    <Button
+                        variant="ghost"
+                        onClick={onClose}
+                        className="rounded-xl border border-slate-100 hover:bg-slate-50"
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        className="rounded-xl font-bold bg-[#FA4615] hover:bg-[#FA4615]/90 text-white shadow-lg active:scale-95 transition-all"
+                    >
+                        {isSaving ? "Saving..." : "Save Targets"}
+                    </Button>
+                </div>
+            </DialogContent>
+        </Dialog>
     );
 }
 
