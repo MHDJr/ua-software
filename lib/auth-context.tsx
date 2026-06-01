@@ -25,7 +25,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter();
 
     useEffect(() => {
-        // 1. Get initial session
+        // 1. Check for cached profile to speed up initial render
+        if (typeof window !== "undefined") {
+            const cachedProfile = sessionStorage.getItem("ua_profile");
+            if (cachedProfile) {
+                try {
+                    const parsed = JSON.parse(cachedProfile);
+                    setProfile(parsed);
+                    // Fast role determination
+                    if (parsed.role === 'ceo') setUserRole('CEO');
+                    else if (parsed.is_manager || parsed.role === 'manager') setUserRole('MANAGER');
+                    setLoading(false); // Set loading to false if we have a cache
+                } catch (e) {
+                    sessionStorage.removeItem("ua_profile");
+                }
+            }
+        }
+
+        // 2. Get initial session
         const getInitialSession = async () => {
             const { data: { session } } = await supabase.auth.getSession();
             if (session) {
@@ -64,11 +81,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             .single();
 
         if (!error && data) {
-            setProfile(data as Profile);
+            const p = data as Profile;
+            setProfile(p);
+            if (typeof window !== "undefined") {
+                sessionStorage.setItem("ua_profile", JSON.stringify(p));
+            }
             // Determine user role based on profile
-            if (data.role === 'ceo') {
+            if (p.role === 'ceo') {
                 setUserRole('CEO');
-            } else if (data.is_manager || data.role === 'manager') {
+            } else if (p.is_manager || p.role === 'manager') {
                 setUserRole('MANAGER');
             } else {
                 setUserRole(null);
@@ -77,6 +98,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const signIn = async (email: string, password: string) => {
+        if (typeof window !== "undefined") {
+            sessionStorage.removeItem("ua_profile");
+        }
         const { error } = await supabase.auth.signInWithPassword({
             email,
             password,
@@ -85,6 +109,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const signOut = async () => {
+        if (typeof window !== "undefined") {
+            sessionStorage.removeItem("ua_profile");
+        }
         await supabase.auth.signOut();
         router.push("/auth");
     };

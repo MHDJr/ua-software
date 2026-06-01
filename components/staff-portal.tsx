@@ -6,6 +6,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, Task, Profile } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
+import { useTabResiliency } from "./tab-resiliency-engine";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -616,6 +617,15 @@ export default function StaffPortal() {
     // Task filter tabs state
     const [activeTab, setActiveTab] = useState("ALL");
     const [showCompleted, setShowCompleted] = useState(false);
+
+    useTabResiliency(
+        () => {
+            console.log("[StaffPortal] Throttled resync event received. Refreshing data...");
+            fetchData();
+        },
+        isRefreshing,
+        setIsRefreshing
+    );
 
     // Manager task assignment state
     const [isAssignTaskOpen, setIsAssignTaskOpen] = useState(false);

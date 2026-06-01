@@ -1422,6 +1422,19 @@ export default function FinanceManagerFinancialIntelligence() {
 
                         {/* Right Side: Status and Time */}
                         <div className="flex flex-row items-center gap-2 md:gap-4 w-full lg:w-auto justify-between lg:justify-start">
+                             {/* Update Daily Finance Button */}
+                             <button
+                                onClick={() => router.push("/finance-manager/daily-finance")}
+                                className="h-9 md:h-10 px-4 rounded-xl text-white font-bold text-xs md:text-sm flex items-center justify-center gap-2 active:scale-95 transition-all duration-200 flex-shrink-0"
+                                style={{
+                                    background: "linear-gradient(135deg, #ff4d00 0%, #ff8c00 100%)",
+                                    boxShadow: "0 4px 15px rgba(255, 77, 0, 0.25)"
+                                }}
+                            >
+                                <Wallet className="w-4 h-4 text-white" />
+                                <span>Update Daily Finance</span>
+                            </button>
+
                              {/* Download Finance Report Button */}
                             <button
                                 onClick={downloadMonthlyFinanceReport}

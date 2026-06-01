@@ -136,7 +136,7 @@ interface MonthlyTarget {
     achievement_percentage: number;
 }
 
-export function SalesReportingPage() {
+export function SalesReportingPage({ backPath = "/staff" }: { backPath?: string }) {
     const { profile, user } = useAuth();
     const [time, setTime] = useState("");
     const [vibe, setVibe] = useState("Focused");
@@ -657,7 +657,7 @@ export function SalesReportingPage() {
 
                 <div className="flex items-center gap-6">
                     {/* Mobile: Back to Hub Link */}
-                    <Link href="/staff" className="md:hidden">
+                    <Link href={backPath} className="md:hidden">
                         <button className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all text-[9px] font-black uppercase tracking-wider text-slate-600">
                             <ChevronLeft className="w-3 h-3" />
                             Hub
@@ -665,7 +665,7 @@ export function SalesReportingPage() {
                     </Link>
 
                     {/* Desktop: Back to Hub Link */}
-                    <Link href="/staff" className="hidden md:block">
+                    <Link href={backPath} className="hidden md:block">
                         <button className="flex items-center gap-2 px-4 py-2 rounded-2xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all text-[10px] font-black uppercase tracking-widest text-slate-600">
                             <ChevronLeft className="w-4 h-4" />
                             Back to Hub

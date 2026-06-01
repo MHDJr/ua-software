@@ -77,8 +77,8 @@ export function ThoughtCapture({ onCapture, compact = false, placeholder }: Thou
             const ideaData = {
                 title: title.trim() || null,
                 content: content.trim(),
-                priority: status === "high_priority" ? "high" : "medium",
-                status: status === 'directive' || status === 'high_priority' ? 'awaiting_delegation' : status,
+                priority: status === "high_priority" ? "high" : (status === "directive" ? "medium" : "low"),
+                status: status, // Matches database: reminder, directive, or high_priority
                 tags: autoTags,
                 auto_tagged: true,
                 created_by: profile.id,

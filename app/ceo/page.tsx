@@ -52,7 +52,7 @@ function CEOPageContent() {
             console.error("Navigation error:", e);
         }
         
-        setTimeout(() => setIsTransitioning(false), 400);
+        setTimeout(() => setIsTransitioning(false), 200);
     }, [activeView]);
 
     // Update active view if query param changes
@@ -101,25 +101,38 @@ function CEOPageContent() {
         };
     }, [handleViewChange]);
 
-    // Initial boot loader
+    // Initial boot loader - Optimized to prevent "black screen" flash
     if (loading && !profile) {
         return (
-            <div className="min-h-screen bg-[#050505] flex items-center justify-center">
-                <div className="animate-spin h-8 w-8 border-2 border-white/20 border-t-white rounded-full" />
+            <div className="min-h-screen bg-[#f8fafc] dark:bg-[#09090b] flex flex-col items-center justify-center">
+                <div className="relative mb-6 select-none pointer-events-none">
+                    <div className="w-16 h-16 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/25">
+                        <Loader2 className="w-8 h-8 text-white animate-spin" />
+                    </div>
+                </div>
+                <h2 className="text-xs font-black uppercase tracking-[0.25em] text-slate-800 dark:text-zinc-100 mb-2">
+                    Securing Environment
+                </h2>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 animate-pulse">
+                    Verifying Credentials...
+                </p>
             </div>
         );
     }
 
     return (
         <div className="min-h-screen bg-[#f8fafc] dark:bg-[#09090b] overflow-x-hidden relative">
-            {/* Global Block Overlay */}
+            {/* Global Block Overlay - Optimized to prevent "black screen" flash */}
             {!loading && !isAuthorized && !profile && (
-                <div className="fixed inset-0 bg-[#050505] z-[200] flex items-center justify-center text-white text-center p-8">
-                    <div>
-                        <h2 className="text-2xl font-black mb-4 uppercase tracking-widest">Verifying Credentials</h2>
-                        <p className="text-white/60 mb-6 font-medium">Securing executive environment...</p>
-                        <Loader2 className="w-8 h-8 text-white animate-spin mx-auto" />
+                <div className="fixed inset-0 bg-[#f8fafc] dark:bg-[#09090b] z-[200] flex flex-col items-center justify-center text-center p-8">
+                    <div className="relative mb-6 select-none pointer-events-none">
+                        <div className="w-16 h-16 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/25">
+                            <ShieldAlert className="w-8 h-8 text-white" />
+                        </div>
                     </div>
+                    <h2 className="text-xl font-black mb-4 uppercase tracking-widest text-slate-900 dark:text-white">Verifying Credentials</h2>
+                    <p className="text-slate-500 dark:text-white/60 mb-6 font-medium">Securing executive environment...</p>
+                    <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mx-auto" />
                 </div>
             )}
 
@@ -220,15 +233,12 @@ function CEOPageContent() {
                     "min-h-screen transition-[margin] duration-300 ease-out ml-0 md:ml-[80px] pt-[60px] md:pt-0",
                 )}
             >
-                <div className={cn("h-full", activeView !== "command-center" && "hidden")}>
-                    <ExecutiveCommand currentView={activeView} />
-                </div>
-
                 <Suspense fallback={
                     <div className="flex items-center justify-center h-full pt-20">
                         <Loader2 className="w-8 h-8 text-[#31267D] animate-spin" />
                     </div>
                 }>
+                    {activeView === "command-center" && <ExecutiveCommand currentView={activeView} />}
                     {activeView === "inbox" && <CEOInbox />}
                     {activeView === "staff-management" && <StaffManagement />}
                     {activeView === "sales-intelligence" && <ExecutiveSalesOverview />}

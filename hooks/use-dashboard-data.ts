@@ -15,21 +15,20 @@ const DASHBOARD_QUERY_CONFIG = {
 // ============================================
 // TASKS HOOK
 // ============================================
-export function useTasks() {
-    const queryClient = useQueryClient();
-
+export function useTasks(options: any = {}) {
     const { data: activeTasks = [], isLoading: isLoadingActive, isFetching: isFetchingActive } = useQuery({
         queryKey: ["tasks", "active"],
         queryFn: async () => {
             const { data, error } = await supabase
                 .from("tasks")
-                .select("*, assigned_to_user:profiles!assigned_to(full_name, department), creator:profiles!created_by(role, is_manager)")
+                .select("id, title, description, assigned_to, priority, status, progress, due_date, created_by, created_at, updated_at, repeat_daily, is_daily_task, assigned_to_user:profiles!assigned_to(full_name, department), creator:profiles!created_by(role, is_manager)")
                 .not("status", "in", '("completed","deleted","COMPLETED")')
                 .order("updated_at", { ascending: false });
             if (error) throw error;
             return data;
         },
-        ...DASHBOARD_QUERY_CONFIG
+        ...DASHBOARD_QUERY_CONFIG,
+        ...options
     });
 
     const { data: completedTasks = [], isLoading: isLoadingCompleted, isFetching: isFetchingCompleted } = useQuery({
@@ -37,7 +36,7 @@ export function useTasks() {
         queryFn: async () => {
             const { data, error } = await supabase
                 .from("tasks")
-                .select("*, assigned_to_user:profiles!assigned_to(full_name, department), creator:profiles!created_by(role, is_manager)")
+                .select("id, title, description, assigned_to, priority, status, progress, due_date, created_by, created_at, updated_at, repeat_daily, is_daily_task, assigned_to_user:profiles!assigned_to(full_name, department), creator:profiles!created_by(role, is_manager)")
                 .in("status", ["completed", "COMPLETED"])
                 .is("reviewed_at", null)
                 .order("updated_at", { ascending: false })
@@ -45,7 +44,8 @@ export function useTasks() {
             if (error) throw error;
             return data;
         },
-        ...DASHBOARD_QUERY_CONFIG
+        ...DASHBOARD_QUERY_CONFIG,
+        ...options
     });
 
     return {
@@ -59,7 +59,7 @@ export function useTasks() {
 // ============================================
 // STAFF HOOK
 // ============================================
-export function useStaff() {
+export function useStaff(options: any = {}) {
     return useQuery({
         queryKey: ["staff"],
         queryFn: async () => {
@@ -71,14 +71,15 @@ export function useStaff() {
             if (error) throw error;
             return data.filter((s: any) => s.full_name !== "[DELETED]");
         },
-        ...DASHBOARD_QUERY_CONFIG
+        ...DASHBOARD_QUERY_CONFIG,
+        ...options
     });
 }
 
 // ============================================
 // LEADS & DEMOS HOOK
 // ============================================
-export function useLeads() {
+export function useLeads(options: any = {}) {
     const { data: leads = [], isLoading: isLoadingLeads } = useQuery({
         queryKey: ["leads"],
         queryFn: async () => {
@@ -92,10 +93,10 @@ export function useLeads() {
                 console.error("Leads fetch error:", error);
                 throw error;
             }
-            console.log("Leads fetched:", data?.length, data);
             return data;
         },
-        ...DASHBOARD_QUERY_CONFIG
+        ...DASHBOARD_QUERY_CONFIG,
+        ...options
     });
 
     const { data: demoRequests = [], isLoading: isLoadingDemos } = useQuery({
@@ -109,7 +110,8 @@ export function useLeads() {
             if (error) throw error;
             return data;
         },
-        ...DASHBOARD_QUERY_CONFIG
+        ...DASHBOARD_QUERY_CONFIG,
+        ...options
     });
 
     return { leads, demoRequests, isLoading: isLoadingLeads || isLoadingDemos };
@@ -118,7 +120,7 @@ export function useLeads() {
 // ============================================
 // REQUESTS HOOK
 // ============================================
-export function useRequests() {
+export function useRequests(options: any = {}) {
     return useQuery({
         queryKey: ["requests"],
         queryFn: async () => {
@@ -130,14 +132,15 @@ export function useRequests() {
             if (error) throw error;
             return data;
         },
-        ...DASHBOARD_QUERY_CONFIG
+        ...DASHBOARD_QUERY_CONFIG,
+        ...options
     });
 }
 
 // ============================================
 // MEETINGS HOOK
 // ============================================
-export function useMeetings() {
+export function useMeetings(options: any = {}) {
     return useQuery({
         queryKey: ["meetings"],
         queryFn: async () => {
@@ -152,14 +155,15 @@ export function useMeetings() {
             if (error) throw error;
             return data;
         },
-        ...DASHBOARD_QUERY_CONFIG
+        ...DASHBOARD_QUERY_CONFIG,
+        ...options
     });
 }
 
 // ============================================
 // CEO DIRECTIVES HOOK (Separate table)
 // ============================================
-export function useCeoDirectives() {
+export function useCeoDirectives(options: any = {}) {
     const { userRole } = useAuth();
     return useQuery({
         queryKey: ["ceo_directives", userRole],
@@ -173,6 +177,7 @@ export function useCeoDirectives() {
             if (error) throw error;
             return data;
         },
-        ...DASHBOARD_QUERY_CONFIG
+        ...DASHBOARD_QUERY_CONFIG,
+        ...options
     });
 }

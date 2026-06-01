@@ -46,7 +46,9 @@ export default function Home() {
     }, [profile, loading, router]);
 
     // State 1: Loading Initial Session or Profile
-    if (loading) {
+    // If we have a profile but loading is still true (meaning we got it from cache)
+    // we can skip the initialization loader to make it feel "lightning fast"
+    if (loading && !profile) {
         return <LoaderOverlay isVisible={true} type="initialization" />;
     }
 

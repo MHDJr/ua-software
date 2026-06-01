@@ -32,14 +32,14 @@ export function LoaderOverlay({
                 setStepIndex((prev) =>
                     prev < INITIALIZATION_STEPS.length - 1 ? prev + 1 : prev,
                 );
-            }, 800);
+            }, 400); // Reduced from 800ms
 
             const progressInterval = setInterval(() => {
                 setProgress((prev) => {
                     if (prev >= 100) return 100;
-                    return prev + 100 / (INITIALIZATION_STEPS.length * 4);
+                    return prev + 100 / (INITIALIZATION_STEPS.length * 2);
                 });
-            }, 200);
+            }, 100); // Reduced from 200ms
 
             return () => {
                 clearInterval(stepInterval);

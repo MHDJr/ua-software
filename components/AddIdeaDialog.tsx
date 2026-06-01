@@ -155,9 +155,9 @@ export default function AddIdeaDialog({
                     title: title.trim(),
                     content: description.trim(),
                     category,
-                    priority,
+                    priority: priority === "critical" ? "high" : (priority === "high" ? "high" : (priority === "medium" ? "medium" : "low")),
                     created_by: currentUserId,
-                    status: "active",
+                    status: actionMode === "reminder" ? "reminder" : (priority === "critical" || priority === "high" ? "high_priority" : "directive"),
                 })
                 .select()
                 .single();

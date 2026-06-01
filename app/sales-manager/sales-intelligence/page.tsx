@@ -7,7 +7,7 @@ import { useEffect } from "react";
 import { ExecutiveSalesOverview } from "@/components/executive-sales-overview";
 import { CEOSidebar } from "@/components/ceo-sidebar";
 import { MobileFAB } from "@/components/mobile-fab";
-import { Crown, LayoutDashboard, LogOut } from "lucide-react";
+import { Crown, LayoutDashboard, LogOut, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 export default function SalesManagerIntelligence() {
@@ -47,6 +47,13 @@ export default function SalesManagerIntelligence() {
                         </div>
 
                         <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => router.push("/sales-manager/daily-sales")}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-all text-[10px] font-bold uppercase tracking-wider shadow-md shadow-orange-500/20"
+                            >
+                                <TrendingUp className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Update Daily Sales</span>
+                            </button>
                             <button
                                 onClick={() => router.push("/sales-manager")}
                                 className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-all text-[10px] font-bold uppercase tracking-wider"

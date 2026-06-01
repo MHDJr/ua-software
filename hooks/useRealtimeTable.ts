@@ -20,9 +20,11 @@ export function useRealtimeTable<T extends { id: string; assigned_to?: string; c
   // Decoupled task fetcher for a single record with relations
   const fetchSingleTaskWithRelations = useCallback(async (id: string) => {
     try {
+      const taskSelection = "id, title, description, assigned_to, priority, status, progress, due_date, created_by, created_at, updated_at, repeat_daily, is_daily_task, assigned_to_user:profiles!assigned_to(full_name, department, designation, role), creator:profiles!created_by(full_name, role, designation, is_manager)";
+      
       const { data: task, error } = await supabase
         .from("tasks")
-        .select("*, assigned_to_user:profiles!assigned_to(full_name, department, designation, role), creator:profiles!created_by(full_name, role, designation, is_manager)")
+        .select(taskSelection)
         .eq("id", id)
         .single();
       
@@ -40,14 +42,23 @@ export function useRealtimeTable<T extends { id: string; assigned_to?: string; c
   const fetchLatestSnapshot = useCallback(async () => {
     try {
       const name = tableNameRef.current;
+      
+      // Select only required columns for tasks to optimize payload
+      const taskSelection = "id, title, description, assigned_to, priority, status, progress, due_date, created_by, created_at, updated_at, repeat_daily, is_daily_task, assigned_to_user:profiles!assigned_to(full_name, department, designation, role), creator:profiles!created_by(full_name, role, designation, is_manager)";
+      
       let query = supabase
         .from(name)
         .select(
           name === "tasks"
-            ? "*, assigned_to_user:profiles!assigned_to(full_name, department, designation, role), creator:profiles!created_by(full_name, role, designation, is_manager)"
+            ? taskSelection
             : "*"
         )
         .order("created_at", { ascending: false });
+
+      // Limit snapshots to 100 most recent items to avoid massive state objects
+      if (name === "tasks") {
+        query = query.limit(100);
+      }
 
       const { data: result, error } = await query;
       
@@ -199,59 +210,6 @@ export function useRealtimeTable<T extends { id: string; assigned_to?: string; c
       window.removeEventListener("academyos-global-resync", handleResync);
     };
   }, [setupRealtimeSubscription, fetchLatestSnapshot]);
-
-  // Self-Healing Recovery Routine for Tab Focus / Sleep Wakeup
-  useEffect(() => {
-    const handleTabHeal = async () => {
-      if (document.visibilityState !== "visible") return;
-
-      console.log(`Tab woke up. Healing realtime session for ${tableNameRef.current}...`);
-      
-      try {
-        // 1. Wake up Auth Client with stale token checking
-        let { data: { session }, error } = await supabase.auth.getSession();
-        
-        if (error || !session) {
-          console.warn("Session is stale or missing. Trying refreshSession fallback...");
-          try {
-            const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-            if (refreshError || !refreshData.session) {
-              console.error("Session refresh failed. Gracefully waiting for central auth provider.");
-            } else {
-              session = refreshData.session;
-            }
-          } catch (refreshException) {
-            console.error("Exception during session refresh:", refreshException);
-          }
-        }
-
-        // 2. Repair Broken Socket Handshake
-        // Delay standalone healing by 200ms to allow central TabResiliencyEngine to complete channel purge
-        setTimeout(async () => {
-          const currentChannel = channelRef.current;
-          if (!currentChannel || currentChannel.state !== "joined") {
-            console.warn(`[useRealtimeTable Standalone Heal] Channel state is ${currentChannel?.state || "null"}. Re-subscribing...`);
-            setupRealtimeSubscription();
-          } else {
-            console.log("[useRealtimeTable Standalone Heal] Channel connection is healthy.");
-          }
-        }, 200);
-
-        // 3. Re-Sync Data gaps silently
-        await fetchLatestSnapshot();
-      } catch (recoveryError) {
-        console.error("Telemetry healing failure:", recoveryError);
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleTabHeal);
-    window.addEventListener("focus", handleTabHeal);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleTabHeal);
-      window.removeEventListener("focus", handleTabHeal);
-    };
-  }, [fetchLatestSnapshot, setupRealtimeSubscription]);
 
   return { data, setData, isOnline };
 }
