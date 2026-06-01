@@ -139,58 +139,68 @@ function CEOPageContent() {
                 />
             </div>
 
+            {/* Global Block Overlay / Backdrop for FAB */}
+            {isActionMenuOpen && (
+                <div 
+                    className="fixed inset-0 z-[90] bg-black/10 dark:bg-black/30 backdrop-blur-[1px]" 
+                    onClick={() => setIsActionMenuOpen(false)}
+                />
+            )}
+
             {/* 6?????? FLOATING QUICK ACTION BUTTON - Universal */}
             <div className="fixed bottom-24 md:bottom-8 right-6 md:right-8 z-[100]">
                 <div className="relative">
                     {/* Expandable Menu */}
-                    <div
-                        className={`absolute bottom-full right-0 mb-4 flex flex-col gap-2 items-end transition-all duration-300 ${isActionMenuOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"}`}
-                    >
-                        <button
-                            onClick={() => {
-                                window.dispatchEvent(new CustomEvent("fab-action", { detail: { action: "new-directive" } }));
-                                setIsActionMenuOpen(false);
-                            }}
-                            className="flex items-center gap-3 bg-theme-card text-theme-text border border-theme-border-10 px-4 py-3 rounded-2xl shadow-lg hover:bg-theme-bg-white-5 hover:border-theme-brand/30 transition-all hover:-translate-x-1"
+                    {isActionMenuOpen && (
+                        <div
+                            className="absolute bottom-full right-0 mb-4 flex flex-col gap-2 items-end transition-all duration-300 animate-in fade-in slide-in-from-bottom-2 duration-200"
                         >
-                            <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
-                                Assign Task
-                            </span>
-                            <div className="p-1.5 bg-[#2F1E73]/10 text-[#2F1E73] dark:text-purple-400 rounded-lg">
-                                <Target className="w-4 h-4" />
-                            </div>
-                        </button>
-                        <button
-                            onClick={() => {
-                                window.dispatchEvent(new CustomEvent("fab-action", { detail: { action: "announcement" } }));
-                                setIsActionMenuOpen(false);
-                            }}
-                            className="flex items-center gap-3 bg-theme-card text-theme-text border border-theme-border-10 px-4 py-3 rounded-2xl shadow-lg hover:bg-theme-bg-white-5 hover:border-theme-brand/30 transition-all hover:-translate-x-1"
-                        >
-                            <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
-                                Send Broadcast
-                            </span>
-                            <div className="p-1.5 bg-[#F14D24]/10 text-[#F14D24] rounded-lg">
-                                <Megaphone className="w-4 h-4" />
-                            </div>
-                        </button>
-                        {(userRole === 'CEO' || userRole === 'MANAGER' || (profile && profile.role === 'ceo')) && (
                             <button
                                 onClick={() => {
-                                    window.dispatchEvent(new CustomEvent("fab-action", { detail: { action: "add-staff" } }));
+                                    window.dispatchEvent(new CustomEvent("fab-action", { detail: { action: "new-directive" } }));
                                     setIsActionMenuOpen(false);
                                 }}
                                 className="flex items-center gap-3 bg-theme-card text-theme-text border border-theme-border-10 px-4 py-3 rounded-2xl shadow-lg hover:bg-theme-bg-white-5 hover:border-theme-brand/30 transition-all hover:-translate-x-1"
                             >
                                 <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
-                                    Add Staff
+                                    Assign Task
                                 </span>
-                                <div className="p-1.5 bg-[#FA4616]/10 text-[#FA4616] rounded-lg">
-                                    <UserPlus className="w-4 h-4" />
+                                <div className="p-1.5 bg-[#2F1E73]/10 text-[#2F1E73] dark:text-purple-400 rounded-lg">
+                                    <Target className="w-4 h-4" />
                                 </div>
                             </button>
-                        )}
-                    </div>
+                            <button
+                                onClick={() => {
+                                    window.dispatchEvent(new CustomEvent("fab-action", { detail: { action: "announcement" } }));
+                                    setIsActionMenuOpen(false);
+                                }}
+                                className="flex items-center gap-3 bg-theme-card text-theme-text border border-theme-border-10 px-4 py-3 rounded-2xl shadow-lg hover:bg-theme-bg-white-5 hover:border-theme-brand/30 transition-all hover:-translate-x-1"
+                            >
+                                <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
+                                    Send Broadcast
+                                </span>
+                                <div className="p-1.5 bg-[#F14D24]/10 text-[#F14D24] rounded-lg">
+                                    <Megaphone className="w-4 h-4" />
+                                </div>
+                            </button>
+                            {(userRole === 'CEO' || userRole === 'MANAGER' || (profile && profile.role === 'ceo')) && (
+                                <button
+                                    onClick={() => {
+                                        window.dispatchEvent(new CustomEvent("fab-action", { detail: { action: "add-staff" } }));
+                                        setIsActionMenuOpen(false);
+                                    }}
+                                    className="flex items-center gap-3 bg-theme-card text-theme-text border border-theme-border-10 px-4 py-3 rounded-2xl shadow-lg hover:bg-theme-bg-white-5 hover:border-theme-brand/30 transition-all hover:-translate-x-1"
+                                >
+                                    <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
+                                        Add Staff
+                                    </span>
+                                    <div className="p-1.5 bg-[#FA4616]/10 text-[#FA4616] rounded-lg">
+                                        <UserPlus className="w-4 h-4" />
+                                    </div>
+                                </button>
+                            )}
+                        </div>
+                    )}
 
                     {/* Main Button */}
                     <button

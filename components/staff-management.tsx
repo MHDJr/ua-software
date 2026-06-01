@@ -1486,8 +1486,8 @@ export function StaffManagement() {
 
     const [staffToEdit, setStaffToEdit] = useState<StaffMember | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-    const [newUsername, setNewUsername] = useState("");
-    const [isUpdatingUsername, setIsUpdatingUsername] = useState(false);
+    const [newFullName, setNewFullName] = useState("");
+    const [isUpdatingFullName, setIsUpdatingFullName] = useState(false);
 
     const loading = isLoadingStaff || isLoadingTasks || isLoadingRequests;
 
@@ -1510,6 +1510,7 @@ export function StaffManagement() {
             return {
                 id: profile.id,
                 name: profile.full_name || profile.username || "Unknown",
+                fullName: profile.full_name || "",
                 role: profile.designation || profile.role || "Staff",
                 department: profile.department || "General",
                 status: mapProfileStatus(profile.status),
@@ -1683,56 +1684,34 @@ export function StaffManagement() {
         }
     };
 
-    const updateUsername = async () => {
+    const updateFullName = async () => {
         if (!staffToEdit) return;
         
-        const cleanedUsername = newUsername.trim().toLowerCase();
-        if (!cleanedUsername) {
-            toast.error("Username cannot be empty");
-            return;
-        }
-        
-        const usernameRegex = /^[a-zA-Z0-9_]+$/;
-        if (!usernameRegex.test(cleanedUsername)) {
-            toast.error("Username must contain only letters, numbers, and underscores (no spaces)");
+        const cleanedFullName = newFullName.trim();
+        if (!cleanedFullName) {
+            toast.error("Full name cannot be empty");
             return;
         }
 
-        setIsUpdatingUsername(true);
+        setIsUpdatingFullName(true);
         try {
-            // Check if username is already taken by another profile (case-insensitive check for maximum collision safety)
-            const { data: existingUser, error: checkError } = await supabase
-                .from("profiles")
-                .select("id")
-                .ilike("username", cleanedUsername)
-                .neq("id", staffToEdit.id)
-                .maybeSingle();
-
-            if (checkError) throw checkError;
-
-            if (existingUser) {
-                toast.error("Username is already taken");
-                setIsUpdatingUsername(false);
-                return;
-            }
-
             const { error: updateError } = await supabase
                 .from("profiles")
-                .update({ username: cleanedUsername })
+                .update({ full_name: cleanedFullName })
                 .eq("id", staffToEdit.id);
 
             if (updateError) throw updateError;
 
-            toast.success("Username updated successfully");
+            toast.success("Full name updated successfully");
             setIsEditModalOpen(false);
             setStaffToEdit(null);
-            setNewUsername("");
+            setNewFullName("");
             queryClient.invalidateQueries();
         } catch (e: any) {
-            console.error("Update username error:", e);
-            toast.error(e.message || "Failed to update username");
+            console.error("Update full name error:", e);
+            toast.error(e.message || "Failed to update full name");
         } finally {
-            setIsUpdatingUsername(false);
+            setIsUpdatingFullName(false);
         }
     };
 
@@ -2006,7 +1985,7 @@ export function StaffManagement() {
                                             </div>
                                             {userRole === 'CEO' && (
                                                 <div className="flex gap-1 items-center">
-                                                    <Button variant="ghost" onClick={() => { setStaffToEdit(staff); setNewUsername(staff.username || ""); setIsEditModalOpen(true); }} className="h-8 px-2 rounded-xl text-[#31267D] hover:bg-indigo-50 font-black uppercase text-[8px] gap-1">
+                                                    <Button variant="ghost" onClick={() => { setStaffToEdit(staff); setNewFullName(staff.fullName || staff.name || ""); setIsEditModalOpen(true); }} className="h-8 px-2 rounded-xl text-[#31267D] hover:bg-indigo-50 font-black uppercase text-[8px] gap-1">
                                                         <Pencil className="w-3.5 h-3.5" /> Edit
                                                     </Button>
                                                     <Button variant="ghost" onClick={() => { setStaffToDelete(staff); setIsDeleteModalOpen(true); }} className="h-8 px-2 rounded-xl text-red-600 hover:bg-red-50 font-black uppercase text-[8px] gap-1">
@@ -2109,9 +2088,9 @@ export function StaffManagement() {
                                                     {userRole === 'CEO' && (
                                                         <>
                                                             <button 
-                                                                onClick={() => { setStaffToEdit(staff); setNewUsername(staff.username || ""); setIsEditModalOpen(true); }} 
+                                                                onClick={() => { setStaffToEdit(staff); setNewFullName(staff.fullName || staff.name || ""); setIsEditModalOpen(true); }} 
                                                                 className="p-2 rounded-xl transition-all duration-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 text-gray-400 hover:text-[#31267D]"
-                                                                title="Edit Username"
+                                                                title="Edit Full Name"
                                                             >
                                                                 <Pencil className="w-4 h-4" />
                                                             </button>
@@ -2160,31 +2139,31 @@ export function StaffManagement() {
                 <DialogContent className="max-w-md p-0 overflow-hidden rounded-3xl border-0">
                     <div className="bg-[#31267D] px-6 py-6 text-white text-center">
                         <Pencil className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                        <h3 className="text-lg font-black uppercase tracking-widest text-orange-500">Edit Username</h3>
+                        <h3 className="text-lg font-black uppercase tracking-widest text-orange-500">Edit Full Name</h3>
                         <p className="text-[10px] font-bold uppercase tracking-tighter opacity-80 mt-1">Personnel Directory Record Update</p>
                     </div>
                     <div className="p-8 bg-white space-y-6">
-                        <p className="text-sm text-gray-600 font-medium text-center">Update the directory username for <span className="font-black text-gray-900">{staffToEdit?.name}</span>.</p>
+                        <p className="text-sm text-gray-600 font-medium text-center">Update the directory full name for <span className="font-black text-gray-900">{staffToEdit?.name}</span>.</p>
                         <div className="space-y-2">
-                            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">New Username</label>
+                            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">New Full Name</label>
                             <Input 
-                                value={newUsername} 
-                                onChange={(e) => setNewUsername(e.target.value)} 
-                                placeholder="lowercase_and_underscores_only" 
+                                value={newFullName} 
+                                onChange={(e) => setNewFullName(e.target.value)} 
+                                placeholder="Enter full name" 
                                 className="py-6 rounded-2xl border-gray-100 focus:ring-[#31267D]/10 focus:border-[#31267D]" 
                             />
                             <p className="text-[9px] text-gray-400 font-medium leading-normal">
-                                Must contain only lowercase letters, numbers, and underscores (no spaces).
+                                Enter the user's complete legal or preferred name.
                             </p>
                         </div>
                         <div className="flex gap-3">
                             <Button variant="outline" onClick={() => setIsEditModalOpen(false)} className="flex-1 py-6 rounded-2xl font-black uppercase tracking-widest text-[10px] border-gray-100">Cancel</Button>
                             <Button 
-                                disabled={isUpdatingUsername || !newUsername.trim()} 
-                                onClick={updateUsername} 
+                                disabled={isUpdatingFullName || !newFullName.trim()} 
+                                onClick={updateFullName} 
                                 className="flex-1 py-6 rounded-2xl font-black uppercase tracking-widest text-[10px] bg-[#F14D24] hover:bg-[#F14D24]/90 text-white shadow-lg shadow-orange-500/20"
                             >
-                                {isUpdatingUsername ? (
+                                {isUpdatingFullName ? (
                                     <Loader2 className="w-4 h-4 animate-spin mx-auto" />
                                 ) : (
                                     "Save Changes"
