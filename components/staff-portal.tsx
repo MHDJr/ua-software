@@ -26,7 +26,6 @@ import {
     MessageSquare,
     ArrowRight,
     Zap,
-    ShieldAlert,
     Plus,
     Timer,
     LayoutDashboard,

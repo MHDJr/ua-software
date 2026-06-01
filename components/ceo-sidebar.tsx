@@ -182,7 +182,7 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange }: CEOS
             className={cn(
                 "fixed left-0 top-0 h-screen hidden md:flex flex-col z-50",
                 "sidebar-theme-transition",
-                "transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)]"
+                "transition-all duration-700 ease-&lsqb;cubic-bezier(0.23,1,0.32,1)&rsqb;"
             )}
             style={{ 
                 width: isMinimized ? 80 : 260,

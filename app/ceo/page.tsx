@@ -10,7 +10,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useEffect, useState, useMemo, Suspense, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Loader2, Plus, Target, Clock, UserPlus, Megaphone } from "lucide-react";
+import { Loader2, ShieldCheck, Plus, Target, Clock, UserPlus, Megaphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type CEOView = "command-center" | "inbox" | "staff-management" | "sales-intelligence" | "financial-intelligence";
@@ -127,7 +127,7 @@ function CEOPageContent() {
                 <div className="fixed inset-0 bg-[#f8fafc] dark:bg-[#09090b] z-[200] flex flex-col items-center justify-center text-center p-8">
                     <div className="relative mb-6 select-none pointer-events-none">
                         <div className="w-16 h-16 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/25">
-                            <ShieldAlert className="w-8 h-8 text-white" />
+                            <ShieldCheck className="w-8 h-8 text-white" />
                         </div>
                     </div>
                     <h2 className="text-xl font-black mb-4 uppercase tracking-widest text-slate-900 dark:text-white">Verifying Credentials</h2>
