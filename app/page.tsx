@@ -36,6 +36,7 @@ export default function Home() {
                 if (dept === "sales") router.replace("/sales-manager");
                 else if (dept === "marketing") router.replace("/marketing-manager");
                 else if (dept === "finance" || profile.role === "accounts") router.replace("/finance-manager");
+                else if (dept === "administration" || dept === "admin") router.replace("/ceo");
                 else router.replace("/staff");
             }
             else if (profile.role === "sales" || profile.is_tutor || profile.role === "accounts" || profile.role === "staff") {

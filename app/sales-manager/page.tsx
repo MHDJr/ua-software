@@ -20,6 +20,7 @@ export default function SalesManagerPage() {
                 if (profile.is_manager) {
                     if (profile.department === "Finance") router.replace("/finance-manager");
                     else if (profile.department === "Marketing") router.replace("/marketing-manager");
+                    else if (profile.department === "Administration" || profile.department === "Admin") router.replace("/ceo");
                     else router.replace("/staff");
                 } else {
                     router.replace("/staff");
