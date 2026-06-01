@@ -224,7 +224,7 @@ const ExecutivePerformanceEngine = React.memo(
                 "Administration",
                 "Marketing",
                 "Sales",
-                "Accounts",
+                "Finance",
             ];
             return departments.map((dept) => {
                 const count = tasks.filter((t) => {
@@ -465,7 +465,7 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
         "active" | "blocked" | "overdue" | "daily" | "completed"
     >("active");
     const [departmentFilter, setDepartmentFilter] = useState<
-        "ceo" | "administration" | "marketing" | "sales" | "accounts"
+        "ceo" | "administration" | "marketing" | "sales" | "finance"
     >("ceo");
     const [meetingFilter, setMeetingFilter] = useState<
         "upcoming" | "today" | "week"
@@ -588,8 +588,8 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                         return dept === "sales";
                     case "marketing":
                         return dept === "marketing";
-                    case "accounts":
-                        return dept === "accounts";
+                    case "finance":
+                        return dept === "finance" || dept === "accounts";
                     case "administration":
                         return (
                             dept === "administration" ||
@@ -2781,14 +2781,14 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                             Sales
                         </button>
                         <button
-                            onClick={() => setDepartmentFilter("accounts")}
+                            onClick={() => setDepartmentFilter("finance")}
                             className={`px-3 md:px-4 py-1.5 md:py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-shrink-0 ${
-                                departmentFilter === "accounts"
+                                departmentFilter === "finance"
                                     ? "bg-blue-500 text-white shadow-lg shadow-blue-500/20"
                                     : "text-slate-400 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-100"
                             }`}
                         >
-                            Accounts
+                            Finance
                         </button>
                     </div>
 
@@ -2822,22 +2822,11 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                                                   <span>
                                                       {taskTab === "completed"
                                                           ? "Archive cleared"
-                                                          : departmentFilter ===
-                                                              "ceo"
+                                                          : departmentFilter === "ceo"
                                                             ? "No active operations identified"
-                                                            : departmentFilter ===
-                                                                "sales"
-                                                              ? "Sales sector quiet"
-                                                              : departmentFilter ===
-                                                                  "marketing"
-                                                                ? "Marketing sector quiet"
-                                                                : departmentFilter ===
-                                                                    "accounts"
-                                                                  ? "Accounts sector quiet"
-                                                                  : departmentFilter ===
-                                                                      "administration"
-                                                                    ? "Admin sector quiet"
-                                                                    : "Awaiting task deployment..."}
+                                                            : departmentFilter === "finance"
+                                                              ? "Finance sector quiet"
+                                                              : "Awaiting task deployment..."}
                                                   </span>
                                               </div>
                                           );

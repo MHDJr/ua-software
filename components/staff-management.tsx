@@ -1646,41 +1646,31 @@ export function StaffManagement() {
 
             const uid = staffToDelete.id;
 
-            // 2. Cascade delete from dependent database tables sequentially client-side
-            await supabase.from("tutor_notifications").delete().eq("tutor_id", uid);
-            await supabase.from("class_schedules").delete().eq("tutor_id", uid);
-            await supabase.from("classes").delete().eq("tutor_id", uid);
-            await supabase.from("tutor_availability").delete().eq("tutor_id", uid);
-            await supabase.from("daily_reports").delete().or(`profile_id.eq.${uid},user_id.eq.${uid}`);
-            await supabase.from("knocks").delete().eq("knocked_by", uid);
-            await supabase.from("attendance").delete().eq("user_id", uid);
-            await supabase.from("activity_feed").delete().eq("user_id", uid);
-            await supabase.from("notifications").delete().eq("user_id", uid);
-            await supabase.from("requests").delete().or(`submitted_by.eq.${uid},reviewed_by.eq.${uid}`);
-            await supabase.from("tasks").delete().or(`assigned_to.eq.${uid},created_by.eq.${uid}`);
-            await supabase.from("ideas").delete().eq("created_by", uid);
-
-            // 3. Try DB RPC first
-            const { error: cascadeError } = await supabase.rpc('delete_profile_cascade', {
-                profile_uuid: uid
+            // 2. Call the Admin API for PERMANENT deletion (Auth + Public Schema Purge)
+            // This ensures email and username are freed for future use.
+            const response = await fetch("/api/admin/delete-staff", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ userId: uid }),
             });
 
-            // 4. Force delete the profile row to ensure it is completely wiped
-            const { error: deleteError } = await supabase.from("profiles").delete().eq("id", uid);
+            const result = await response.json();
 
-            if (deleteError && cascadeError) {
-                // In case profile delete fails due to something else, try to soft-delete
-                await supabase.from("profiles").update({ full_name: "[DELETED]", status: "offline" }).eq("id", uid);
+            if (!response.ok) {
+                throw new Error(result.error || "Failed to purge staff records");
             }
 
-            toast.success("Personnel terminated successfully");
+            toast.success("OPERATIVE TERMINATED & DATA PURGED");
             setIsDeleteModalOpen(false);
             setStaffToDelete(null);
             setConfirmName("");
+            
+            // Force refresh all dashboard data
             queryClient.invalidateQueries();
-        } catch (e) {
+            
+        } catch (e: any) {
             console.error("Deletion error:", e);
-            toast.error("Failed to delete staff member");
+            toast.error(e.message || "Failed to delete staff member permanently");
         }
     };
 

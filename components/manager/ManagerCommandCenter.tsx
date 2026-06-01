@@ -188,9 +188,15 @@ export function ManagerCommandCenter({
 
     // Get manager's department access
     const managerDepartmentAccess = useMemo(() => {
-        if (department) return [department];
-        const dep = profile?.department as any;
-        return dep ? [dep] : ["Sales"];
+        const primary = department || (profile?.department as any) || "Sales";
+        const depts = [primary];
+
+        // Authority Expansion: Marketing Manager can also access and assign tasks to Sales department
+        if (primary === "Marketing") {
+            depts.push("Sales");
+        }
+
+        return depts;
     }, [profile, department]);
 
     // Filter staff for the Personnel card (only department staff)
@@ -778,22 +784,68 @@ export function ManagerCommandCenter({
             </header>
 
             <main className="p-4 md:p-8 max-w-[1700px] mx-auto grid grid-cols-12 gap-4 md:gap-8">
-                {/* Greeting Banner */}
+                {/* Greeting Banner - MODERNIZED */}
                 <div className="col-span-12">
-                    <div className="bg-white rounded-2xl md:rounded-[2.5rem] p-4 md:p-8 border border-slate-100 shadow-sm flex flex-col gap-4 md:flex-row md:items-center md:justify-between relative overflow-hidden">
-                        <div className="flex items-center gap-3 md:gap-6 relative z-10">
-                            <div className="w-12 h-12 md:w-20 md:h-20 bg-orange-50 rounded-xl md:rounded-[2rem] flex items-center justify-center shadow-inner shrink-0">
-                                {greeting.icon}
+                    <div className="relative group overflow-hidden">
+                        {/* Interactive Background Layers */}
+                        <div className="absolute inset-0 bg-white dark:bg-zinc-900 rounded-[2rem] md:rounded-[3rem] border border-slate-100 dark:border-zinc-800 shadow-xl shadow-slate-200/40 dark:shadow-black/20" />
+                        <div className="absolute top-0 right-0 w-1/3 h-full bg-gradient-to-l from-indigo-500/5 to-transparent rounded-r-[3rem] pointer-events-none" />
+                        <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-orange-500/5 rounded-full blur-3xl pointer-events-none" />
+                        
+                        <div className="relative p-5 md:p-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                            <div className="flex items-center gap-4 md:gap-8">
+                                {/* Dynamic Icon Housing */}
+                                <div className="relative">
+                                    <div className="w-16 h-16 md:w-24 md:h-24 bg-gradient-to-br from-white to-slate-50 dark:from-zinc-800 dark:to-zinc-900 rounded-3xl md:rounded-[2.5rem] flex items-center justify-center shadow-lg border border-slate-100 dark:border-zinc-700/50 group-hover:scale-105 transition-transform duration-500">
+                                        <div className="scale-125 md:scale-[1.75]">
+                                            {greeting.icon}
+                                        </div>
+                                    </div>
+                                    <motion.div 
+                                        animate={{ rotate: 360 }}
+                                        transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+                                        className="absolute -inset-2 rounded-[2.5rem] border border-dashed border-orange-500/20 pointer-events-none"
+                                    />
+                                </div>
+
+                                <div>
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <div className="px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20">
+                                            <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">
+                                                Active Session
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">
+                                                Systems Nominal
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <h1 className="text-2xl md:text-5xl font-black text-slate-900 dark:text-white tracking-tighter uppercase leading-none mb-3">
+                                        {greeting.text},{" "}
+                                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#2F1E73] to-indigo-500 dark:from-indigo-400 dark:to-white">
+                                            {profile?.full_name?.split(" ")[0] || "Administrator"}
+                                        </span>
+                                    </h1>
+                                    <div className="flex items-center gap-3">
+                                        <Calendar className="w-4 h-4 text-orange-500" />
+                                        <p className="text-xs md:text-sm font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest">
+                                            {currentDateTime}
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
-                            <div>
-                                <h1 className="text-xl md:text-3xl font-bold text-slate-900 tracking-tight">
-                                    {greeting.text},{" "}
-                                    {profile?.full_name?.split(" ")[0] ||
-                                        "Administrator"}
-                                </h1>
-                                <p className="text-sm text-slate-500 mt-1">
-                                    {currentDateTime}
-                                </p>
+
+                            {/* Dashboard Meta Stats */}
+                            <div className="hidden lg:flex items-center gap-4">
+                                <div className="h-16 w-[1px] bg-slate-100 dark:bg-zinc-800 mx-4" />
+                                <div className="text-right">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Target Sector</p>
+                                    <h4 className="text-lg font-black text-[#2F1E73] dark:text-indigo-400 uppercase tracking-tight">
+                                        {department} HQ
+                                    </h4>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -832,9 +884,20 @@ export function ManagerCommandCenter({
                                         if (department === "Finance") router.push("/finance-manager/daily-finance");
                                         else router.push("/sales-manager/daily-sales");
                                     }}
-                                    className="w-full py-3 bg-white text-indigo-900 hover:bg-indigo-50 rounded-2xl font-black text-[9px] tracking-widest uppercase transition-all flex items-center justify-center gap-2 shadow-lg active:scale-95"
+                                    className="w-full py-3 bg-white text-indigo-900 hover:bg-indigo-50 rounded-2xl font-black text-[9px] tracking-widest uppercase transition-all flex items-center justify-center gap-2 shadow-lg active:scale-95 mb-3"
                                 >
                                     Update Daily {department} <ArrowRight className="w-3 h-3" />
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        if (department === "Finance") router.push("/finance-manager/financial-intelligence");
+                                        else if (department === "Marketing") router.push("/marketing-manager/sales-intelligence");
+                                        else router.push("/sales-manager/sales-intelligence");
+                                    }}
+                                    className="w-full py-3 bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/30 text-white rounded-2xl font-black text-[9px] tracking-widest uppercase transition-all flex items-center justify-center gap-2 active:scale-95"
+                                >
+                                    {department === "Finance" ? "Financial" : "Sales"} Intelligence <BarChart3 className="w-3 h-3" />
                                 </button>
                             </div>
                         </div>
@@ -1411,7 +1474,7 @@ export function ManagerCommandCenter({
                             </div>
                             <div>
                                 <h3 className="text-sm font-bold text-slate-900 uppercase tracking-tighter">
-                                    {department} Department
+                                    {department === "Marketing" ? "Marketing & Sales" : department} Department
                                 </h3>
                                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
                                     Active Personnel

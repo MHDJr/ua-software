@@ -56,14 +56,24 @@ export function MobileBottomNav({ activeView, onViewChange }: MobileBottomNavPro
             { id: homeId, label: "HOME", icon: Home, href: homeHref }
         ];
 
-        // Add Sales button for Sales department/role
-        if (profile?.department === "Sales" || profile?.role === "sales" || profile?.is_sales_staff) {
-            items.push({ id: "sales", label: "SALES", icon: TrendingUp, href: "/sales" });
+        // Add Sales button for Sales department/role OR Marketing Manager (expanded authority)
+        if (profile?.department === "Sales" || profile?.role === "sales" || profile?.is_sales_staff || (profile?.is_manager && profile?.department === "Marketing")) {
+            items.push({ 
+                id: "sales", 
+                label: "SALES", 
+                icon: TrendingUp, 
+                href: (profile?.is_manager && profile?.department === "Marketing") ? "/marketing-manager/sales-intelligence" : "/sales" 
+            });
         }
         
-        // Add Accounts button for Accounts/Finance department/role
+        // Add Accounts/Intel button for Accounts/Finance department/role
         if (profile?.department === "Finance" || profile?.department === "Accounts" || profile?.role === "accounts") {
-            items.push({ id: "accounts", label: "ACCOUNTS", icon: Wallet, href: "/accounts" });
+            items.push({ 
+                id: "accounts", 
+                label: "FINANCE", 
+                icon: Wallet, 
+                href: profile?.is_manager ? "/finance-manager/financial-intelligence" : "/accounts" 
+            });
         }
 
         return items;

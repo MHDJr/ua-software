@@ -5,8 +5,9 @@ import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { ExecutiveSalesOverview } from "@/components/executive-sales-overview";
+import { CEOSidebar } from "@/components/ceo-sidebar";
 import { MobileFAB } from "@/components/mobile-fab";
-import { LayoutDashboard, LogOut } from "lucide-react";
+import { Crown, LayoutDashboard, LogOut, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 export default function MarketingManagerIntelligence() {
@@ -39,8 +40,8 @@ export default function MarketingManagerIntelligence() {
                             </div>
                             <div>
                                 <h1 className="text-xs font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
-                                    Marketing Intelligence
-                                    <Badge className="bg-orange-500 text-white border-none text-[7px] h-3.5 px-1.5">MANAGER</Badge>
+                                    Sales Intelligence
+                                    <Badge className="bg-indigo-500 text-white border-none text-[7px] h-3.5 px-1.5">MARKETING MANAGER</Badge>
                                 </h1>
                             </div>
                         </div>
