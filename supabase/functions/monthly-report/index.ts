@@ -270,9 +270,9 @@ Deno.serve(async (req) => {
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                    from: "Usthad Academy OS <onboarding@resend.dev>",
+                    from: "Usthad Academy Executive <reports@usthadacademy.com>",
                     to: recipientEmails,
-                    subject: `MONTHLY PERFORMANCE BRIEFING • ${reportMonth}`,
+                    subject: `EXECUTIVE OPERATIONAL BRIEFING • ${reportMonth}`,
                     html: htmlContent,
                 }),
             });
@@ -552,7 +552,7 @@ Deno.serve(async (req) => {
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                    from: "Usthad Academy OS <onboarding@resend.dev>",
+                    from: "Usthad Academy Finance <reports@usthadacademy.com>",
                     to: recipientEmails,
                     subject: `MONTHLY FINANCIAL AUDIT BRIEFING • ${reportMonth}`,
                     html: finHtmlContent,

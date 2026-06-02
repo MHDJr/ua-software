@@ -5,7 +5,7 @@ import "@fontsource/inter/600.css";
 import "@fontsource/inter/700.css";
 import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/500.css";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { AuthProvider } from "@/lib/auth-context";
 import { FocusProvider } from "@/lib/focus-context";
 import { QueryProvider } from "@/lib/query-provider";
@@ -20,12 +20,15 @@ export const metadata: Metadata = {
     title: "Usthad Academy - Executive Command",
     description: "Cyber-Enhanced CEO Command Center for Usthad Academy",
     manifest: "/manifest.json",
-    themeColor: "#030712",
     appleWebApp: {
         capable: true,
         statusBarStyle: "black-translucent",
         title: "UA Command",
     },
+};
+
+export const viewport: Viewport = {
+    themeColor: "#030712",
 };
 
 export default function RootLayout({
