@@ -617,14 +617,14 @@ export default function StaffPortal() {
     const [activeTab, setActiveTab] = useState("ALL");
     const [showCompleted, setShowCompleted] = useState(false);
 
-    useTabResiliency(
-        () => {
-            console.log("[StaffPortal] Throttled resync event received. Refreshing data...");
-            fetchData();
-        },
-        isRefreshing,
-        setIsRefreshing
-    );
+    const handleResync = useCallback(() => {
+        console.log(
+            "[StaffPortal] Throttled resync event received. Refreshing data...",
+        );
+        fetchData();
+    }, []);
+
+    useTabResiliency(handleResync, isRefreshing, setIsRefreshing);
 
     // Manager task assignment state
     const [isAssignTaskOpen, setIsAssignTaskOpen] = useState(false);
@@ -1004,8 +1004,9 @@ export default function StaffPortal() {
         const interval = setInterval(fetchData, 15000);
 
         // Zero-Lag Real-Time Pipeline for Broadcasts & Notifications
+        const instanceId = Math.random().toString(36).substring(7);
         const channel = supabase
-            .channel("broadcasts-realtime")
+            .channel(`broadcasts-realtime-${instanceId}`)
             .on(
                 "postgres_changes",
                 { event: "*", schema: "public", table: "broadcasts" },

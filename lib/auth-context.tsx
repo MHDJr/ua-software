@@ -122,8 +122,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
     };
 
+    const value = React.useMemo(() => ({
+        user,
+        profile,
+        loading,
+        userRole,
+        signIn,
+        signOut,
+        refreshProfile
+    }), [user, profile, loading, userRole, signIn, signOut, refreshProfile]);
+
     return (
-        <AuthContext.Provider value={{ user, profile, loading, userRole, signIn, signOut, refreshProfile }}>
+        <AuthContext.Provider value={value}>
             {children}
         </AuthContext.Provider>
     );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { Wifi, WifiOff, RefreshCw } from "lucide-react";
 
@@ -35,6 +35,11 @@ export function useNetworkStatus(): NetworkStatus {
       return navigator.onLine;
     }
   }, []);
+
+  const isOnlineRef = useRef(isOnline);
+  useEffect(() => {
+    isOnlineRef.current = isOnline;
+  }, [isOnline]);
 
   useEffect(() => {
     let reconnectTimeout: NodeJS.Timeout | null = null;
@@ -110,8 +115,11 @@ export function useNetworkStatus(): NetworkStatus {
       );
     };
 
-    // Set initial state
-    setIsOnline(navigator.onLine);
+    // Set initial state - only if different to avoid unnecessary re-renders
+    const currentOnLine = navigator.onLine;
+    if (isOnlineRef.current !== currentOnLine) {
+        setIsOnline(currentOnLine);
+    }
 
     // Add event listeners
     window.addEventListener('online', handleOnline);
@@ -119,7 +127,7 @@ export function useNetworkStatus(): NetworkStatus {
 
     // Also listen for visibility change to check connection when tab becomes visible
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && !isOnline) {
+      if (document.visibilityState === 'visible' && !isOnlineRef.current) {
         handleOnline();
       }
     };
@@ -134,7 +142,7 @@ export function useNetworkStatus(): NetworkStatus {
         clearTimeout(reconnectTimeout);
       }
     };
-  }, [checkConnection, isOnline]);
+  }, [checkConnection]);
 
   return {
     isOnline,

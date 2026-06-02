@@ -4,13 +4,15 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase, Idea } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 
+const EMPTY_ARRAY: any[] = [];
+
 export function useIdeas(options: any = {}) {
     const { userRole, profile } = useAuth();
     const queryClient = useQueryClient();
 
     // 1. Fetch all records from the ideas table (ordered by created_at descending)
     const {
-        data: ideas = [],
+        data: ideasData,
         isLoading,
         error,
         isFetching,
@@ -32,7 +34,7 @@ export function useIdeas(options: any = {}) {
                 throw new Error(error.message);
             }
 
-            if (!userRole) return [];
+            if (!userRole) return EMPTY_ARRAY;
             
             return data.filter((idea: any) => {
                 const creatorRole = idea.profiles?.role;
@@ -49,6 +51,8 @@ export function useIdeas(options: any = {}) {
         staleTime: 1000 * 60 * 2,
         ...options
     });
+
+    const ideas = ideasData || EMPTY_ARRAY;
 
     // 2. Mutation for toggling completion
     const toggleIdeaMutation = useMutation({

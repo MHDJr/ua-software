@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 
 export interface BadgeCounts {
@@ -16,7 +16,7 @@ export function useBadgeCounts() {
   const [loading, setLoading] = useState(true);
   const subscriptionsRef = useRef<any[]>([]);
 
-  const fetchBadgeCounts = async (isMounted: boolean = true) => {
+  const fetchBadgeCounts = useCallback(async (isMounted: boolean = true) => {
     try {
       // Fetch data in parallel
       const today = new Date().toISOString().split('T')[0];
@@ -36,7 +36,7 @@ export function useBadgeCounts() {
     } finally {
       if (isMounted) setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -61,16 +61,19 @@ export function useBadgeCounts() {
             }
           }
         });
+        subscriptionsRef.current = [];
       }
       
-      console.log('Setting up badge count realtime subscriptions...');
+      const instanceId = Math.random().toString(36).substring(7);
+      console.log(`Setting up badge count realtime subscriptions (instance: ${instanceId})...`);
+      
       const requestsSub = supabase
-        .channel("badge-requests-changes")
+        .channel(`badge-requests-changes-${instanceId}`)
         .on("postgres_changes", { event: "*", schema: "public", table: "requests" }, debouncedFetch)
         .subscribe();
 
       const tasksSub = supabase
-        .channel("badge-tasks-changes")
+        .channel(`badge-tasks-changes-${instanceId}`)
         .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, debouncedFetch)
         .subscribe();
         
@@ -135,5 +138,9 @@ export function useBadgeCounts() {
     };
   }, []);
 
-  return { badgeCounts, loading, refetch: fetchBadgeCounts };
+  return React.useMemo(() => ({ 
+    badgeCounts, 
+    loading, 
+    refetch: fetchBadgeCounts 
+  }), [badgeCounts, loading]);
 }

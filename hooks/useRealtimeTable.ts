@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { RealtimeChannel } from "@supabase/supabase-js";
@@ -85,8 +85,9 @@ export function useRealtimeTable<T extends { id: string; assigned_to?: string; c
       channelRef.current = null;
     }
 
+    const instanceId = Math.random().toString(36).substring(7);
     const channel = supabase
-      .channel(`${name}-realtime-heal-channel`)
+      .channel(`${name}-realtime-${instanceId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: name },
@@ -211,5 +212,5 @@ export function useRealtimeTable<T extends { id: string; assigned_to?: string; c
     };
   }, [setupRealtimeSubscription, fetchLatestSnapshot]);
 
-  return { data, setData, isOnline };
+  return useMemo(() => ({ data, setData, isOnline }), [data, isOnline]);
 }

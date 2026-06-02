@@ -109,10 +109,14 @@ export const FocusProvider: React.FC<{ children: ReactNode }> = ({
         }
     };
 
+    const value = React.useMemo(() => ({
+        isLockdownActive,
+        startLockdown,
+        endLockdown
+    }), [isLockdownActive]);
+
     return (
-        <FocusContext.Provider
-            value={{ isLockdownActive, startLockdown, endLockdown }}
-        >
+        <FocusContext.Provider value={value}>
             {children}
         </FocusContext.Provider>
     );

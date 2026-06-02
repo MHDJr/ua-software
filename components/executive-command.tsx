@@ -542,12 +542,22 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
         return () => clearInterval(interval);
     }, []);
 
+
     // Update completedIdeas set when ideas change
     useEffect(() => {
         const completedIds = ideas
             .filter((idea: any) => idea.completed)
             .map((idea: any) => idea.id);
-        setCompletedIdeas(new Set(completedIds));
+
+        setCompletedIdeas((prev) => {
+            if (
+                prev.size === completedIds.length &&
+                completedIds.every((id) => prev.has(id))
+            ) {
+                return prev;
+            }
+            return new Set(completedIds);
+        });
     }, [ideas]);
 
     // Update profile ref
@@ -689,8 +699,9 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
             }, 2000);
         };
 
+        const instanceId = Math.random().toString(36).substring(7);
         const taskChannel = supabase
-            .channel("tasks-updates-exec")
+            .channel(`tasks-updates-exec-${instanceId}`)
             .on(
                 "postgres_changes",
                 { event: "*", schema: "public", table: "tasks" },
@@ -701,7 +712,7 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
             });
 
         const requestChannel = supabase
-            .channel("requests-updates-exec")
+            .channel(`requests-updates-exec-${instanceId}`)
             .on(
                 "postgres_changes",
                 { event: "*", schema: "public", table: "requests" },
@@ -710,7 +721,7 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
             .subscribe();
 
         const ideaChannel = supabase
-            .channel("ideas-updates-exec")
+            .channel(`ideas-updates-exec-${instanceId}`)
             .on(
                 "postgres_changes",
                 { event: "*", schema: "public", table: "ideas" },
@@ -779,17 +790,23 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
         };
     }, []);
 
+    const handleResync = useCallback(() => {
+        // Manual refresh if needed, but we rely on query invalidation
+        fetchData(true, true);
+    }, [fetchData]);
+
+    const handleReconnect = useCallback(() => {
+        console.log(
+            "[ExecutiveCommand] Tab Focus: Re-establishing stable realtime connection",
+        );
+        setupRealtime();
+    }, [setupRealtime]);
+
     useTabResiliency(
-        () => {
-            // Manual refresh if needed, but we rely on query invalidation
-            fetchData(true, true);
-        },
+        handleResync,
         isRefreshing,
         setIsRefreshing,
-        () => {
-            console.log("[ExecutiveCommand] Tab Focus: Re-establishing stable realtime connection");
-            setupRealtime();
-        },
+        handleReconnect,
     );
 
     // Toggle completion status
@@ -1163,10 +1180,6 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
             console.error("Error ensuring ceo_reviewed column:", error);
         }
     };
-
-    useEffect(() => {
-        if (profile?.id) lastValidProfileIdRef.current = profile.id;
-    }, [profile?.id]);
 
     // Fetch data when view becomes active
     useEffect(() => {

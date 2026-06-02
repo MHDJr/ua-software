@@ -7,6 +7,8 @@ import { useAuth } from "@/lib/auth-context";
 // ============================================
 // SHARED CONFIG
 // ============================================
+const EMPTY_ARRAY: any[] = [];
+
 const DASHBOARD_QUERY_CONFIG = {
     staleTime: 1000 * 60 * 5, // 5 minutes before data is considered stale
     gcTime: 1000 * 60 * 10,   // 10 minutes cache retention
@@ -16,7 +18,7 @@ const DASHBOARD_QUERY_CONFIG = {
 // TASKS HOOK
 // ============================================
 export function useTasks(options: any = {}) {
-    const { data: activeTasks = [], isLoading: isLoadingActive, isFetching: isFetchingActive } = useQuery({
+    const { data: activeTasksData, isLoading: isLoadingActive, isFetching: isFetchingActive } = useQuery({
         queryKey: ["tasks", "active"],
         queryFn: async () => {
             const { data, error } = await supabase
@@ -31,7 +33,7 @@ export function useTasks(options: any = {}) {
         ...options
     });
 
-    const { data: completedTasks = [], isLoading: isLoadingCompleted, isFetching: isFetchingCompleted } = useQuery({
+    const { data: completedTasksData, isLoading: isLoadingCompleted, isFetching: isFetchingCompleted } = useQuery({
         queryKey: ["tasks", "completed"],
         queryFn: async () => {
             const { data, error } = await supabase
@@ -48,6 +50,9 @@ export function useTasks(options: any = {}) {
         ...options
     });
 
+    const activeTasks = activeTasksData || EMPTY_ARRAY;
+    const completedTasks = completedTasksData || EMPTY_ARRAY;
+
     return {
         activeTasks,
         completedTasks,
@@ -60,7 +65,7 @@ export function useTasks(options: any = {}) {
 // STAFF HOOK
 // ============================================
 export function useStaff(options: any = {}) {
-    return useQuery({
+    const { data, ...rest } = useQuery({
         queryKey: ["staff"],
         queryFn: async () => {
             const { data, error } = await supabase
@@ -74,13 +79,14 @@ export function useStaff(options: any = {}) {
         ...DASHBOARD_QUERY_CONFIG,
         ...options
     });
+    return { data: data || EMPTY_ARRAY, ...rest };
 }
 
 // ============================================
 // LEADS & DEMOS HOOK
 // ============================================
 export function useLeads(options: any = {}) {
-    const { data: leads = [], isLoading: isLoadingLeads } = useQuery({
+    const { data: leadsData, isLoading: isLoadingLeads } = useQuery({
         queryKey: ["leads"],
         queryFn: async () => {
             const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
@@ -99,7 +105,7 @@ export function useLeads(options: any = {}) {
         ...options
     });
 
-    const { data: demoRequests = [], isLoading: isLoadingDemos } = useQuery({
+    const { data: demoRequestsData, isLoading: isLoadingDemos } = useQuery({
         queryKey: ["demo_requests"],
         queryFn: async () => {
             const { data, error } = await supabase
@@ -114,14 +120,18 @@ export function useLeads(options: any = {}) {
         ...options
     });
 
-    return { leads, demoRequests, isLoading: isLoadingLeads || isLoadingDemos };
+    return { 
+        leads: leadsData || EMPTY_ARRAY, 
+        demoRequests: demoRequestsData || EMPTY_ARRAY, 
+        isLoading: isLoadingLeads || isLoadingDemos 
+    };
 }
 
 // ============================================
 // REQUESTS HOOK
 // ============================================
 export function useRequests(options: any = {}) {
-    return useQuery({
+    const { data, ...rest } = useQuery({
         queryKey: ["requests"],
         queryFn: async () => {
             const { data, error } = await supabase
@@ -135,13 +145,14 @@ export function useRequests(options: any = {}) {
         ...DASHBOARD_QUERY_CONFIG,
         ...options
     });
+    return { data: data || EMPTY_ARRAY, ...rest };
 }
 
 // ============================================
 // MEETINGS HOOK
 // ============================================
 export function useMeetings(options: any = {}) {
-    return useQuery({
+    const { data, ...rest } = useQuery({
         queryKey: ["meetings"],
         queryFn: async () => {
             const now = new Date().toISOString();
@@ -158,6 +169,7 @@ export function useMeetings(options: any = {}) {
         ...DASHBOARD_QUERY_CONFIG,
         ...options
     });
+    return { data: data || EMPTY_ARRAY, ...rest };
 }
 
 // ============================================
