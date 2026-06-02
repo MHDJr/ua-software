@@ -61,26 +61,42 @@ export default function ResetPasswordPage() {
             return;
         }
 
+        if (loading) return;
+
         setLoading(true);
+        console.log("[Auth] Initiating password update...");
+        
         try {
-            const { error } = await supabase.auth.updateUser({
+            // 1. Update the password
+            const { data, error } = await supabase.auth.updateUser({
                 password: password
             });
 
             if (error) throw error;
 
+            console.log("[Auth] Password updated successfully for:", data.user?.email);
+
+            // 2. IMPORTANT: Sign out to invalidate the recovery session completely
+            // This ensures they must log in fresh with the new password and 
+            // the reset link cannot be "re-used" in the same browser session.
+            await supabase.auth.signOut();
+
+            // 3. Update UI state
+            setLoading(false);
             setIsSuccess(true);
-            toast.success("Password successfully updated.");
+            toast.success("Security key successfully updated.");
             
-            // Wait and redirect
+            // 4. Clean up the URL (remove codes/hashes)
+            window.history.replaceState({}, document.title, window.location.pathname);
+
+            // 5. Automatic redirect after delay
             setTimeout(() => {
                 router.push("/auth");
-            }, 3000);
+            }, 5000);
         } catch (error: any) {
-            console.error("Reset error:", error);
-            toast.error(error.message || "Failed to update password.");
-        } finally {
+            console.error("[Auth] Reset error:", error);
             setLoading(false);
+            toast.error(error.message || "Failed to update security key. The link may have expired.");
         }
     };
 
