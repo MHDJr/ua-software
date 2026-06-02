@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Search, Plus, Star, CheckCircle2, Clock, XCircle, Wifi, Building2, Pencil, Trash2, Loader2, X, Mail, Users, FileText, BarChart3, Calendar } from "lucide-react";
+import { Search, Plus, Star, CheckCircle2, Clock, XCircle, Wifi, Building2, Pencil, Trash2, Loader2, X, Mail, Users, FileText, BarChart3, Calendar, Key } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -40,6 +40,8 @@ interface StaffMember {
     avatar: string;
     email: string;
     phone: string;
+    username: string;
+    fullName: string;
 }
 
 // Status badge styles
@@ -1631,6 +1633,32 @@ export function StaffManagement() {
         () => {}
     );
 
+    const sendPasswordReset = async (staff: StaffMember) => {
+        if (userRole !== 'CEO' && profile?.role !== 'ceo') {
+            toast.error("Unauthorized: Only the CEO can trigger security key resets.");
+            return;
+        }
+
+        const confirmReset = window.confirm(`Trigger security key reset for ${staff.name}? A reset link will be dispatched to ${staff.email}.`);
+        if (!confirmReset) return;
+
+        toast.loading(`Dispatching security key reset to ${staff.email}...`);
+        try {
+            const { error } = await supabase.auth.resetPasswordForEmail(staff.email, {
+                redirectTo: `${window.location.origin}/auth/reset-password/`,
+            });
+
+            if (error) throw error;
+
+            toast.dismiss();
+            toast.success("Security Key Reset Link Dispatched Successfully.");
+        } catch (e: any) {
+            console.error("Reset link error:", e);
+            toast.dismiss();
+            toast.error(e.message || "Failed to dispatch reset link.");
+        }
+    };
+
     const deleteStaff = async () => {
         if (!staffToDelete) return;
 
@@ -1651,7 +1679,11 @@ export function StaffManagement() {
             const response = await fetch("/api/admin/delete-staff", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ userId: uid }),
+                body: JSON.stringify({ 
+                    userId: uid,
+                    email: staffToDelete.email,
+                    username: staffToDelete.username 
+                }),
             });
 
             const result = await response.json();
@@ -1975,6 +2007,9 @@ export function StaffManagement() {
                                             </div>
                                             {userRole === 'CEO' && (
                                                 <div className="flex gap-1 items-center">
+                                                    <Button variant="ghost" onClick={() => sendPasswordReset(staff)} className="h-8 px-2 rounded-xl text-[#31267D] hover:bg-indigo-50 font-black uppercase text-[8px] gap-1" title="Send Password Reset">
+                                                        <Key className="w-3.5 h-3.5" /> Reset
+                                                    </Button>
                                                     <Button variant="ghost" onClick={() => { setStaffToEdit(staff); setNewFullName(staff.fullName || staff.name || ""); setIsEditModalOpen(true); }} className="h-8 px-2 rounded-xl text-[#31267D] hover:bg-indigo-50 font-black uppercase text-[8px] gap-1">
                                                         <Pencil className="w-3.5 h-3.5" /> Edit
                                                     </Button>
@@ -2077,15 +2112,22 @@ export function StaffManagement() {
                                                      )}
                                                     {userRole === 'CEO' && (
                                                         <>
-                                                            <button 
-                                                                onClick={() => { setStaffToEdit(staff); setNewFullName(staff.fullName || staff.name || ""); setIsEditModalOpen(true); }} 
+                                                            <button
+                                                                onClick={() => sendPasswordReset(staff)}
+                                                                className="p-2 rounded-xl transition-all duration-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 text-gray-400 hover:text-[#31267D]"
+                                                                title="Send Password Reset"
+                                                            >
+                                                                <Key className="w-4 h-4" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => { setStaffToEdit(staff); setNewFullName(staff.fullName || staff.name || ""); setIsEditModalOpen(true); }}
                                                                 className="p-2 rounded-xl transition-all duration-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 text-gray-400 hover:text-[#31267D]"
                                                                 title="Edit Full Name"
                                                             >
                                                                 <Pencil className="w-4 h-4" />
                                                             </button>
-                                                            <button 
-                                                                onClick={() => { setStaffToDelete(staff); setIsDeleteModalOpen(true); }} 
+                                                            <button
+                                                                onClick={() => { setStaffToDelete(staff); setIsDeleteModalOpen(true); }}
                                                                 className="p-2 rounded-xl transition-all duration-300 hover:bg-red-50 dark:hover:bg-red-950/20 text-gray-400 hover:text-red-600"
                                                                 title="Terminate Personnel"
                                                             >
@@ -2093,6 +2135,7 @@ export function StaffManagement() {
                                                             </button>
                                                         </>
                                                     )}
+
                                                 </div>
                                             </td>
                                         </tr>

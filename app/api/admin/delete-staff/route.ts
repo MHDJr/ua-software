@@ -3,36 +3,104 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
     try {
-        const { userId } = await req.json();
+        const { userId, email, username } = await req.json();
 
-        if (!userId) {
-            return NextResponse.json({ error: "User ID is required" }, { status: 400 });
+        if (!userId && !email && !username) {
+            return NextResponse.json({ error: "User identifier (ID, email, or username) is required" }, { status: 400 });
         }
 
-        console.log(`[Admin] Initiating permanent deletion for user: ${userId}`);
+        let targetUserId = userId;
+        let targetEmail = email;
 
-        // 1. Delete from Auth.users
-        // This will automatically trigger any database CASCADE deletes if configured.
-        // It also purges the email and metadata from the auth system.
-        const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
-
-        if (authError) {
-            console.error("Error deleting user from auth:", authError);
-            // If user doesn't exist in auth but exists in profiles, we might still want to continue
-            if (!authError.message.includes("User not found")) {
-                return NextResponse.json({ error: authError.message }, { status: 500 });
+        // 1. If we don't have a userId but have email/username, try to find the user
+        if (!targetUserId) {
+            console.log(`[Admin] Searching for user by ${email ? 'email: ' + email : 'username: ' + username}`);
+            
+            let query = supabaseAdmin.from("profiles").select("id, email, username");
+            if (email) query = query.eq("email", email);
+            if (username) query = query.eq("username", username);
+            
+            const { data: profile } = await query.maybeSingle();
+            
+            if (profile) {
+                targetUserId = profile.id;
+                targetEmail = profile.email;
+            } else if (email) {
+                // If not in profiles, try to find in auth.users by email
+                const { data: authUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+                if (!listError) {
+                    const authUser = authUsers.users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+                    if (authUser) {
+                        targetUserId = authUser.id;
+                        targetEmail = authUser.email;
+                    }
+                }
             }
         }
 
-        // 2. Explicitly call the cascade deletion RPC as a secondary safety measure
-        // to ensure all public schema records are wiped even if CASCADE is not set.
-        const { error: rpcError } = await supabaseAdmin.rpc('delete_profile_cascade', {
-            profile_uuid: userId
-        });
+        console.log(`[Admin] Initiating permanent deletion for user: ${targetUserId || 'Unknown'} (${targetEmail || 'No Email'})`);
 
-        if (rpcError) {
-            console.error("Error calling delete_profile_cascade RPC:", rpcError);
-            // Don't fail the whole request if RPC fails, as auth deletion is primary
+        // 2. Delete from Auth.users
+        if (targetUserId) {
+            const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(targetUserId);
+            if (authError) {
+                console.warn("Auth deletion warning:", authError.message);
+            }
+        } else if (targetEmail) {
+            // Last ditch effort: search and delete in auth
+            const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+            if (!listError) {
+                const user = users.find(u => u.email === targetEmail);
+                if (user) {
+                    await supabaseAdmin.auth.admin.deleteUser(user.id);
+                }
+            }
+        }
+
+        // 3. Call the cascade deletion RPC
+        // We do this even if targetUserId is null, maybe the RPC can handle email/username?
+        // Actually our RPC only takes UUID. Let's make it better or call it if we have ID.
+        if (targetUserId) {
+            const { error: rpcError } = await supabaseAdmin.rpc('delete_profile_cascade', {
+                profile_uuid: targetUserId
+            });
+            if (rpcError) console.error("RPC Error:", rpcError);
+        }
+
+        // 4. Manual cleanup for signup_requests and other non-cascading items
+        const cleanupFilters: string[] = [];
+        if (targetEmail) cleanupFilters.push(`email.eq.${targetEmail}`);
+        if (username) cleanupFilters.push(`username.eq.${username}`);
+
+        if (cleanupFilters.length > 0) {
+            console.log(`[Admin] Cleaning up signup_requests with filter: ${cleanupFilters.join(',')}`);
+            const { error: srError } = await supabaseAdmin
+                .from("signup_requests")
+                .delete()
+                .or(cleanupFilters.join(','));
+            if (srError) console.warn("Signup requests cleanup warning:", srError.message);
+        }
+        
+        if (targetEmail) {
+            console.log(`[Admin] Cleaning up add_staff requests for email: ${targetEmail}`);
+            // Find requests where the metadata contains the email
+            const { data: pendingAddRequests } = await supabaseAdmin
+                .from("requests")
+                .select("id, metadata")
+                .eq("type", "add_staff");
+            
+            if (pendingAddRequests) {
+                const requestsToDelete = pendingAddRequests.filter(r => 
+                    r.metadata?.email?.toLowerCase() === targetEmail.toLowerCase()
+                ).map(r => r.id);
+                
+                if (requestsToDelete.length > 0) {
+                    await supabaseAdmin
+                        .from("requests")
+                        .delete()
+                        .in("id", requestsToDelete);
+                }
+            }
         }
 
         return NextResponse.json({ success: true });
