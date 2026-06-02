@@ -3,12 +3,17 @@ import { createClient } from "@supabase/supabase-js";
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-if (!url || !serviceKey) {
-    throw new Error(
-        "Missing SUPABASE env vars (NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY)",
-    );
-}
+export const supabaseAdmin = 
+    url && serviceKey 
+        ? createClient(url, serviceKey, {
+            auth: { persistSession: false },
+        })
+        : null as any;
 
-export const supabaseAdmin = createClient(url, serviceKey, {
-    auth: { persistSession: false },
-});
+// Optional: Add a helper to ensure it's available at runtime
+export const getSupabaseAdmin = () => {
+    if (!supabaseAdmin) {
+        throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing. Check your environment variables.");
+    }
+    return supabaseAdmin;
+};
