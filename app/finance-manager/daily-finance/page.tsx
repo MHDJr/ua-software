@@ -258,7 +258,8 @@ export default function FinanceManagerDailyRecordPage() {
     // Fetch financial history and monthly target on component mount
     useEffect(() => {
         const loadData = async () => {
-            if (profile) {
+            if (!profile) return;
+            try {
                 setLoading(true);
                 const [history, target] = await Promise.all([
                     fetchFinancialHistory(profile.id),
@@ -266,6 +267,13 @@ export default function FinanceManagerDailyRecordPage() {
                 ]);
                 setFinancialHistory(history);
                 setMonthlyTarget(target);
+            } catch (err: any) {
+                if (err?.name === "AbortError") {
+                    console.warn("[FinanceManagerDailyRecordPage] Data load aborted.");
+                    return;
+                }
+                console.error("[FinanceManagerDailyRecordPage] Error loading data:", err);
+            } finally {
                 setLoading(false);
             }
         };

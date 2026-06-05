@@ -308,7 +308,8 @@ export default function AccountsPage() {
     // Fetch financial history and monthly target on component mount
     useEffect(() => {
         const loadData = async () => {
-            if (profile) {
+            if (!profile) return;
+            try {
                 setLoading(true);
                 const [history, target] = await Promise.all([
                     fetchFinancialHistory(profile.id),
@@ -316,6 +317,13 @@ export default function AccountsPage() {
                 ]);
                 setFinancialHistory(history);
                 setMonthlyTarget(target);
+            } catch (err: any) {
+                if (err?.name === "AbortError") {
+                    console.warn("[AccountsPage] Data load aborted.");
+                    return;
+                }
+                console.error("[AccountsPage] Error loading data:", err);
+            } finally {
                 setLoading(false);
             }
         };
