@@ -214,18 +214,8 @@ export function ManagerOperationsCommand({ className }: ManagerOperationsCommand
             const updateData: any = {
                 assigned_tutor: tutorName.trim(),
                 assigned_at: new Date().toISOString(),
+                status: "assigned",
             };
-            
-            // Only include status if the field exists
-            const { data: testField, error: testError } = await supabase
-                .from("conversions")
-                .select("status")
-                .limit(1)
-                .single();
-                
-            if (!testError && testField) {
-                updateData.status = "assigned";
-            }
 
             const { error } = await supabase
                 .from("conversions")

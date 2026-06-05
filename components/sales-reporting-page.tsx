@@ -47,6 +47,8 @@ import { MonthlyConversionTracker } from "@/components/monthly-conversion-tracke
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { ProfileModal } from "@/components/ProfileModal";
+import { isValidAvatarUrl } from "@/lib/utils";
+
 
 // Brand colors matching Staff Hub exactly
 const BRAND = {
@@ -546,21 +548,29 @@ export function SalesReportingPage({ backPath = "/staff" }: { backPath?: string 
 
             // Only update daily report if it has been submitted today
             if (hasSubmittedToday && todayReportId) {
+                const total = parseInt(totalLeads) || 0;
+                const nextConversions = currentConversions + count;
+                const nextConversionRate = total > 0 ? Math.round((nextConversions / total) * 100) : 0;
+                
+                const evals = parseInt(evaluations) || 0;
+                const nextEfficiencyScore = total > 0 ? Math.round(
+                    (nextConversions / total) * 50 +
+                    (evals / total) * 30 +
+                    (leadQuality[0] / 10) * 20
+                ) : 0;
+
                 const { error: updateError } = await supabase
                     .from("daily_reports")
                     .update({
-                        conversions: currentConversions + count,
-                        conversion_rate: Math.round(((currentConversions + count) / parseInt(totalLeads || "1")) * 100),
-                        efficiency_score: Math.round(
-                            ((currentConversions + count) / parseInt(totalLeads || "1")) * 50 +
-                            (parseInt(evaluations) / parseInt(totalLeads || "1")) * 30 +
-                            (leadQuality[0] / 10) * 20
-                        ),
+                        conversions: nextConversions,
+                        conversion_rate: nextConversionRate,
+                        efficiency_score: nextEfficiencyScore,
                     })
                     .eq("id", todayReportId);
 
                 if (updateError) {
                     console.error("Update report error:", updateError);
+                    toast.error("Failed to update daily report conversions: " + updateError.message);
                 }
             }
 
@@ -612,10 +622,10 @@ export function SalesReportingPage({ backPath = "/staff" }: { backPath?: string 
                         style={{ backgroundColor: BRAND.navy }}
                         className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shadow-md overflow-hidden cursor-pointer hover:scale-105 transition-transform duration-300"
                     >
-                        {profile?.avatar_url ? (
+                        {profile?.avatar_url && isValidAvatarUrl(profile.avatar_url) ? (
                             <img src={profile.avatar_url} alt="Profile" className="w-full h-full object-cover" />
                         ) : (
-                            profile?.full_name?.[0] || profile?.email?.[0] || "U"
+                            profile?.avatar_url || (profile?.full_name?.[0] || profile?.email?.[0] || "U")
                         )}
                     </div>
                 </div>
@@ -685,10 +695,10 @@ export function SalesReportingPage({ backPath = "/staff" }: { backPath?: string 
                         style={{ backgroundColor: BRAND.navy }}
                         className="w-11 h-11 rounded-2xl flex items-center justify-center text-white font-bold shadow-md overflow-hidden cursor-pointer hover:scale-105 transition-transform duration-300"
                     >
-                        {profile?.avatar_url ? (
+                        {profile?.avatar_url && isValidAvatarUrl(profile.avatar_url) ? (
                             <img src={profile.avatar_url} alt="Profile" className="w-full h-full object-cover" />
                         ) : (
-                            profile?.full_name?.[0] || profile?.email?.[0] || "U"
+                            profile?.avatar_url || (profile?.full_name?.[0] || profile?.email?.[0] || "U")
                         )}
                     </div>
                 </div>

@@ -16,7 +16,7 @@ import {
     Clock,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { cn } from "@/lib/utils";
+import { cn, isValidAvatarUrl } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import {
     Dialog,
@@ -860,12 +860,14 @@ export function CEOStaffVelocity() {
                                 <div className="flex items-center justify-between mb-2 sm:mb-3">
                                     <div className="flex items-center gap-2.5">
                                         <Avatar className="w-8 h-8 sm:w-10 sm:h-10 border border-slate-100 shadow-sm flex-shrink-0">
-                                            <AvatarImage src={staffMember.staff.avatar_url} alt={staffMember.staff.full_name || staffMember.staff.email} />
+                                            <AvatarImage src={isValidAvatarUrl(staffMember.staff.avatar_url) ? staffMember.staff.avatar_url : undefined} alt={staffMember.staff.full_name || staffMember.staff.email} />
                                             <AvatarFallback 
                                                 className="text-white text-xs sm:text-sm font-black flex items-center justify-center w-full h-full"
                                                 style={{ backgroundColor: BRAND.navy }}
                                             >
-                                                {staffMember.staff.full_name?.[0] || staffMember.staff.email?.[0] || 'U'}
+                                                {staffMember.staff.avatar_url && !isValidAvatarUrl(staffMember.staff.avatar_url)
+                                                    ? staffMember.staff.avatar_url
+                                                    : (staffMember.staff.full_name?.[0] || staffMember.staff.email?.[0] || 'U')}
                                             </AvatarFallback>
                                         </Avatar>
                                         <div className="min-w-0 flex-1">
@@ -925,12 +927,14 @@ export function CEOStaffVelocity() {
                                 <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 grid grid-cols-2 gap-4">
                                     <div className="flex items-start gap-3">
                                         <Avatar className="w-12 h-12 border border-slate-200 dark:border-zinc-800 shadow-sm flex-shrink-0 mt-1">
-                                            <AvatarImage src={selectedStaff.staff.avatar_url} alt={selectedStaff.staff.full_name || selectedStaff.staff.email} />
+                                            <AvatarImage src={isValidAvatarUrl(selectedStaff.staff.avatar_url) ? selectedStaff.staff.avatar_url : undefined} alt={selectedStaff.staff.full_name || selectedStaff.staff.email} />
                                             <AvatarFallback 
                                                 className="text-white text-sm font-black flex items-center justify-center w-full h-full"
                                                 style={{ backgroundColor: BRAND.navy }}
                                             >
-                                                {selectedStaff.staff.full_name?.[0] || selectedStaff.staff.email?.[0] || 'U'}
+                                                {selectedStaff.staff.avatar_url && !isValidAvatarUrl(selectedStaff.staff.avatar_url)
+                                                    ? selectedStaff.staff.avatar_url
+                                                    : (selectedStaff.staff.full_name?.[0] || selectedStaff.staff.email?.[0] || 'U')}
                                             </AvatarFallback>
                                         </Avatar>
                                         <div>

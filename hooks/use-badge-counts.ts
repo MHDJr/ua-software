@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 
 export interface BadgeCounts {
   pendingRequests: number;
@@ -9,6 +10,7 @@ export interface BadgeCounts {
 }
 
 export function useBadgeCounts() {
+  const { user, loading: authLoading } = useAuth();
   const [badgeCounts, setBadgeCounts] = useState<BadgeCounts>({
     pendingRequests: 0,
     victories: 0,
@@ -39,6 +41,10 @@ export function useBadgeCounts() {
   }, []);
 
   useEffect(() => {
+    if (authLoading || !user) {
+      return;
+    }
+
     let isMounted = true;
     let debounceTimer: NodeJS.Timeout;
 
@@ -136,7 +142,7 @@ export function useBadgeCounts() {
         window.removeEventListener("supabase-channels-reset", handleChannelsReset);
       }
     };
-  }, []);
+  }, [user, authLoading, fetchBadgeCounts]);
 
   return React.useMemo(() => ({ 
     badgeCounts, 

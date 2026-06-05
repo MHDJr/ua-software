@@ -49,7 +49,8 @@ export function useIdeas(options: any = {}) {
             });
         },
         staleTime: 1000 * 60 * 2,
-        ...options
+        ...options,
+        enabled: (options.enabled !== undefined ? options.enabled : true) && !!profile?.id && !!userRole
     });
 
     const ideas = ideasData || EMPTY_ARRAY;

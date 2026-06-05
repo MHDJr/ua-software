@@ -27,6 +27,8 @@ import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 import { MonthlyProgressGauge } from "@/components/monthly-progress-gauge";
 import { ProfileModal } from "@/components/ProfileModal";
+import { isValidAvatarUrl } from "@/lib/utils";
+
 
 // Types
 interface FinancialEntry {
@@ -332,10 +334,10 @@ export default function AccountsPage() {
                                 onClick={() => setIsProfileModalOpen(true)}
                                 className="w-12 h-12 rounded-full bg-gradient-to-br from-[#ff4d00] to-[#ff8c00] flex items-center justify-center text-white font-bold shadow-lg overflow-hidden cursor-pointer hover:scale-105 transition-transform duration-350"
                             >
-                                {profile?.avatar_url ? (
+                                {profile?.avatar_url && isValidAvatarUrl(profile.avatar_url) ? (
                                     <img src={profile.avatar_url} alt="Profile" className="w-full h-full object-cover" />
                                 ) : (
-                                    (profile?.full_name || 'AC').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+                                    profile?.avatar_url || (profile?.full_name || 'AC').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
                                 )}
                             </div>
                             <div>
@@ -371,10 +373,10 @@ export default function AccountsPage() {
                             onClick={() => setIsProfileModalOpen(true)}
                             className="w-10 h-10 rounded-full bg-gradient-to-br from-[#ff4d00] to-[#ff8c00] flex items-center justify-center text-white font-bold text-sm shadow-lg overflow-hidden cursor-pointer hover:scale-105 transition-transform duration-350"
                         >
-                            {profile?.avatar_url ? (
+                            {profile?.avatar_url && isValidAvatarUrl(profile.avatar_url) ? (
                                 <img src={profile.avatar_url} alt="Profile" className="w-full h-full object-cover" />
                             ) : (
-                                (profile?.full_name || 'AC').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+                                profile?.avatar_url || (profile?.full_name || 'AC').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
                             )}
                         </div>
                         

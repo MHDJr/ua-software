@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useRef } from "react";
 import { supabase, Profile } from "@/lib/supabase";
 import { User } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
@@ -24,6 +24,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [userRole, setUserRole] = useState<'CEO' | 'MANAGER' | null>(null);
     const router = useRouter();
 
+    const sessionCheckPromise = useRef<Promise<void> | null>(null);
+    const isSessionResolved = useRef(false);
+    const lastCheckedUserIdRef = useRef<string | null>(null);
+
     useEffect(() => {
         // 1. Check for cached profile to speed up initial render
         if (typeof window !== "undefined") {
@@ -35,7 +39,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     // Fast role determination
                     if (parsed.role === 'ceo') setUserRole('CEO');
                     else if (parsed.is_manager || parsed.role === 'manager') setUserRole('MANAGER');
-                    setLoading(false); // Set loading to false if we have a cache
                 } catch (e) {
                     sessionStorage.removeItem("ua_profile");
                 }
@@ -44,27 +47,80 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // 2. Get initial session
         const getInitialSession = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) {
-                setUser(session.user);
-                await fetchProfile(session.user.id);
-            }
-            setLoading(false);
+            if (sessionCheckPromise.current) return sessionCheckPromise.current;
+
+            sessionCheckPromise.current = (async () => {
+                try {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    if (session) {
+                        setUser(session.user);
+                        lastCheckedUserIdRef.current = session.user.id;
+                        await fetchProfile(session.user.id);
+                    } else {
+                        setUser(null);
+                        setProfile(null);
+                        setUserRole(null);
+                        lastCheckedUserIdRef.current = null;
+                    }
+                } catch (error: any) {
+                    const errorName = error?.name || "";
+                    const errorMessage = error?.message || "";
+                    const isAbort = errorName === 'AbortError' || 
+                                    errorMessage.includes('AbortError') ||
+                                    errorName === 'AuthSessionMissingError' ||
+                                    errorMessage.includes('AuthSessionMissingError');
+                    if (isAbort) {
+                        console.warn("Session check aborted or missing safely:", errorMessage || error);
+                    } else {
+                        console.error("Error getting initial session:", error);
+                    }
+                    // Fallback gracefully: settle state
+                    setUser(null);
+                    setProfile(null);
+                    setUserRole(null);
+                    lastCheckedUserIdRef.current = null;
+                } finally {
+                    isSessionResolved.current = true;
+                    setLoading(false);
+                }
+            })();
+
+            return sessionCheckPromise.current;
         };
 
         getInitialSession();
 
-        // 2. Listen for auth changes
+        // 3. Listen for auth changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
             async (event, session) => {
-                if (session) {
-                    setUser(session.user);
-                    await fetchProfile(session.user.id);
-                } else {
-                    setUser(null);
-                    setProfile(null);
+                // Ensure initial session check has resolved first
+                if (!isSessionResolved.current) {
+                    if (sessionCheckPromise.current) {
+                        await sessionCheckPromise.current;
+                    }
                 }
-                setLoading(false);
+
+                const sessionUserId = session?.user?.id || null;
+                // De-duplicate: do not trigger re-render / fetch if user has not changed
+                if (sessionUserId === lastCheckedUserIdRef.current && isSessionResolved.current) {
+                    return;
+                }
+                lastCheckedUserIdRef.current = sessionUserId;
+
+                try {
+                    if (session) {
+                        setUser(session.user);
+                        await fetchProfile(session.user.id);
+                    } else {
+                        setUser(null);
+                        setProfile(null);
+                        setUserRole(null);
+                    }
+                } catch (error: any) {
+                    console.error("Error in onAuthStateChange handler:", error);
+                } finally {
+                    setLoading(false);
+                }
             }
         );
 

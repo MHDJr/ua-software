@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn, isValidAvatarUrl } from "@/lib/utils";
 import {
     Shield,
     Calendar,
@@ -330,15 +330,17 @@ const RequestRow = ({
                     <div className="flex-1 min-w-0">
                         {/* Top Row: Avatar + Name Stack */}
                         <div className="flex items-start gap-4">
-                            <Avatar className="w-11 h-11 border border-slate-100 dark:border-zinc-800 shadow-sm flex-shrink-0">
-                                <AvatarImage src={request.staffAvatar} alt={request.staffName} />
-                                <AvatarFallback
-                                    className="text-white text-xs font-semibold"
-                                    style={{ backgroundColor: BRAND_COLORS.indigo }}
-                                >
-                                    {request.staffInitials}
-                                </AvatarFallback>
-                            </Avatar>
+                             <Avatar className="w-11 h-11 border border-slate-100 dark:border-zinc-800 shadow-sm flex-shrink-0">
+                                 <AvatarImage src={isValidAvatarUrl(request.staffAvatar) ? request.staffAvatar : undefined} alt={request.staffName} />
+                                 <AvatarFallback
+                                     className="text-white text-xs font-semibold"
+                                     style={{ backgroundColor: BRAND_COLORS.indigo }}
+                                 >
+                                     {request.staffAvatar && !isValidAvatarUrl(request.staffAvatar)
+                                         ? request.staffAvatar
+                                         : request.staffInitials}
+                                 </AvatarFallback>
+                             </Avatar>
 
                             <div className="flex-1 min-w-0">
                                 <div className="flex flex-wrap items-center gap-2">
@@ -409,12 +411,14 @@ const RequestRow = ({
                         {/* Left Side: Avatar & Name details */}
                         <div className="flex items-center gap-3">
                             <Avatar className="w-10 h-10 border border-slate-100 dark:border-zinc-800 shadow-sm flex-shrink-0">
-                                <AvatarImage src={request.staffAvatar} alt={request.staffName} />
+                                <AvatarImage src={isValidAvatarUrl(request.staffAvatar) ? request.staffAvatar : undefined} alt={request.staffName} />
                                 <AvatarFallback
                                     className="text-white text-xs font-semibold"
                                     style={{ backgroundColor: BRAND_COLORS.indigo }}
                                 >
-                                    {request.staffInitials}
+                                    {request.staffAvatar && !isValidAvatarUrl(request.staffAvatar)
+                                        ? request.staffAvatar
+                                        : request.staffInitials}
                                 </AvatarFallback>
                             </Avatar>
                             <div className="min-w-0">
@@ -487,12 +491,14 @@ const RequestRow = ({
                         {/* Header Line */}
                         <div className="flex items-center gap-3">
                             <Avatar className="w-10 h-10 border border-slate-100 dark:border-zinc-800 shadow-sm flex-shrink-0">
-                                <AvatarImage src={request.staffAvatar} alt={request.staffName} />
+                                <AvatarImage src={isValidAvatarUrl(request.staffAvatar) ? request.staffAvatar : undefined} alt={request.staffName} />
                                 <AvatarFallback
                                     className="text-white text-xs font-semibold"
                                     style={{ backgroundColor: BRAND_COLORS.indigo }}
                                 >
-                                    {request.staffInitials}
+                                    {request.staffAvatar && !isValidAvatarUrl(request.staffAvatar)
+                                        ? request.staffAvatar
+                                        : request.staffInitials}
                                 </AvatarFallback>
                             </Avatar>
                             <div className="flex flex-wrap items-center gap-2">
@@ -565,12 +571,14 @@ const RequestRow = ({
                 <div className="flex-1 min-w-0">
                     <div className="flex items-start gap-4">
                         <Avatar className="w-10 h-10 border border-slate-100 dark:border-zinc-800 shadow-sm flex-shrink-0">
-                            <AvatarImage src={request.staffAvatar} alt={request.staffName} />
+                            <AvatarImage src={isValidAvatarUrl(request.staffAvatar) ? request.staffAvatar : undefined} alt={request.staffName} />
                             <AvatarFallback
                                 className="text-white text-xs font-semibold"
                                 style={{ backgroundColor: BRAND_COLORS.indigo }}
                             >
-                                {request.staffInitials}
+                                {request.staffAvatar && !isValidAvatarUrl(request.staffAvatar)
+                                    ? request.staffAvatar
+                                    : request.staffInitials}
                             </AvatarFallback>
                         </Avatar>
 

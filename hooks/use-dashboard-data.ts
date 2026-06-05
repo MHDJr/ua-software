@@ -18,6 +18,8 @@ const DASHBOARD_QUERY_CONFIG = {
 // TASKS HOOK
 // ============================================
 export function useTasks(options: any = {}) {
+    const { user } = useAuth();
+    
     const { data: activeTasksData, isLoading: isLoadingActive, isFetching: isFetchingActive } = useQuery({
         queryKey: ["tasks", "active"],
         queryFn: async () => {
@@ -30,7 +32,8 @@ export function useTasks(options: any = {}) {
             return data;
         },
         ...DASHBOARD_QUERY_CONFIG,
-        ...options
+        ...options,
+        enabled: !!user && (options.enabled !== undefined ? options.enabled : true)
     });
 
     const { data: completedTasksData, isLoading: isLoadingCompleted, isFetching: isFetchingCompleted } = useQuery({
@@ -47,7 +50,8 @@ export function useTasks(options: any = {}) {
             return data;
         },
         ...DASHBOARD_QUERY_CONFIG,
-        ...options
+        ...options,
+        enabled: !!user && (options.enabled !== undefined ? options.enabled : true)
     });
 
     const activeTasks = activeTasksData || EMPTY_ARRAY;
@@ -65,6 +69,8 @@ export function useTasks(options: any = {}) {
 // STAFF HOOK
 // ============================================
 export function useStaff(options: any = {}) {
+    const { user } = useAuth();
+    
     const { data, ...rest } = useQuery({
         queryKey: ["staff"],
         queryFn: async () => {
@@ -77,7 +83,8 @@ export function useStaff(options: any = {}) {
             return data.filter((s: any) => s.full_name !== "[DELETED]");
         },
         ...DASHBOARD_QUERY_CONFIG,
-        ...options
+        ...options,
+        enabled: !!user && (options.enabled !== undefined ? options.enabled : true)
     });
     return { data: data || EMPTY_ARRAY, ...rest };
 }
@@ -86,6 +93,8 @@ export function useStaff(options: any = {}) {
 // LEADS & DEMOS HOOK
 // ============================================
 export function useLeads(options: any = {}) {
+    const { user } = useAuth();
+    
     const { data: leadsData, isLoading: isLoadingLeads } = useQuery({
         queryKey: ["leads"],
         queryFn: async () => {
@@ -102,22 +111,49 @@ export function useLeads(options: any = {}) {
             return data;
         },
         ...DASHBOARD_QUERY_CONFIG,
-        ...options
+        ...options,
+        enabled: !!user?.id && (options.enabled !== undefined ? options.enabled : true)
     });
 
     const { data: demoRequestsData, isLoading: isLoadingDemos } = useQuery({
-        queryKey: ["demo_requests"],
+        queryKey: ["demo_requests", user?.id],
         queryFn: async () => {
-            const { data, error } = await supabase
+            // 1. Fetch accepted demo requests
+            const { data: demos, error: demoError } = await supabase
                 .from("demo_requests")
-                .select("*, leads:leads(*)")
+                .select("*")
                 .eq("status", "accepted")
                 .order("created_at", { ascending: false });
-            if (error) throw error;
-            return data;
+            if (demoError) {
+                console.error("Error fetching demo requests:", demoError);
+                throw demoError;
+            }
+            if (!demos || demos.length === 0) return EMPTY_ARRAY;
+
+            // 2. Extract unique lead IDs
+            const leadIds = Array.from(new Set(demos.map(d => d.lead_id).filter(Boolean)));
+            if (leadIds.length === 0) return demos.map(d => ({ ...d, lead: null }));
+
+            // 3. Fetch corresponding leads to perform client-side join
+            const { data: leads, error: leadError } = await supabase
+                .from("leads")
+                .select("*")
+                .in("id", leadIds);
+            if (leadError) {
+                console.error("Error fetching leads for demo requests:", leadError);
+                throw leadError;
+            }
+
+            // 4. Map/Merge leads to their demo requests client-side
+            const leadMap = new Map(leads?.map(l => [l.id, l]) || []);
+            return demos.map(d => ({
+                ...d,
+                lead: leadMap.get(d.lead_id) || null
+            }));
         },
         ...DASHBOARD_QUERY_CONFIG,
-        ...options
+        ...options,
+        enabled: !!user?.id && (options.enabled !== undefined ? options.enabled : true)
     });
 
     return { 
@@ -131,6 +167,8 @@ export function useLeads(options: any = {}) {
 // REQUESTS HOOK
 // ============================================
 export function useRequests(options: any = {}) {
+    const { user } = useAuth();
+    
     const { data, ...rest } = useQuery({
         queryKey: ["requests"],
         queryFn: async () => {
@@ -143,7 +181,8 @@ export function useRequests(options: any = {}) {
             return data;
         },
         ...DASHBOARD_QUERY_CONFIG,
-        ...options
+        ...options,
+        enabled: !!user && (options.enabled !== undefined ? options.enabled : true)
     });
     return { data: data || EMPTY_ARRAY, ...rest };
 }
@@ -152,6 +191,8 @@ export function useRequests(options: any = {}) {
 // MEETINGS HOOK
 // ============================================
 export function useMeetings(options: any = {}) {
+    const { user } = useAuth();
+    
     const { data, ...rest } = useQuery({
         queryKey: ["meetings"],
         queryFn: async () => {
@@ -167,7 +208,8 @@ export function useMeetings(options: any = {}) {
             return data;
         },
         ...DASHBOARD_QUERY_CONFIG,
-        ...options
+        ...options,
+        enabled: !!user && (options.enabled !== undefined ? options.enabled : true)
     });
     return { data: data || EMPTY_ARRAY, ...rest };
 }
@@ -176,7 +218,7 @@ export function useMeetings(options: any = {}) {
 // CEO DIRECTIVES HOOK (Separate table)
 // ============================================
 export function useCeoDirectives(options: any = {}) {
-    const { userRole } = useAuth();
+    const { user, userRole } = useAuth();
     return useQuery({
         queryKey: ["ceo_directives", userRole],
         queryFn: async () => {
@@ -190,6 +232,7 @@ export function useCeoDirectives(options: any = {}) {
             return data;
         },
         ...DASHBOARD_QUERY_CONFIG,
-        ...options
+        ...options,
+        enabled: !!user && userRole === 'CEO' && (options.enabled !== undefined ? options.enabled : true)
     });
 }

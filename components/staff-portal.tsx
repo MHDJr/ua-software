@@ -9,7 +9,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useTabResiliency } from "./tab-resiliency-engine";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn, isValidAvatarUrl } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
     Clock,
@@ -1509,8 +1509,10 @@ export default function StaffPortal() {
                         style={{ backgroundColor: brand.navy }}
                         className="w-11 h-11 rounded-2xl flex items-center justify-center text-white font-bold shadow-md cursor-pointer hover:scale-105 transition-all duration-300 relative overflow-hidden shrink-0"
                     >
-                        {profile?.avatar_url ? (
+                        {profile?.avatar_url && isValidAvatarUrl(profile.avatar_url) ? (
                             <img src={profile.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+                        ) : profile?.avatar_url ? (
+                            <span className="text-lg">{profile.avatar_url}</span>
                         ) : (
                             profile?.full_name?.[0] || profile?.email?.[0] || "U"
                         )}
@@ -2812,10 +2814,10 @@ export default function StaffPortal() {
                                     <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center">
                                         <div className="animate-spin h-6 w-6 border-2 border-white/20 border-t-white rounded-full" />
                                     </div>
-                                ) : profile?.avatar_url ? (
+                                ) : (profile?.avatar_url && isValidAvatarUrl(profile.avatar_url)) ? (
                                     <img src={profile.avatar_url} alt="Profile" className="w-full h-full object-cover" />
                                 ) : (
-                                    profile?.full_name?.[0] || profile?.email?.[0] || "U"
+                                    profile?.avatar_url || (profile?.full_name?.[0] || profile?.email?.[0] || "U")
                                 )}
                                 
                                 {/* Overlay Camera Icon on Hover */}

@@ -128,7 +128,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
+import { cn, isValidAvatarUrl } from "@/lib/utils";
 import { format, parseISO, isPast, isToday, isTomorrow } from "date-fns";
 import { useTabResiliency } from "./tab-resiliency-engine";
 import { useIdeas } from "@/hooks/use-ideas";
@@ -425,7 +425,7 @@ const renderCEOTaskGauge = (t: Task) => {
 
 export function ExecutiveCommand({ currentView }: { currentView?: string }) {
     const router = useRouter();
-    const { profile, signOut, userRole } = useAuth();
+    const { profile, signOut, userRole, loading } = useAuth();
     const { theme } = useTheme();
     const queryClient = useQueryClient();
 
@@ -733,6 +733,9 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
     }, [queryClient]);
 
     useEffect(() => {
+        if (loading || !profile?.id) {
+            return;
+        }
         setupRealtime();
         return () => {
             console.log("[ExecutiveCommand] Unmounting: Removing all realtime channels");
@@ -743,7 +746,7 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                 channelsRef.current = [];
             }
         };
-    }, [setupRealtime]);
+    }, [setupRealtime, loading, profile?.id]);
 
     // 24/7 Resiliency & Smart Recovery Engine
     useEffect(() => {
@@ -771,22 +774,12 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
             }
         };
 
-        const handleVisibilityChange = () => {
-            if (document.visibilityState === "visible") {
-                performFullRefresh();
-            }
-        };
-
         window.addEventListener("error", handleGlobalError);
         window.addEventListener("unhandledrejection", handleGlobalError);
-        window.addEventListener("visibilitychange", handleVisibilityChange);
-        window.addEventListener("focus", handleVisibilityChange);
 
         return () => {
             window.removeEventListener("error", handleGlobalError);
             window.removeEventListener("unhandledrejection", handleGlobalError);
-            window.removeEventListener("visibilitychange", handleVisibilityChange);
-            window.removeEventListener("focus", handleVisibilityChange);
         };
     }, []);
 
@@ -1409,20 +1402,26 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                 if (error) throw error;
             };
 
-            await Promise.race([
-                executeInsert(),
-                new Promise((_, reject) =>
-                    setTimeout(
-                        () =>
-                            reject(
-                                new Error(
-                                    "Network timeout: The server took too long to respond. The task is queued.",
-                                ),
+            const insertPromise = executeInsert();
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(
+                    () =>
+                        reject(
+                            new Error(
+                                "Network timeout: The server took too long to respond. The task is queued.",
                             ),
-                        15000,
-                    ),
+                        ),
+                    15000,
                 ),
-            ]);
+            );
+
+            // Catch potential unhandled rejections if either promise settles after the race completes
+            insertPromise.catch((err) => {
+                console.warn("Task insert finished after timeout with error:", err);
+            });
+            timeoutPromise.catch(() => {});
+
+            await Promise.race([insertPromise, timeoutPromise]);
 
             console.log("Task assigned successfully");
             toast.success(
@@ -3405,25 +3404,18 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                                                 <Avatar className="h-6 w-6 flex-shrink-0">
                                                     <AvatarImage
                                                         src={
-                                                            staff.find(
-                                                                (s) =>
-                                                                    s.id ===
-                                                                    newTask.assignedTo,
-                                                            )?.avatar_url
+                                                            (() => {
+                                                                const url = staff.find((s) => s.id === newTask.assignedTo)?.avatar_url;
+                                                                return isValidAvatarUrl(url) ? url : undefined;
+                                                            })()
                                                         }
                                                     />
                                                     <AvatarFallback className="bg-[#351e6a] text-white text-[9px] font-black">
-                                                        {staff
-                                                            .find(
-                                                                (s) =>
-                                                                    s.id ===
-                                                                    newTask.assignedTo,
-                                                            )
-                                                            ?.full_name?.substring(
-                                                                0,
-                                                                2,
-                                                            )
-                                                            .toUpperCase()}
+                                                        {(() => {
+                                                            const s = staff.find((s) => s.id === newTask.assignedTo);
+                                                            if (s?.avatar_url && !isValidAvatarUrl(s.avatar_url)) return s.avatar_url;
+                                                            return s?.full_name?.substring(0, 2).toUpperCase();
+                                                        })()}
                                                     </AvatarFallback>
                                                 </Avatar>
                                                 <span className="flex-1 text-sm font-semibold text-[#1a1a2e] dark:text-white truncate">
@@ -3499,16 +3491,13 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                                                                                 <Avatar className="h-7 w-7 flex-shrink-0">
                                                                                     <AvatarImage
                                                                                         src={
-                                                                                            s.avatar_url
+                                                                                            isValidAvatarUrl(s.avatar_url) ? s.avatar_url : undefined
                                                                                         }
                                                                                     />
                                                                                     <AvatarFallback className="bg-[#2D2A77]/10 text-[#2D2A77] dark:text-white text-[9px] font-black">
-                                                                                        {s.full_name
-                                                                                            ?.substring(
-                                                                                                0,
-                                                                                                2,
-                                                                                            )
-                                                                                            .toUpperCase()}
+                                                                                        {s.avatar_url && !isValidAvatarUrl(s.avatar_url)
+                                                                                            ? s.avatar_url
+                                                                                            : s.full_name?.substring(0, 2).toUpperCase()}
                                                                                     </AvatarFallback>
                                                                                 </Avatar>
                                                                                 <div className="text-left">
@@ -3977,12 +3966,12 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                                             <div className="flex items-center gap-3">
                                                 <Avatar className="h-10 w-10 shadow-sm border border-theme-border-10">
                                                     <AvatarImage
-                                                        src={s.avatar_url}
+                                                        src={isValidAvatarUrl(s.avatar_url) ? s.avatar_url : undefined}
                                                     />
                                                     <AvatarFallback className="bg-theme-bg-white-10 text-theme-text font-black">
-                                                        {s.full_name
-                                                            ?.substring(0, 2)
-                                                            .toUpperCase()}
+                                                        {s.avatar_url && !isValidAvatarUrl(s.avatar_url)
+                                                            ? s.avatar_url
+                                                            : s.full_name?.substring(0, 2).toUpperCase()}
                                                     </AvatarFallback>
                                                 </Avatar>
                                                 <div>
@@ -4214,17 +4203,16 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                                                         <Avatar className="w-11 h-11 border-2 border-white shadow-sm ring-1 ring-slate-100">
                                                             <AvatarImage
                                                                 src={
-                                                                    member.avatar_url
+                                                                    isValidAvatarUrl(member.avatar_url) ? member.avatar_url : undefined
                                                                 }
                                                             />
                                                             <AvatarFallback className="bg-gradient-to-br from-indigo-50 to-slate-100 text-indigo-700 font-bold text-sm">
-                                                                {member.full_name
-                                                                    ?.split(" ")
-                                                                    .map(
-                                                                        (n) =>
-                                                                            n[0],
-                                                                    )
-                                                                    .join("")}
+                                                                {member.avatar_url && !isValidAvatarUrl(member.avatar_url)
+                                                                    ? member.avatar_url
+                                                                    : member.full_name
+                                                                        ?.split(" ")
+                                                                        .map((n) => n[0])
+                                                                        .join("")}
                                                             </AvatarFallback>
                                                         </Avatar>
                                                         <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full shadow-sm" />

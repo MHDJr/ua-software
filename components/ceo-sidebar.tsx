@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { LayoutDashboard, Users, Mail, ChevronRight, ChevronLeft, TrendingUp, LogOut, Wallet, Brain, Plus, Calendar } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { cn } from "@/lib/utils";
+import { cn, isValidAvatarUrl } from "@/lib/utils";
 import { useBadgeCounts } from "@/hooks/use-badge-counts";
 import { supabase } from "@/lib/supabase";
 import { SystemSyncButton } from "./system-sync-button";
@@ -327,9 +327,17 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange }: CEOS
                             )}
                         >
                             <Avatar className="w-10 h-10 border-2 border-white shadow-xl flex-shrink-0 transition-transform duration-500 hover:scale-105">
-                                <AvatarImage src={profile?.avatar_url || (userRole === 'CEO' ? "/images/ceo.jpeg" : undefined)} />
+                                <AvatarImage src={
+                                    profile?.avatar_url && isValidAvatarUrl(profile.avatar_url)
+                                        ? profile.avatar_url
+                                        : (!profile?.avatar_url && userRole === 'CEO')
+                                            ? "/images/ceo.jpeg"
+                                            : undefined
+                                } />
                                 <AvatarFallback className="bg-[#31267D] text-white font-black text-xs">
-                                    {(profile?.full_name || 'U').split(' ').map(n => n[0]).join('')}
+                                    {profile?.avatar_url && !isValidAvatarUrl(profile.avatar_url)
+                                        ? profile.avatar_url
+                                        : (profile?.full_name || 'U').split(' ').map(n => n[0]).join('')}
                                 </AvatarFallback>
                             </Avatar>
                             {!isMinimized && (

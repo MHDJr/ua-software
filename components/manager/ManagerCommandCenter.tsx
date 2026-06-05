@@ -88,7 +88,7 @@ import { LeaveRequestModal } from "@/components/LeaveRequestModal";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ProfileModal } from "@/components/ProfileModal";
 import AddIdeaDialog from "@/components/AddIdeaDialog";
-import { cn } from "@/lib/utils";
+import { cn, isValidAvatarUrl } from "@/lib/utils";
 
 // Brand colors - Professional Navy, White, Orange (Matching Staff Hub)
 const BRAND = {
@@ -755,8 +755,10 @@ export function ManagerCommandCenter({
                                             background: `linear-gradient(135deg, ${BRAND.navy}, ${BRAND.orange})`,
                                         }}
                                     >
-                                        {profile?.avatar_url ? (
+                                        {profile?.avatar_url && isValidAvatarUrl(profile.avatar_url) ? (
                                             <img src={profile.avatar_url} alt="Profile" className="w-full h-full object-cover animate-fade-in" />
+                                        ) : profile?.avatar_url ? (
+                                            <span className="text-sm">{profile.avatar_url}</span>
                                         ) : (
                                             (profile?.full_name || "M")
                                                 .split(" ")
@@ -1496,10 +1498,12 @@ export function ManagerCommandCenter({
                                             <div className="relative">
                                                 <Avatar className="h-10 w-10 border-2 border-slate-50 shadow-sm">
                                                     <AvatarImage
-                                                        src={staff.avatar_url}
+                                                        src={isValidAvatarUrl(staff.avatar_url) ? staff.avatar_url : undefined}
                                                     />
                                                     <AvatarFallback className="bg-[#2F1E73] text-white font-black text-xs">
-                                                        {staff.avatar}
+                                                        {staff.avatar_url && !isValidAvatarUrl(staff.avatar_url)
+                                                            ? staff.avatar_url
+                                                            : staff.avatar}
                                                     </AvatarFallback>
                                                 </Avatar>
                                             </div>
@@ -1608,25 +1612,18 @@ export function ManagerCommandCenter({
                                                 <Avatar className="h-6 w-6 flex-shrink-0">
                                                     <AvatarImage
                                                         src={
-                                                            accessibleStaff.find(
-                                                                (s) =>
-                                                                    s.id ===
-                                                                    newTask.assignedTo,
-                                                            )?.avatar_url
+                                                            (() => {
+                                                                const url = accessibleStaff.find((s) => s.id === newTask.assignedTo)?.avatar_url;
+                                                                return isValidAvatarUrl(url) ? url : undefined;
+                                                            })()
                                                         }
                                                     />
                                                     <AvatarFallback className="bg-[#2F1E73] text-white text-[9px] font-black">
-                                                        {accessibleStaff
-                                                            .find(
-                                                                (s) =>
-                                                                    s.id ===
-                                                                    newTask.assignedTo,
-                                                            )
-                                                            ?.name?.substring(
-                                                                0,
-                                                                2,
-                                                            )
-                                                            .toUpperCase()}
+                                                        {(() => {
+                                                            const s = accessibleStaff.find((s) => s.id === newTask.assignedTo);
+                                                            if (s?.avatar_url && !isValidAvatarUrl(s.avatar_url)) return s.avatar_url;
+                                                            return s?.name?.substring(0, 2).toUpperCase();
+                                                        })()}
                                                     </AvatarFallback>
                                                 </Avatar>
                                                 <span className="flex-1 text-sm font-semibold text-[#1a1a2e] dark:text-white truncate">
@@ -1701,16 +1698,13 @@ export function ManagerCommandCenter({
                                                                                 <Avatar className="h-7 w-7 flex-shrink-0">
                                                                                     <AvatarImage
                                                                                         src={
-                                                                                            s.avatar_url
+                                                                                            isValidAvatarUrl(s.avatar_url) ? s.avatar_url : undefined
                                                                                         }
                                                                                     />
                                                                                     <AvatarFallback className="bg-[#2D2A77]/10 text-[#2D2A77] dark:text-white text-[9px] font-black">
-                                                                                        {s.name
-                                                                                            ?.substring(
-                                                                                                0,
-                                                                                                2,
-                                                                                            )
-                                                                                            .toUpperCase()}
+                                                                                        {s.avatar_url && !isValidAvatarUrl(s.avatar_url)
+                                                                                            ? s.avatar_url
+                                                                                            : s.name?.substring(0, 2).toUpperCase()}
                                                                                     </AvatarFallback>
                                                                                 </Avatar>
                                                                                 <div className="text-left">

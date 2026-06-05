@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
+import { cn, isValidAvatarUrl } from "@/lib/utils";
 import { supabase, Profile, Task, Request } from "@/lib/supabase";
 import { jsPDF } from "jspdf";
 import AddStaffDialog from "./AddStaffDialog";
@@ -1920,10 +1920,12 @@ export function StaffManagement() {
                                             <div className="flex items-center gap-4">
                                                 <div className="relative shrink-0">
                                                     <Avatar className="w-12 h-12 border-2 border-gray-50 shadow-sm rounded-2xl">
-                                                        <AvatarImage src={staff.avatar} />
-                                                        <AvatarFallback className="text-white font-black" style={{ backgroundColor: BRAND_COLORS.indigo }}>
-                                                            {staff.name.split(" ").map(n => n[0]).join("").slice(0,2)}
-                                                        </AvatarFallback>
+                                                         <AvatarImage src={isValidAvatarUrl(staff.avatar) ? staff.avatar : undefined} />
+                                                         <AvatarFallback className="text-white font-black" style={{ backgroundColor: BRAND_COLORS.indigo }}>
+                                                             {staff.avatar && !isValidAvatarUrl(staff.avatar)
+                                                                 ? staff.avatar
+                                                                 : staff.name.split(" ").map(n => n[0]).join("").slice(0,2)}
+                                                         </AvatarFallback>
                                                     </Avatar>
                                                     {index === 0 && (
                                                         <span className="absolute -top-2 -left-2 bg-[#F14D24] text-white text-[7px] font-black uppercase tracking-wider px-1 py-0.5 rounded-md border border-white shadow-sm">
@@ -2032,9 +2034,11 @@ export function StaffManagement() {
                                                 <div className="flex items-center gap-4">
                                                     <div className="relative shrink-0">
                                                         <Avatar className="w-10 h-10 border-2 border-white shadow-sm rounded-xl">
-                                                            <AvatarImage src={staff.avatar} />
+                                                            <AvatarImage src={isValidAvatarUrl(staff.avatar) ? staff.avatar : undefined} />
                                                             <AvatarFallback className="text-white text-xs font-black" style={{ backgroundColor: BRAND_COLORS.indigo }}>
-                                                                {staff.name.split(" ").map(n => n[0]).join("")}
+                                                                {staff.avatar && !isValidAvatarUrl(staff.avatar)
+                                                                    ? staff.avatar
+                                                                    : staff.name.split(" ").map(n => n[0]).join("")}
                                                             </AvatarFallback>
                                                         </Avatar>
                                                         {index === 0 && (
@@ -2197,9 +2201,11 @@ export function StaffManagement() {
                                 {/* Profile Info */}
                                 <div className="md:col-span-7 bg-[#F9FAFB] p-6 rounded-3xl border border-gray-100 flex flex-col md:flex-row gap-5 items-center md:items-start text-center md:text-left">
                                     <Avatar className="w-20 h-20 border-4 border-white shadow-md rounded-2xl shrink-0">
-                                        <AvatarImage src={selectedStaffForReport.avatar} />
+                                        <AvatarImage src={isValidAvatarUrl(selectedStaffForReport.avatar) ? selectedStaffForReport.avatar : undefined} />
                                         <AvatarFallback className="text-white font-black text-2xl" style={{ backgroundColor: BRAND_COLORS.indigo }}>
-                                            {selectedStaffForReport.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
+                                            {selectedStaffForReport.avatar && !isValidAvatarUrl(selectedStaffForReport.avatar)
+                                                ? selectedStaffForReport.avatar
+                                                : selectedStaffForReport.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
                                         </AvatarFallback>
                                     </Avatar>
                                     <div className="space-y-1 min-w-0">
@@ -2344,9 +2350,11 @@ export function StaffManagement() {
                                 <div className="flex items-center gap-5 flex-col md:flex-row text-center md:text-left">
                                     <div className="relative shrink-0">
                                         <Avatar className="w-20 h-20 border-4 border-zinc-700 shadow-xl rounded-2xl">
-                                            <AvatarImage src={employeeOfTheMonth.avatar} />
+                                            <AvatarImage src={isValidAvatarUrl(employeeOfTheMonth.avatar) ? employeeOfTheMonth.avatar : undefined} />
                                             <AvatarFallback className="text-zinc-900 font-black text-2xl bg-white">
-                                                {employeeOfTheMonth.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
+                                                {employeeOfTheMonth.avatar && !isValidAvatarUrl(employeeOfTheMonth.avatar)
+                                                    ? employeeOfTheMonth.avatar
+                                                    : employeeOfTheMonth.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
                                             </AvatarFallback>
                                         </Avatar>
                                         <div className="absolute -bottom-2 -right-2 bg-[#F14D24] text-white p-1.5 rounded-xl shadow-md border border-zinc-800">
@@ -2423,9 +2431,11 @@ export function StaffManagement() {
                                                     <td className="p-4">
                                                         <div className="flex items-center gap-3">
                                                             <Avatar className="w-8 h-8 border border-zinc-100 shadow-sm rounded-lg">
-                                                                <AvatarImage src={s.avatar} />
+                                                                <AvatarImage src={isValidAvatarUrl(s.avatar) ? s.avatar : undefined} />
                                                                 <AvatarFallback className="text-white font-black text-[10px]" style={{ backgroundColor: BRAND_COLORS.indigo }}>
-                                                                    {s.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
+                                                                    {s.avatar && !isValidAvatarUrl(s.avatar)
+                                                                        ? s.avatar
+                                                                        : s.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
                                                                 </AvatarFallback>
                                                             </Avatar>
                                                             <div className="min-w-0">

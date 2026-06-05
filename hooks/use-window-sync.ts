@@ -46,21 +46,38 @@ export const useWindowSync = () => {
                     } else {
                         console.log("[Sync Engine] Supabase session verified.");
                     }
-                } catch (authErr) {
-                    console.error("[Sync Engine] Auth verification failed:", authErr);
-                    // If auth is completely broken, we might need a redirect, but for now we just log
+                } catch (authErr: any) {
+                    if (authErr?.name === "AbortError") {
+                        console.warn("[Sync Engine] Auth verification aborted.");
+                    } else {
+                        console.error("[Sync Engine] Auth verification failed:", authErr);
+                    }
                 }
 
                 // 2. Heartbeat check: Ensure the REST API is responsive
                 // This "pokes" the backend to ensure the connection isn't "stuck"
                 try {
-                    await Promise.race([
-                        supabase.from("profiles").select("id").limit(1),
-                        new Promise((_, reject) => setTimeout(() => reject(new Error("Heartbeat timeout")), 3000))
-                    ]);
-                    console.log("[Sync Engine] Backend heartbeat OK.");
-                } catch (heartbeatErr) {
-                    console.warn("[Sync Engine] Backend heartbeat failed or timed out. Connection may be stuck.");
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 3000);
+                    
+                    try {
+                        const { error } = await supabase
+                            .from("profiles")
+                            .select("id")
+                            .limit(1)
+                            .abortSignal(controller.signal);
+                        
+                        if (error) throw error;
+                        console.log("[Sync Engine] Backend heartbeat OK.");
+                    } finally {
+                        clearTimeout(timeoutId);
+                    }
+                } catch (heartbeatErr: any) {
+                    if (heartbeatErr?.name === "AbortError") {
+                        console.warn("[Sync Engine] Backend heartbeat timed out (3s limit reached). Connection may be stuck.");
+                    } else {
+                        console.warn("[Sync Engine] Backend heartbeat failed or timed out. Connection may be stuck:", heartbeatErr);
+                    }
                     // No action needed other than logging, refetchQueries will handle the retry
                 }
 
