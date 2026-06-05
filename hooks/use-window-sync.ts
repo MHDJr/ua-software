@@ -47,7 +47,14 @@ export const useWindowSync = () => {
                         console.log("[Sync Engine] Supabase session verified.");
                     }
                 } catch (authErr: any) {
-                    if (authErr?.name === "AbortError") {
+                    const errMsg = authErr?.message || String(authErr);
+                    const errName = authErr?.name;
+                    if (
+                        errName === "AbortError" ||
+                        errMsg.includes("AbortError") ||
+                        errMsg.includes("aborted") ||
+                        errMsg.includes("signal is aborted")
+                    ) {
                         console.warn("[Sync Engine] Auth verification aborted.");
                     } else {
                         console.error("[Sync Engine] Auth verification failed:", authErr);
@@ -145,8 +152,24 @@ export const useWindowSync = () => {
             }
         };
 
+        const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+            const reason = event.reason;
+            const errMsg = reason?.message || String(reason);
+            const errName = reason?.name;
+            if (
+                errName === "AbortError" || 
+                errMsg.includes("AbortError") || 
+                errMsg.includes("aborted") ||
+                errMsg.includes("signal is aborted")
+            ) {
+                console.warn("[Sync Engine] Unhandled abort promise rejection captured and suppressed:", reason);
+                event.preventDefault(); // Prevents the default browser error output in console
+            }
+        };
+
         window.addEventListener("visibilitychange", handleVisibilityChange);
         window.addEventListener("focus", handleFocus);
+        window.addEventListener("unhandledrejection", handleUnhandledRejection);
 
         // --- Periodic Heartbeat (Every 30 seconds) ---
         // Ensures the connection stays active even without tab switching
@@ -171,6 +194,7 @@ export const useWindowSync = () => {
         return () => {
             window.removeEventListener("visibilitychange", handleVisibilityChange);
             window.removeEventListener("focus", handleFocus);
+            window.removeEventListener("unhandledrejection", handleUnhandledRejection);
             clearInterval(heartbeatInterval);
             if (appStateListener) {
                 appStateListener.remove();

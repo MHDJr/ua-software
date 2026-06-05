@@ -61,7 +61,9 @@ export function useBadgeCounts() {
         subscriptionsRef.current.forEach(s => {
           if (s) {
             try {
-              supabase.removeChannel(s);
+              supabase.removeChannel(s).catch(err => {
+                console.warn("Failed to remove old badge channel:", err);
+              });
             } catch (e) {
               console.error("Failed to remove old badge channel reference:", e);
             }
@@ -127,7 +129,9 @@ export function useBadgeCounts() {
         subscriptionsRef.current.forEach(s => {
           if (s) {
             try {
-              supabase.removeChannel(s);
+              supabase.removeChannel(s).catch(err => {
+                // Silently swallow cleanup rejections
+              });
             } catch (e) {
               console.error("Failed to clean up badge channel on unmount:", e);
             }
