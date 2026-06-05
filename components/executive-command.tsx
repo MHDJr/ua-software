@@ -2402,7 +2402,7 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                         </div>
                         <div>
                             <p className="text-[10px] font-black text-slate-400 dark:text-zinc-400 uppercase tracking-[0.2em] mb-1 italic">
-                                Today's Revenue
+                                Today&apos;s Revenue
                             </p>
                             <h2 className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tighter">
                                 $

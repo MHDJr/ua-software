@@ -879,7 +879,7 @@ export function ManagerCommandCenter({
                                     </div>
                                 </div>
                                 <p className="text-[11px] text-indigo-100/60 mb-5 leading-relaxed font-medium">
-                                    Record and transmit today's {department.toLowerCase()} metrics to the CEO dashboard.
+                                    Record and transmit today&apos;s {department.toLowerCase()} metrics to the CEO dashboard.
                                 </p>
                                 <button
                                     onClick={() => {

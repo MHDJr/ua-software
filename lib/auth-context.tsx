@@ -19,6 +19,12 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+    const [isMounted, setIsMounted] = useState(false);
+
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
+
     const [user, setUser] = useState<User | null>(null);
     const [profile, setProfile] = useState<Profile | null>(null);
     const [loading, setLoading] = useState(true);
@@ -38,7 +44,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, []);
 
     useEffect(() => {
-        let isMounted = true;
+        if (!isMounted) return;
+        let isEffectMounted = true;
 
         // 1. Check for cached profile to speed up initial render
         if (typeof window !== "undefined") {
@@ -46,7 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (cachedProfile) {
                 try {
                     const parsed = JSON.parse(cachedProfile);
-                    if (isMounted) {
+                    if (isEffectMounted) {
                         setProfile(parsed);
                         // Fast role determination
                         if (parsed.role === 'ceo') setUserRole('CEO');
@@ -60,12 +67,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // Safety fallback timeout to ensure the loading state settles to false
         const safetyTimeout = setTimeout(() => {
-            if (isMounted) {
-                console.warn("[AuthContext] Safety fallback timeout triggered. Forcing loading state to settle.");
+            if (isEffectMounted) {
+                console.warn("[AuthContext] Safety fallback timeout triggered (4s). Forcing loading state to settle.");
                 isSessionResolved.current = true;
                 setLoading(false);
             }
-        }, 6000); // 6 seconds safety timeout
+        }, 4000); // Reduced from 6 seconds to 4 seconds
 
         // 2. Get initial session
         const getInitialSession = async () => {
@@ -85,7 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         throw err;
                     }
 
-                    if (!isMounted) return;
+                    if (!isEffectMounted) return;
 
                     if (session) {
                         setUser(session.user);
@@ -113,14 +120,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         console.error("Error getting initial session:", error);
                     }
                     
-                    if (!isMounted) return;
+                    if (!isEffectMounted) return;
                     // Fallback gracefully: settle state
                     setUser(null);
                     setProfile(null);
                     setUserRole(null);
                     lastCheckedUserIdRef.current = null;
                 } finally {
-                    if (isMounted) {
+                    if (isEffectMounted) {
                         clearTimeout(safetyTimeout);
                         isSessionResolved.current = true;
                         setLoading(false);
@@ -148,7 +155,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     }
                 }
 
-                if (!isMounted) return;
+                if (!isEffectMounted) return;
 
                 const sessionUserId = session?.user?.id || null;
                 // De-duplicate: do not trigger re-render / fetch if user has not changed
@@ -157,12 +164,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }
                 lastCheckedUserIdRef.current = sessionUserId;
 
+                if (isEffectMounted) {
+                    setLoading(true);
+                }
+
                 try {
                     if (session) {
-                        if (isMounted) setUser(session.user);
+                        if (isEffectMounted) setUser(session.user);
                         await fetchProfile(session.user.id);
                     } else {
-                        if (isMounted) {
+                        if (isEffectMounted) {
                             setUser(null);
                             setProfile(null);
                             setUserRole(null);
@@ -172,7 +183,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     if (error?.name === "AbortError") return;
                     console.error("Error in onAuthStateChange handler:", error);
                 } finally {
-                    if (isMounted) {
+                    if (isEffectMounted) {
                         setLoading(false);
                     }
                 }
@@ -180,13 +191,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
 
         return () => {
-            isMounted = false;
+            isEffectMounted = false;
             subscription.unsubscribe();
             clearTimeout(safetyTimeout);
         };
-    }, []);
+    }, [isMounted]);
 
     useEffect(() => {
+        if (!isMounted) return;
         if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
             return;
         }
@@ -256,7 +268,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             window.removeEventListener("focus", checkUpdates);
             navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange);
         };
-    }, []);
+    }, [isMounted]);
 
     const fetchProfile = async (userId: string) => {
         try {
@@ -323,6 +335,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signOut,
         refreshProfile
     }), [user, profile, loading, userRole, signIn, signOut, refreshProfile]);
+
+    if (!isMounted) {
+        return null; // Bypasses the broken pre-rendered HTML snapshot completely until the client engine is active
+    }
 
     return (
         <AuthContext.Provider value={value}>

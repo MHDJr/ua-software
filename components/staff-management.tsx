@@ -2154,7 +2154,7 @@ export function StaffManagement() {
                                 className="py-6 rounded-2xl border-gray-100 focus:ring-[#31267D]/10 focus:border-[#31267D]" 
                             />
                             <p className="text-[9px] text-gray-400 font-medium leading-normal">
-                                Enter the user's complete legal or preferred name.
+                                Enter the user&apos;s complete legal or preferred name.
                             </p>
                         </div>
                         <div className="flex gap-3">
