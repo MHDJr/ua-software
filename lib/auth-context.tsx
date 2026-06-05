@@ -27,23 +27,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const sessionCheckPromise = useRef<Promise<void> | null>(null);
     const isSessionResolved = useRef(false);
     const lastCheckedUserIdRef = useRef<string | null>(null);
+    const isMountedRef = useRef(true);
 
     useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, []);
+
+    useEffect(() => {
+        let isMounted = true;
+
         // 1. Check for cached profile to speed up initial render
         if (typeof window !== "undefined") {
             const cachedProfile = sessionStorage.getItem("ua_profile");
             if (cachedProfile) {
                 try {
                     const parsed = JSON.parse(cachedProfile);
-                    setProfile(parsed);
-                    // Fast role determination
-                    if (parsed.role === 'ceo') setUserRole('CEO');
-                    else if (parsed.is_manager || parsed.role === 'manager') setUserRole('MANAGER');
+                    if (isMounted) {
+                        setProfile(parsed);
+                        // Fast role determination
+                        if (parsed.role === 'ceo') setUserRole('CEO');
+                        else if (parsed.is_manager || parsed.role === 'manager') setUserRole('MANAGER');
+                    }
                 } catch (e) {
                     sessionStorage.removeItem("ua_profile");
                 }
             }
         }
+
+        // Safety fallback timeout to ensure the loading state settles to false
+        const safetyTimeout = setTimeout(() => {
+            if (isMounted) {
+                console.warn("[AuthContext] Safety fallback timeout triggered. Forcing loading state to settle.");
+                isSessionResolved.current = true;
+                setLoading(false);
+            }
+        }, 6000); // 6 seconds safety timeout
 
         // 2. Get initial session
         const getInitialSession = async () => {
@@ -51,7 +72,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             sessionCheckPromise.current = (async () => {
                 try {
-                    const { data: { session } } = await supabase.auth.getSession();
+                    let session: any = null;
+                    try {
+                        const { data: { session: activeSession } } = await supabase.auth.getSession();
+                        session = activeSession;
+                    } catch (err: any) {
+                        if (err?.name === "AbortError") {
+                            console.warn("[AuthContext] Initial session fetch aborted.");
+                            return; // Quietly catch abort errors
+                        }
+                        throw err;
+                    }
+
+                    if (!isMounted) return;
+
                     if (session) {
                         setUser(session.user);
                         lastCheckedUserIdRef.current = session.user.id;
@@ -63,6 +97,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         lastCheckedUserIdRef.current = null;
                     }
                 } catch (error: any) {
+                    if (error?.name === "AbortError") {
+                        return; // Quietly catch abort errors
+                    }
                     const errorName = error?.name || "";
                     const errorMessage = error?.message || "";
                     const isAbort = errorName === 'AbortError' || 
@@ -74,14 +111,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     } else {
                         console.error("Error getting initial session:", error);
                     }
+                    
+                    if (!isMounted) return;
                     // Fallback gracefully: settle state
                     setUser(null);
                     setProfile(null);
                     setUserRole(null);
                     lastCheckedUserIdRef.current = null;
                 } finally {
-                    isSessionResolved.current = true;
-                    setLoading(false);
+                    if (isMounted) {
+                        clearTimeout(safetyTimeout);
+                        isSessionResolved.current = true;
+                        setLoading(false);
+                    }
                 }
             })();
 
@@ -96,9 +138,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 // Ensure initial session check has resolved first
                 if (!isSessionResolved.current) {
                     if (sessionCheckPromise.current) {
-                        await sessionCheckPromise.current;
+                        try {
+                            await sessionCheckPromise.current;
+                        } catch (err: any) {
+                            if (err?.name === "AbortError") return;
+                            console.error("Error waiting for initial session in auth state change listener:", err);
+                        }
                     }
                 }
+
+                if (!isMounted) return;
 
                 const sessionUserId = session?.user?.id || null;
                 // De-duplicate: do not trigger re-render / fetch if user has not changed
@@ -109,47 +158,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
                 try {
                     if (session) {
-                        setUser(session.user);
+                        if (isMounted) setUser(session.user);
                         await fetchProfile(session.user.id);
                     } else {
-                        setUser(null);
-                        setProfile(null);
-                        setUserRole(null);
+                        if (isMounted) {
+                            setUser(null);
+                            setProfile(null);
+                            setUserRole(null);
+                        }
                     }
                 } catch (error: any) {
+                    if (error?.name === "AbortError") return;
                     console.error("Error in onAuthStateChange handler:", error);
                 } finally {
-                    setLoading(false);
+                    if (isMounted) {
+                        setLoading(false);
+                    }
                 }
             }
         );
 
         return () => {
+            isMounted = false;
             subscription.unsubscribe();
+            clearTimeout(safetyTimeout);
         };
     }, []);
 
     const fetchProfile = async (userId: string) => {
-        const { data, error } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", userId)
-            .single();
+        try {
+            const { data, error } = await supabase
+                .from("profiles")
+                .select("*")
+                .eq("id", userId)
+                .single();
 
-        if (!error && data) {
-            const p = data as Profile;
-            setProfile(p);
-            if (typeof window !== "undefined") {
-                sessionStorage.setItem("ua_profile", JSON.stringify(p));
+            if (!isMountedRef.current) return;
+
+            if (!error && data) {
+                const p = data as Profile;
+                setProfile(p);
+                if (typeof window !== "undefined") {
+                    sessionStorage.setItem("ua_profile", JSON.stringify(p));
+                }
+                // Determine user role based on profile
+                if (p.role === 'ceo') {
+                    setUserRole('CEO');
+                } else if (p.is_manager || p.role === 'manager') {
+                    setUserRole('MANAGER');
+                } else {
+                    setUserRole(null);
+                }
             }
-            // Determine user role based on profile
-            if (p.role === 'ceo') {
-                setUserRole('CEO');
-            } else if (p.is_manager || p.role === 'manager') {
-                setUserRole('MANAGER');
-            } else {
-                setUserRole(null);
-            }
+        } catch (err: any) {
+            if (err?.name === "AbortError") return;
+            console.error("Error fetching profile:", err);
         }
     };
 
