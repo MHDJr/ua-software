@@ -60,6 +60,11 @@ self.addEventListener('install', function(event) {
   self.skipWaiting();
 });
 
+self.addEventListener('activate', function(event) {
+  // Claim all client tabs immediately so the new fetch interceptor takes effect
+  event.waitUntil(self.clients.claim());
+});
+
 self.addEventListener('message', function(event) {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();

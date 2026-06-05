@@ -19,7 +19,7 @@ import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 export const metadata: Metadata = {
     title: "Usthad Academy - Executive Command",
     description: "Cyber-Enhanced CEO Command Center for Usthad Academy",
-    manifest: "/manifest.json",
+    manifest: "/manifest.json?v=2",
     appleWebApp: {
         statusBarStyle: "black-translucent",
         title: "UA Command",
