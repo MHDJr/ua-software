@@ -495,8 +495,8 @@ const DonutChart = ({
     usthadValue: number;
 }) => {
     const total = uloomxValue + usthadValue;
-    const uloomxPercentage = (uloomxValue / total) * 100;
-    const usthadPercentage = (usthadValue / total) * 100;
+    const uloomxPercentage = total > 0 ? (uloomxValue / total) * 100 : 0;
+    const usthadPercentage = total > 0 ? (usthadValue / total) * 100 : 0;
     
     // Responsive size based on container width
     const [chartSize, setChartSize] = React.useState(180);
@@ -1101,6 +1101,8 @@ export default function FinanceManagerFinancialIntelligence() {
         currentMonth.setDate(1);
         const monthStr = currentMonth.toISOString().split('T')[0];
         
+        if (!monthStr) return;
+        
         let localSaved: { usthadTarget: number; uloomxTarget: number; expenseTarget: number } | null = null;
         try {
             const localStr = localStorage.getItem('ua_financial_targets');
@@ -1151,9 +1153,8 @@ export default function FinanceManagerFinancialIntelligence() {
     };
 
     useEffect(() => {
-        if (profile) {
-            loadTargets();
-        }
+        if (!profile) return;
+        loadTargets();
     }, [profile]);
 
     const handleSaveTargets = async (usthadVal: number, uloomxVal: number, expenseVal: number) => {

@@ -474,6 +474,8 @@ export function ExecutiveSalesOverview() {
         currentMonth.setDate(1);
         const monthStr = currentMonth.toISOString().split('T')[0];
         
+        if (!monthStr) return;
+        
         let localSaved: any = null;
         try {
             const localStr = localStorage.getItem('ua_sales_targets');
@@ -586,9 +588,8 @@ export function ExecutiveSalesOverview() {
     };
 
     useEffect(() => {
-        if (profile) {
-            loadTargets();
-        }
+        if (!profile) return;
+        loadTargets();
     }, [profile]);
 
 

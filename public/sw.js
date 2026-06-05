@@ -54,3 +54,14 @@ self.addEventListener('notificationclick', function(event) {
     );
   }
 });
+
+self.addEventListener('install', function(event) {
+  // Tell the active service worker to take over the page immediately
+  self.skipWaiting();
+});
+
+self.addEventListener('message', function(event) {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});

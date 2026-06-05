@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useState, useRef } from "r
 import { supabase, Profile } from "@/lib/supabase";
 import { User } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 interface AuthContextType {
     user: User | null;
@@ -182,6 +183,78 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             isMounted = false;
             subscription.unsubscribe();
             clearTimeout(safetyTimeout);
+        };
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
+            return;
+        }
+
+        const showUpdateToast = (worker: ServiceWorker) => {
+            toast.info("New operational update available.", {
+                description: "A new version of the dashboard is ready.",
+                action: {
+                    label: "Refresh Now",
+                    onClick: () => {
+                        worker.postMessage({ type: "SKIP_WAITING" });
+                        window.location.reload();
+                    },
+                },
+                duration: Infinity, // Keep the toast visible
+            });
+        };
+
+        // Register the service worker sw.js
+        navigator.serviceWorker.register("/sw.js").then((reg) => {
+            // Check if there is an update already waiting
+            if (reg.waiting) {
+                showUpdateToast(reg.waiting);
+            }
+
+            // Listen for any new service worker update installs
+            reg.addEventListener("updatefound", () => {
+                const newWorker = reg.installing;
+                if (newWorker) {
+                    newWorker.addEventListener("statechange", () => {
+                        if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+                            showUpdateToast(newWorker);
+                        }
+                    });
+                }
+            });
+        }).catch((err) => {
+            console.error("[ServiceWorker] Registration failed:", err);
+        });
+
+        // Controllerchange fires when the active service worker changes (e.g. via skipWaiting)
+        let refreshing = false;
+        const handleControllerChange = () => {
+            if (!refreshing) {
+                refreshing = true;
+                window.location.reload();
+            }
+        };
+
+        navigator.serviceWorker.addEventListener("controllerchange", handleControllerChange);
+
+        // Periodically check for service worker updates every 5 minutes and on window focus
+        const checkUpdates = async () => {
+            try {
+                const reg = await navigator.serviceWorker.ready;
+                await reg.update();
+            } catch (err) {
+                console.debug("[ServiceWorker] Update check skipped:", err);
+            }
+        };
+
+        const interval = setInterval(checkUpdates, 5 * 60 * 1000);
+        window.addEventListener("focus", checkUpdates);
+
+        return () => {
+            clearInterval(interval);
+            window.removeEventListener("focus", checkUpdates);
+            navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange);
         };
     }, []);
 
