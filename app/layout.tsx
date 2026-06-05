@@ -21,7 +21,6 @@ export const metadata: Metadata = {
     description: "Cyber-Enhanced CEO Command Center for Usthad Academy",
     manifest: "/manifest.json",
     appleWebApp: {
-        capable: true,
         statusBarStyle: "black-translucent",
         title: "UA Command",
     },
@@ -39,6 +38,7 @@ export default function RootLayout({
     return (
         <html lang="en" suppressHydrationWarning>
             <head>
+                <meta name="mobile-web-app-capable" content="yes" />
                 <script
                     dangerouslySetInnerHTML={{
                         __html: `
