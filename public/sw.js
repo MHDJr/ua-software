@@ -65,3 +65,16 @@ self.addEventListener('message', function(event) {
     self.skipWaiting();
   }
 });
+
+// Intercept requests for the deprecated logo and serve logo.svg instead
+self.addEventListener('fetch', function(event) {
+  const url = new URL(event.request.url);
+  const decodedPath = decodeURIComponent(url.pathname);
+  if (decodedPath.includes('Usthad Logo Symbol - White.svg')) {
+    event.respondWith(
+      fetch('/images/logo.svg').catch(function() {
+        return new Response('', { status: 404 });
+      })
+    );
+  }
+});
