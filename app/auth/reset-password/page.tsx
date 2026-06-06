@@ -41,7 +41,7 @@ export default function ResetPasswordPage() {
                 // 3. Fallback check for hash fragments (implicit flow)
                 if (!window.location.hash.includes("type=recovery") && !code) {
                     toast.error("Invalid or expired reset link.");
-                    router.push("/auth");
+                    router.push("/");
                 }
             }
         };
@@ -91,7 +91,7 @@ export default function ResetPasswordPage() {
 
             // 5. Automatic redirect after delay
             setTimeout(() => {
-                router.push("/auth");
+                router.push("/");
             }, 5000);
         } catch (error: any) {
             console.error("[Auth] Reset error:", error);
@@ -112,7 +112,7 @@ export default function ResetPasswordPage() {
                         Your identity has been re-secured. You will be redirected to the login portal momentarily.
                     </p>
                     <Button 
-                        onClick={() => router.push("/auth")}
+                        onClick={() => router.push("/")}
                         className="w-full h-14 bg-gradient-to-r from-[#e86123] to-[#351e6a] rounded-2xl text-white font-black uppercase tracking-widest text-xs"
                     >
                         Return to Portal

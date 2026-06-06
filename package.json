@@ -13,8 +13,6 @@
         "deploy": "gh-pages -d out"
     },
     "dependencies": {
-        "@capacitor/android": "^8.3.4",
-        "@capacitor/app": "^8.1.0",
         "@fontsource/inter": "^5.2.8",
         "@fontsource/jetbrains-mono": "^5.2.8",
         "@fontsource/outfit": "^5.2.8",
@@ -93,9 +91,6 @@
         "zod": "^3.23.8"
     },
     "devDependencies": {
-        "@capacitor/cli": "^8.3.4",
-        "@capacitor/core": "^8.3.4",
-        "@capacitor/ios": "^8.3.4",
         "@tanstack/react-query-devtools": "^5.100.14",
         "@types/gsap": "^1.20.2",
         "@types/simple-peer": "^9.11.9",

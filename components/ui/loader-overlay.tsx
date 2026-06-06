@@ -38,7 +38,7 @@ export function LoaderOverlay({
                 if (setIsLoading) {
                     setIsLoading(false);
                 }
-            }, 3000);
+            }, 15000);
 
             return () => clearTimeout(emergencyTimer);
         }

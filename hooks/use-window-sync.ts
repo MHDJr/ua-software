@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { focusManager, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import { App } from "@capacitor/app";
+import { useAuth } from "@/lib/auth-context";
 
 // Throttling duration: 10 seconds cooldown between automatic focus syncs
 const SYNC_THROTTLE_MS = 10000;
@@ -14,11 +14,16 @@ const SYNC_THROTTLE_MS = 10000;
  */
 export const useWindowSync = () => {
     const queryClient = useQueryClient();
+    const { user } = useAuth();
     const lockRef = useRef(false);
     const lastSyncTimeRef = useRef<number>(0);
 
     useEffect(() => {
         const handleSync = async () => {
+            if (!user) {
+                console.log("[Sync Engine] Skipping synchronization: No active user session.");
+                return;
+            }
             const now = Date.now();
             
             // Check throttle cooldown
@@ -178,27 +183,11 @@ export const useWindowSync = () => {
             handleSync();
         }, 30000);
 
-        // --- Capacitor (Native) Events ---
-        let appStateListener: any;
-        const initCapacitor = async () => {
-            if (typeof window !== "undefined" && (window as any).Capacitor) {
-                appStateListener = await App.addListener("appStateChange", ({ isActive }) => {
-                    if (isActive) {
-                        handleSync();
-                    }
-                });
-            }
-        };
-        initCapacitor();
-
         return () => {
             window.removeEventListener("visibilitychange", handleVisibilityChange);
             window.removeEventListener("focus", handleFocus);
             window.removeEventListener("unhandledrejection", handleUnhandledRejection);
             clearInterval(heartbeatInterval);
-            if (appStateListener) {
-                appStateListener.remove();
-            }
         };
-    }, [queryClient]);
+    }, [queryClient, user]);
 };

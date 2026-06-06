@@ -68,11 +68,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Safety fallback timeout to ensure the loading state settles to false
         const safetyTimeout = setTimeout(() => {
             if (isEffectMounted) {
-                console.warn("[AuthContext] Safety fallback timeout triggered (4s). Forcing loading state to settle.");
+                console.warn("[AuthContext] Safety fallback timeout triggered (15s). Forcing loading state to settle.");
                 isSessionResolved.current = true;
                 setLoading(false);
             }
-        }, 4000); // Reduced from 6 seconds to 4 seconds
+        }, 15000);
 
         // 2. Get initial session
         const getInitialSession = async () => {
@@ -317,7 +317,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             sessionStorage.removeItem("ua_profile");
         }
         await supabase.auth.signOut();
-        router.push("/auth");
+        router.push("/");
     };
 
     const refreshProfile = async () => {
