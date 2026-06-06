@@ -883,12 +883,11 @@ export default function StaffPortal() {
     const checkTodayAttendance = async () => {
         if (!profile) return;
 
-        // Load presence status
         const { data: presenceData } = await supabase
             .from("staff_presence")
             .select("*")
             .eq("user_id", profile.id)
-            .single();
+            .maybeSingle();
         if (presenceData) {
             setUserStatus(
                 presenceData.status === "online" ? "on_mission" : "off_duty",

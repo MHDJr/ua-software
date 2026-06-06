@@ -158,7 +158,7 @@ export function ManagerCommandCenter({
     const [tasks, setTasks] = useState<Task[]>([]);
     const [completedTasks, setCompletedTasks] = useState<Task[]>([]);
     const [expandedTask, setExpandedTask] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState("ALL");
+    const [activeTab, setActiveTab] = useState("MY TASKS");
     const [showCompleted, setShowCompleted] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
@@ -578,12 +578,13 @@ export function ManagerCommandCenter({
     const filteredTasks = useMemo(() => {
         if (showCompleted) return completedTasks;
         return tasks.filter((task) => {
-            if (activeTab === "ALL") return true;
+            if (activeTab === "MY TASKS") return task.assigned_to === profile?.id;
+            if (activeTab === "ALL") return task.assigned_to !== profile?.id;
             if (activeTab === "URGENT") return task.priority === "urgent";
             if (activeTab === "DAILY") return task.is_daily_task;
             return false;
         });
-    }, [tasks, completedTasks, activeTab, showCompleted]);
+    }, [tasks, completedTasks, activeTab, showCompleted, profile]);
 
     const getPriorityStyle = (priority: string) => {
         switch (priority) {
@@ -1105,7 +1106,7 @@ export function ManagerCommandCenter({
                             </div>
 
                             <div className="flex bg-white md:bg-transparent p-1 rounded-xl md:rounded-2xl shadow-sm md:shadow-none border md:border-0 border-slate-100 overflow-x-auto scrollbar-hide">
-                                {["ALL", "URGENT", "DAILY", "COMPLETED"].map(
+                                {["MY TASKS", "ALL", "URGENT", "DAILY", "COMPLETED"].map(
                                     (tab) => (
                                         <button
                                             key={tab}
@@ -1122,9 +1123,58 @@ export function ManagerCommandCenter({
                                             }`}
                                         >
                                             {tab}
+                                            {tab === "MY TASKS" &&
+                                                tasks.filter((t) => t.assigned_to === profile?.id).length > 0 && (
+                                                    <span className={cn(
+                                                        "text-[7px] px-1.5 py-0.5 rounded-full font-black",
+                                                        activeTab === tab
+                                                            ? "bg-amber-500 text-white animate-pulse"
+                                                            : "bg-amber-100 text-amber-700"
+                                                    )}>
+                                                        {tasks.filter((t) => t.assigned_to === profile?.id).length}
+                                                    </span>
+                                                )}
+                                            {tab === "ALL" &&
+                                                tasks.filter((t) => t.assigned_to !== profile?.id).length > 0 && (
+                                                    <span className={cn(
+                                                        "text-[7px] px-1.5 py-0.5 rounded-full font-black",
+                                                        activeTab === tab
+                                                            ? "bg-indigo-500 text-white animate-pulse"
+                                                            : "bg-indigo-100 text-indigo-700"
+                                                    )}>
+                                                        {tasks.filter((t) => t.assigned_to !== profile?.id).length}
+                                                    </span>
+                                                )}
+                                            {tab === "URGENT" &&
+                                                tasks.filter((t) => t.priority === "urgent").length > 0 && (
+                                                    <span className={cn(
+                                                        "text-[7px] px-1.5 py-0.5 rounded-full font-black",
+                                                        activeTab === tab
+                                                            ? "bg-red-500 text-white animate-pulse"
+                                                            : "bg-red-100 text-red-700"
+                                                    )}>
+                                                        {tasks.filter((t) => t.priority === "urgent").length}
+                                                    </span>
+                                                )}
+                                            {tab === "DAILY" &&
+                                                tasks.filter((t) => t.is_daily_task).length > 0 && (
+                                                    <span className={cn(
+                                                        "text-[7px] px-1.5 py-0.5 rounded-full font-black",
+                                                        activeTab === tab
+                                                            ? "bg-emerald-500 text-white animate-pulse"
+                                                            : "bg-emerald-100 text-emerald-700"
+                                                    )}>
+                                                        {tasks.filter((t) => t.is_daily_task).length}
+                                                    </span>
+                                                )}
                                             {tab === "COMPLETED" &&
                                                 completedTasks.length > 0 && (
-                                                    <span className="bg-blue-500 text-white text-[7px] px-1.5 py-0.5 rounded-full">
+                                                    <span className={cn(
+                                                        "text-[7px] px-1.5 py-0.5 rounded-full font-black",
+                                                        activeTab === tab
+                                                            ? "bg-blue-500 text-white animate-pulse"
+                                                            : "bg-blue-100 text-blue-700"
+                                                    )}>
                                                         {completedTasks.length}
                                                     </span>
                                                 )}

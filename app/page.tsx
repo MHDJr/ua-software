@@ -63,16 +63,6 @@ export default function Home() {
         }
     }, [profile, loading, router]);
 
-    // Safety fallback: If we are stuck on this page for more than 2 seconds with a profile, force redirect
-    useEffect(() => {
-        if (profile && !loading) {
-            const timer = setTimeout(() => {
-                console.log("[Home] Safety timer triggered, forcing fallback redirect to /staff");
-                router.replace("/staff");
-            }, 2000);
-            return () => clearTimeout(timer);
-        }
-    }, [profile, loading, router]);
 
     // State 1: Loading Initial Session or Profile
     if (loading) {
