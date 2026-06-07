@@ -236,3 +236,102 @@ export function useCeoDirectives(options: any = {}) {
         enabled: !!user && userRole === 'CEO' && (options.enabled !== undefined ? options.enabled : true)
     });
 }
+
+// ============================================
+// STAFF DIRECTIVES HOOK
+// ============================================
+export function useStaffDirectives(options: any = {}) {
+    const { user } = useAuth();
+    return useQuery({
+        queryKey: ["staff_directives"],
+        queryFn: async () => {
+            try {
+                const { data, error } = await supabase
+                    .from("staff_directives")
+                    .select("*")
+                    .order("created_at", { ascending: false });
+                if (error) {
+                    console.warn(`[useStaffDirectives] Query failed with code ${error.code}: ${error.message}`);
+                    return EMPTY_ARRAY;
+                }
+                return data || EMPTY_ARRAY;
+            } catch (err: any) {
+                console.warn("[useStaffDirectives] Exception caught fetching staff_directives:", err.message || err);
+                return EMPTY_ARRAY;
+            }
+        },
+        ...DASHBOARD_QUERY_CONFIG,
+        ...options,
+        enabled: !!user && (options.enabled !== undefined ? options.enabled : true)
+    });
+}
+
+// ============================================
+// STAFF PERFORMANCE SUMMARY HOOK
+// ============================================
+export function useStaffPerformanceSummary(options: any = {}) {
+    const { user, userRole } = useAuth();
+    const isAuthorized = userRole === 'CEO' || userRole === 'MANAGER';
+
+    return useQuery({
+        queryKey: ["staff_performance_summary", userRole],
+        queryFn: async () => {
+            if (!isAuthorized) {
+                console.warn("[useStaffPerformanceSummary] Access restricted to CEO or MANAGER roles. Skipping query.");
+                return EMPTY_ARRAY;
+            }
+            try {
+                const { data, error } = await supabase
+                    .from("staff_performance_summary")
+                    .select("*")
+                    .order("completion_rate", { ascending: false });
+                if (error) {
+                    console.warn(`[useStaffPerformanceSummary] Query failed with code ${error.code}: ${error.message}`);
+                    return EMPTY_ARRAY;
+                }
+                return data || EMPTY_ARRAY;
+            } catch (err: any) {
+                console.warn("[useStaffPerformanceSummary] Exception caught fetching staff_performance_summary:", err.message || err);
+                return EMPTY_ARRAY;
+            }
+        },
+        ...DASHBOARD_QUERY_CONFIG,
+        ...options,
+        enabled: !!user && isAuthorized && (options.enabled !== undefined ? options.enabled : true)
+    });
+}
+
+// ============================================
+// CEO STAFF PRESENCE HOOK
+// ============================================
+export function useCeoStaffPresence(options: any = {}) {
+    const { user, userRole } = useAuth();
+    const isAuthorized = userRole === 'CEO';
+
+    return useQuery({
+        queryKey: ["ceo_staff_presence", userRole],
+        queryFn: async () => {
+            if (!isAuthorized) {
+                console.warn("[useCeoStaffPresence] Access restricted to CEO role. Skipping query.");
+                return EMPTY_ARRAY;
+            }
+            try {
+                const { data, error } = await supabase
+                    .from("ceo_staff_presence")
+                    .select("*")
+                    .order("updated_at", { ascending: false });
+                if (error) {
+                    console.warn(`[useCeoStaffPresence] Query failed with code ${error.code}: ${error.message}`);
+                    return EMPTY_ARRAY;
+                }
+                return data || EMPTY_ARRAY;
+            } catch (err: any) {
+                console.warn("[useCeoStaffPresence] Exception caught fetching ceo_staff_presence:", err.message || err);
+                return EMPTY_ARRAY;
+            }
+        },
+        ...DASHBOARD_QUERY_CONFIG,
+        ...options,
+        enabled: !!user && isAuthorized && (options.enabled !== undefined ? options.enabled : true)
+    });
+}

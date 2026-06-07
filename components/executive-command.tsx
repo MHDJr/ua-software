@@ -140,6 +140,7 @@ import {
     useRequests,
     useMeetings,
     useCeoDirectives,
+    useCeoStaffPresence,
 } from "@/hooks/use-dashboard-data";
 
 // ============================================
@@ -445,7 +446,28 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
         completedTasks = [],
         isFetching: isTasksFetching,
     } = useTasks(queryOptions);
-    const { data: staff = [], isFetching: isStaffFetching } = useStaff(queryOptions);
+    const { data: rawStaff = [], isFetching: isStaffFetching } = useStaff(queryOptions);
+    const { data: presenceData = [], isFetching: isPresenceFetching } = useCeoStaffPresence(queryOptions);
+
+    const staff = useMemo(() => {
+        if (!presenceData || (presenceData as any[]).length === 0) {
+            return rawStaff;
+        }
+        const presenceMap = new Map<string, any>((presenceData as any[]).map((p: any) => [p.user_id, p]));
+        return rawStaff.map((member: any) => {
+            const presence = presenceMap.get(member.id) as any;
+            if (presence) {
+                return {
+                    ...member,
+                    status: presence.status || member.status,
+                    lastActive: presence.updated_at,
+                    sessionStart: presence.session_start,
+                    sessionDuration: presence.session_duration,
+                };
+            }
+            return member;
+        });
+    }, [rawStaff, presenceData]);
     const { data: requests = [], isFetching: isRequestsFetching } =
         useRequests(queryOptions);
     const { data: meetings = [], isFetching: isMeetingsFetching } =

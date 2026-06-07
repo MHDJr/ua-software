@@ -79,11 +79,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (sessionCheckPromise.current) return sessionCheckPromise.current;
 
             sessionCheckPromise.current = (async () => {
+                // Timeout promise to prevent load freeze if network is slow/unstable
+                const timeoutPromise = new Promise<null>((resolve) =>
+                    setTimeout(() => {
+                        console.warn("[AuthContext] Initial session check timed out (3.5s). Falling back to background load.");
+                        resolve(null);
+                    }, 3500)
+                );
+
                 try {
                     let session: any = null;
                     try {
-                        const { data: { session: activeSession } } = await supabase.auth.getSession();
-                        session = activeSession;
+                        const sessionPromise = (async () => {
+                            const { data: { session: activeSession } } = await supabase.auth.getSession();
+                            return activeSession;
+                        })();
+                        
+                        // Race the session fetch against a 3.5s timeout
+                        session = await Promise.race([sessionPromise, timeoutPromise]);
                     } catch (err: any) {
                         if (err?.name === "AbortError") {
                             console.warn("[AuthContext] Initial session fetch aborted.");
@@ -97,7 +110,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     if (session) {
                         setUser(session.user);
                         lastCheckedUserIdRef.current = session.user.id;
-                        await fetchProfile(session.user.id);
+                        
+                        // Race the profile fetch against a 2.5s timeout so it doesn't block the screen
+                        const profilePromise = fetchProfile(session.user.id);
+                        const profileTimeout = new Promise<void>((resolve) => setTimeout(resolve, 2500));
+                        await Promise.race([profilePromise, profileTimeout]);
                     } else {
                         setUser(null);
                         setProfile(null);
