@@ -31,9 +31,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [userRole, setUserRole] = useState<'CEO' | 'MANAGER' | null>(null);
     const router = useRouter();
 
-    const sessionCheckPromise = useRef<Promise<void> | null>(null);
-    const isSessionResolved = useRef(false);
     const lastCheckedUserIdRef = useRef<string | null>(null);
+    const isInitialCheckDoneRef = useRef(false);
     const isMountedRef = useRef(true);
 
     useEffect(() => {
@@ -47,139 +46,118 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!isMounted) return;
         let isEffectMounted = true;
 
-        // 1. Check for cached profile to speed up initial render
-        if (typeof window !== "undefined") {
-            const cachedProfile = sessionStorage.getItem("ua_profile");
-            if (cachedProfile) {
-                try {
-                    const parsed = JSON.parse(cachedProfile);
-                    if (isEffectMounted) {
-                        setProfile(parsed);
-                        // Fast role determination
-                        if (parsed.role === 'ceo') setUserRole('CEO');
-                        else if (parsed.is_manager || parsed.role === 'manager') setUserRole('MANAGER');
-                    }
-                } catch (e) {
-                    sessionStorage.removeItem("ua_profile");
-                }
-            }
-        }
-
         // Safety fallback timeout to ensure the loading state settles to false
         const safetyTimeout = setTimeout(() => {
             if (isEffectMounted) {
                 console.warn("[AuthContext] Safety fallback timeout triggered (15s). Forcing loading state to settle.");
-                isSessionResolved.current = true;
+                isInitialCheckDoneRef.current = true;
                 setLoading(false);
             }
         }, 15000);
 
-        // 2. Get initial session
-        const getInitialSession = async () => {
-            if (sessionCheckPromise.current) return sessionCheckPromise.current;
-
-            sessionCheckPromise.current = (async () => {
-                // Timeout promise to prevent load freeze if network is slow/unstable
-                const timeoutPromise = new Promise<null>((resolve) =>
-                    setTimeout(() => {
-                        console.warn("[AuthContext] Initial session check timed out (3.5s). Falling back to background load.");
-                        resolve(null);
-                    }, 3500)
-                );
-
-                try {
-                    let session: any = null;
-                    try {
-                        const sessionPromise = (async () => {
-                            const { data: { session: activeSession } } = await supabase.auth.getSession();
-                            return activeSession;
-                        })();
-                        
-                        // Race the session fetch against a 3.5s timeout
-                        session = await Promise.race([sessionPromise, timeoutPromise]);
-                    } catch (err: any) {
-                        if (err?.name === "AbortError") {
-                            console.warn("[AuthContext] Initial session fetch aborted.");
-                            return; // Quietly catch abort errors
-                        }
-                        throw err;
-                    }
-
-                    if (!isEffectMounted) return;
-
-                    if (session) {
-                        setUser(session.user);
-                        lastCheckedUserIdRef.current = session.user.id;
-                        
-                        // Race the profile fetch against a 2.5s timeout so it doesn't block the screen
-                        const profilePromise = fetchProfile(session.user.id);
-                        const profileTimeout = new Promise<void>((resolve) => setTimeout(resolve, 2500));
-                        await Promise.race([profilePromise, profileTimeout]);
-                    } else {
-                        setUser(null);
-                        setProfile(null);
-                        setUserRole(null);
-                        lastCheckedUserIdRef.current = null;
-                    }
-                } catch (error: any) {
-                    if (error?.name === "AbortError") {
-                        return; // Quietly catch abort errors
-                    }
-                    const errorName = error?.name || "";
-                    const errorMessage = error?.message || "";
-                    const isAbort = errorName === 'AbortError' || 
-                                    errorMessage.includes('AbortError') ||
-                                    errorName === 'AuthSessionMissingError' ||
-                                    errorMessage.includes('AuthSessionMissingError');
-                    if (isAbort) {
-                        console.warn("Session check aborted or missing safely:", errorMessage || error);
-                    } else {
-                        console.error("Error getting initial session:", error);
-                    }
+        // Fetch profile helper with a 3.5s timeout protection
+        const loadProfile = async (userId: string) => {
+            const profileTimeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3500));
+            try {
+                const profilePromise = supabase
+                    .from("profiles")
+                    .select("*")
+                    .eq("id", userId)
+                    .single()
+                    .then(({ data, error }) => {
+                        if (error) throw error;
+                        return data;
+                    });
                     
-                    if (!isEffectMounted) return;
-                    // Fallback gracefully: settle state
-                    setUser(null);
-                    setProfile(null);
-                    setUserRole(null);
-                    lastCheckedUserIdRef.current = null;
-                } finally {
-                    if (isEffectMounted) {
-                        clearTimeout(safetyTimeout);
-                        isSessionResolved.current = true;
-                        setLoading(false);
-                    }
-                }
-            })();
+                const data = await Promise.race([profilePromise, profileTimeout]);
 
-            return sessionCheckPromise.current;
+                if (!isEffectMounted) return null;
+
+                if (data) {
+                    const p = data as Profile;
+                    if (typeof window !== "undefined") {
+                        sessionStorage.setItem("ua_profile", JSON.stringify(p));
+                    }
+                    return p;
+                }
+            } catch (err) {
+                console.error("Error fetching profile:", err);
+            }
+            return null;
         };
 
-        getInitialSession();
-
-        // 3. Listen for auth changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            async (event, session) => {
-                // Ensure initial session check has resolved first
-                if (!isSessionResolved.current) {
-                    if (sessionCheckPromise.current) {
+        // Initialize auth flow
+        const initializeAuth = async () => {
+            const sessionTimeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000));
+            
+            try {
+                // 1. Check for cached profile to speed up initial render
+                if (typeof window !== "undefined") {
+                    const cachedProfile = sessionStorage.getItem("ua_profile");
+                    if (cachedProfile) {
                         try {
-                            await sessionCheckPromise.current;
-                        } catch (err: any) {
-                            if (err?.name === "AbortError") return;
-                            console.error("Error waiting for initial session in auth state change listener:", err);
+                            const parsed = JSON.parse(cachedProfile);
+                            if (isEffectMounted) {
+                                setProfile(parsed);
+                                if (parsed.role === 'ceo') setUserRole('CEO');
+                                else if (parsed.is_manager || parsed.role === 'manager') setUserRole('MANAGER');
+                            }
+                        } catch (e) {
+                            sessionStorage.removeItem("ua_profile");
                         }
                     }
                 }
+
+                // Race session fetch against 4.0s timeout
+                const sessionPromise = supabase.auth.getSession().then(({ data: { session } }) => session);
+                const session = await Promise.race([sessionPromise, sessionTimeout]);
 
                 if (!isEffectMounted) return;
 
                 const sessionUserId = session?.user?.id || null;
-                // De-duplicate: do not trigger re-render / fetch if user has not changed
-                if (sessionUserId === lastCheckedUserIdRef.current && isSessionResolved.current) {
+                if (sessionUserId === lastCheckedUserIdRef.current && isInitialCheckDoneRef.current) {
                     return;
                 }
                 lastCheckedUserIdRef.current = sessionUserId;
+                isInitialCheckDoneRef.current = true;
+
+                if (session) {
+                    setUser(session.user);
+                    const p = await loadProfile(session.user.id);
+                    if (isEffectMounted && p) {
+                        setProfile(p);
+                        if (p.role === 'ceo') setUserRole('CEO');
+                        else if (p.is_manager || p.role === 'manager') setUserRole('MANAGER');
+                    }
+                } else {
+                    setUser(null);
+                    setProfile(null);
+                    setUserRole(null);
+                }
+            } catch (err) {
+                console.error("Error initializing auth:", err);
+            } finally {
+                if (isEffectMounted) {
+                    clearTimeout(safetyTimeout);
+                    setLoading(false);
+                }
+            }
+        };
+
+        initializeAuth();
+
+        // 3. Listen for auth changes
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+            async (event, session) => {
+                if (!isEffectMounted) return;
+
+                const sessionUserId = session?.user?.id || null;
+                // De-duplicate: do not trigger re-fetch if user has not changed and initial check is done
+                if (sessionUserId === lastCheckedUserIdRef.current && isInitialCheckDoneRef.current) {
+                    return;
+                }
+                lastCheckedUserIdRef.current = sessionUserId;
+                isInitialCheckDoneRef.current = true;
 
                 if (isEffectMounted) {
                     setLoading(true);
@@ -188,7 +166,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 try {
                     if (session) {
                         if (isEffectMounted) setUser(session.user);
-                        await fetchProfile(session.user.id);
+                        const p = await loadProfile(session.user.id);
+                        if (isEffectMounted) {
+                            if (p) {
+                                setProfile(p);
+                                if (p.role === 'ceo') setUserRole('CEO');
+                                else if (p.is_manager || p.role === 'manager') setUserRole('MANAGER');
+                            }
+                        }
                     } else {
                         if (isEffectMounted) {
                             setUser(null);
@@ -197,10 +182,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         }
                     }
                 } catch (error: any) {
-                    if (error?.name === "AbortError") return;
                     console.error("Error in onAuthStateChange handler:", error);
                 } finally {
                     if (isEffectMounted) {
+                        clearTimeout(safetyTimeout);
                         setLoading(false);
                     }
                 }
@@ -211,6 +196,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             isEffectMounted = false;
             subscription.unsubscribe();
             clearTimeout(safetyTimeout);
+            lastCheckedUserIdRef.current = null;
+            isInitialCheckDoneRef.current = false;
         };
     }, [isMounted]);
 
