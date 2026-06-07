@@ -83,11 +83,23 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange }: CEOS
     };
 
     const handleNavigate = (id: string) => {
-        onViewChange?.(id);
-        if (id === "command-center") router.push("/ceo");
-        else if (id === "financial-intelligence") router.push("/ceo/financial-intelligence");
-        else if (id === "sales-intelligence") router.push("/ceo/sales");
-        else router.push(`/ceo?view=${id}`);
+        if (id === "financial-intelligence") {
+            router.push("/ceo/financial-intelligence");
+        } else if (id === "sales-intelligence") {
+            router.push("/ceo/sales");
+        } else if (id === "command-center") {
+            if (onViewChange) {
+                onViewChange(id);
+            } else {
+                router.push("/ceo");
+            }
+        } else {
+            if (onViewChange) {
+                onViewChange(id);
+            } else {
+                router.push(`/ceo?view=${id}`);
+            }
+        }
     };
 
     const handleLogout = async () => {
