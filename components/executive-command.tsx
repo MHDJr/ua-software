@@ -1535,33 +1535,46 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
         if (!staffToRemove) return;
 
         try {
-            // 1. Unassign active tasks
-            await supabase
-                .from("tasks")
-                .update({ assigned_to: null })
-                .eq("assigned_to", staffToRemove.id);
+            // 1. Delete avatar from storage if it exists
+            if (staffToRemove.avatar_url && staffToRemove.avatar_url.includes('/storage/v1/object/public/')) {
+                try {
+                    await deleteFile('avatars', staffToRemove.avatar_url);
+                } catch (e) {
+                    console.warn("Failed to delete staff avatar from storage during termination:", e);
+                }
+            }
 
-            // 2. Permanently delete from database
-            const { error } = await supabase
-                .from("profiles")
-                .delete()
-                .eq("id", staffToRemove.id);
+            const uid = staffToRemove.id;
 
-            if (error) {
-                // Fallback to soft delete if FK constraint hits or other issue
-                await supabase
-                    .from("profiles")
-                    .update({ full_name: "[DELETED]", status: "offline" })
-                    .eq("id", staffToRemove.id);
+            // 2. Call the Admin API for PERMANENT deletion (Auth + Public Schema Purge)
+            // This ensures email and username are freed for future use.
+            const response = await fetch("/api/admin/delete-staff", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                    userId: uid,
+                    email: staffToRemove.email,
+                    username: staffToRemove.username 
+                }),
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || "Failed to purge staff records");
             }
 
             toast.success("OPERATIVE TERMINATED & DATA PURGED");
-            queryClient.invalidateQueries({ queryKey: ["staff"] });
             setIsRemoveStaffModalOpen(false);
             setStaffToRemove(null);
             setConfirmName("");
-        } catch (e) {
-            toast.error("Termination failed");
+            
+            // Force refresh all dashboard data
+            queryClient.invalidateQueries();
+            fetchData();
+        } catch (e: any) {
+            console.error("Deletion error:", e);
+            toast.error(e.message || "Failed to delete staff member permanently");
         }
     };
 

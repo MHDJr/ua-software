@@ -468,30 +468,13 @@ export function ExecutiveSalesOverview() {
     const [isTargetsModalOpen, setIsTargetsModalOpen] = useState(false);
     const [historicalReports, setHistoricalReports] = useState<any[]>([]);
 
-    // Load academy targets with self-healing local storage fallback
+    // Load academy targets from database as single source of truth
     const loadTargets = async () => {
         const currentMonth = new Date();
         currentMonth.setDate(1);
         const monthStr = currentMonth.toISOString().split('T')[0];
         
         if (!monthStr) return;
-        
-        let localSaved: any = null;
-        try {
-            const localStr = localStorage.getItem('ua_sales_targets');
-            if (localStr) {
-                const parsed = JSON.parse(localStr);
-                if (parsed.month === monthStr) {
-                    localSaved = {
-                        leadsTarget: Number(parsed.leadsTarget) || 1000,
-                        evalTarget: Number(parsed.evalTarget) || 70,
-                        conversionTarget: Number(parsed.conversionTarget) || 15
-                    };
-                }
-            }
-        } catch (e) {
-            console.error("Local load sales targets error:", e);
-        }
         
         try {
             const { data, error } = await supabase
@@ -514,15 +497,12 @@ export function ExecutiveSalesOverview() {
             console.warn("Academy sales targets DB load fallback:", err);
         }
         
-        if (localSaved) {
-            setTargets(localSaved);
-        } else {
-            setTargets({
-                leadsTarget: 1000,
-                evalTarget: 70,
-                conversionTarget: 15
-            });
-        }
+        // Fallback to uniform defaults for all users
+        setTargets({
+            leadsTarget: 1000,
+            evalTarget: 70,
+            conversionTarget: 15
+        });
     };
 
     const handleSaveTargets = async (leadsVal: number, evalVal: number, convVal: number) => {
