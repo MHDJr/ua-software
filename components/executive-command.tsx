@@ -141,6 +141,9 @@ import {
     useMeetings,
     useCeoDirectives,
     useCeoStaffPresence,
+    useFinancialEntries,
+    useDailyReports,
+    useSalesTargets,
 } from "@/hooks/use-dashboard-data";
 
 // ============================================
@@ -481,6 +484,9 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
         toggleIdea: toggleIdeaMutation,
         disposeIdea: disposeIdeaMutation,
     } = useIdeas(queryOptions);
+    const { data: financialEntries = [] } = useFinancialEntries(queryOptions);
+    const { data: dailyReports = [] } = useDailyReports(queryOptions);
+    const { data: salesTargets } = useSalesTargets(queryOptions);
 
     // UI & Filter States
     const [taskTab, setTaskTab] = useState<
@@ -681,7 +687,10 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                         query.queryKey[0] === "requests" ||
                         query.queryKey[0] === "ideas" ||
                         query.queryKey[0] === "meetings" ||
-                        query.queryKey[0] === "ceo_directives",
+                        query.queryKey[0] === "ceo_directives" ||
+                        query.queryKey[0] === "financial-entries" ||
+                        query.queryKey[0] === "daily-reports" ||
+                        query.queryKey[0] === "sales-targets",
                 });
             } catch (e) {
                 console.error("Telemetry sync failed:", e);
@@ -1320,6 +1329,35 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
         const totalToday = tasks.length + completedTodayCount;
         const operationalVelocity = totalToday > 0 ? Math.round((completedTodayCount / totalToday) * 100) : 0;
 
+        // Financial metrics (Current calendar month balance)
+        const currentMonthStr = new Date().toISOString().slice(0, 7); // YYYY-MM
+        const monthEntries = financialEntries.filter((entry: any) =>
+            entry.entry_date.startsWith(currentMonthStr)
+        );
+        const monthUloomx = monthEntries.reduce(
+            (sum: number, entry: any) => sum + (parseFloat(entry.uloomx_income) || 0),
+            0
+        );
+        const monthUsthad = monthEntries.reduce(
+            (sum: number, entry: any) => sum + (parseFloat(entry.usthad_income) || 0),
+            0
+        );
+        const monthExpenses = monthEntries.reduce(
+            (sum: number, entry: any) => sum + (parseFloat(entry.total_expenses) || 0),
+            0
+        );
+        const currentMonthBalance = monthUloomx + monthUsthad - monthExpenses;
+
+        // Sales metrics (Current calendar month conversions)
+        const currentMonthReports = dailyReports.filter((report: any) =>
+            report.report_date.startsWith(currentMonthStr)
+        );
+        const currentMonthConversions = currentMonthReports.reduce(
+            (sum: number, r: any) => sum + (r.conversions || 0),
+            0
+        );
+        const conversionTarget = salesTargets?.conversion_target ?? 15;
+
         return {
             systemStatus,
             decisionsPending,
@@ -1334,8 +1372,11 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
             newLeadsToday,
             activeBlockers,
             operationalVelocity,
+            currentMonthBalance,
+            currentMonthConversions,
+            conversionTarget,
         };
-    }, [staff, requests, tasks, leads, completedTasks]);
+    }, [staff, requests, tasks, leads, completedTasks, financialEntries, dailyReports, salesTargets]);
 
     const disposeIdea = async (id: string) => {
         console.log("Dispose idea called with ID:", id);
@@ -2437,13 +2478,15 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                         </div>
                         <div>
                             <p className="text-[10px] font-black text-slate-400 dark:text-zinc-400 uppercase tracking-[0.2em] mb-1 italic">
-                                Today&apos;s Revenue
+                                Current Month Balance
                             </p>
                             <h2 className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tighter">
-                                $
-                                {(
-                                    stats.paymentsReceivedToday * 250
-                                ).toLocaleString()}
+                                {new Intl.NumberFormat("en-IN", {
+                                    style: "currency",
+                                    currency: "INR",
+                                    minimumFractionDigits: 0,
+                                    maximumFractionDigits: 0,
+                                }).format(stats.currentMonthBalance)}
                             </h2>
                         </div>
                     </div>
@@ -2497,17 +2540,17 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                         </div>
                         <div>
                             <p className="text-[10px] font-black text-slate-400 dark:text-zinc-400 uppercase tracking-[0.2em] mb-1 italic">
-                                Market Conversion
+                                Current Month Conversions
                             </p>
                             <div className="flex items-baseline gap-1">
                                 <h2 className="text-2xl font-black text-slate-900 dark:text-zinc-100 tracking-tighter">
-                                    {stats.newLeadsToday}
+                                    {stats.currentMonthConversions}
                                 </h2>
                                 <span className="text-slate-300 dark:text-zinc-700 font-black">
                                     /
                                 </span>
                                 <h2 className="text-xl font-black text-blue-600 dark:text-blue-400 tracking-tighter">
-                                    {stats.paymentsReceivedToday}
+                                    {stats.conversionTarget}
                                 </h2>
                             </div>
                         </div>
@@ -2741,13 +2784,24 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                             </button>
                             <button
                                 onClick={() => setTaskTab("overdue")}
-                                className={`px-3 md:px-4 py-1.5 md:py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-shrink-0 ${
+                                className={`px-3 md:px-4 py-1.5 md:py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-2 ${
                                     taskTab === "overdue"
                                         ? "bg-amber-500 text-theme-inv-text shadow-lg shadow-amber-500/20"
                                         : "text-theme-text-40 hover:text-theme-text hover:bg-theme-bg-white-10"
                                 }`}
                             >
                                 Overdue
+                                {stats.overdueCount > 0 && (
+                                    <span
+                                        className={`text-[9px] px-1.5 py-0.5 rounded-full min-w-[16px] inline-flex items-center justify-center font-black transition-all ${
+                                            taskTab === "overdue"
+                                                ? "bg-white/20 text-theme-inv-text"
+                                                : "bg-red-600/90 text-white shadow-sm"
+                                        }`}
+                                    >
+                                        {stats.overdueCount}
+                                    </span>
+                                )}
                             </button>
                             <button
                                 onClick={() => setTaskTab("completed")}

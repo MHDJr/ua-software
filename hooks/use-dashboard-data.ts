@@ -335,3 +335,89 @@ export function useCeoStaffPresence(options: any = {}) {
         enabled: !!user && isAuthorized && (options.enabled !== undefined ? options.enabled : true)
     });
 }
+
+// ============================================
+// FINANCIAL ENTRIES HOOK
+// ============================================
+export function useFinancialEntries(options: any = {}) {
+    const { user } = useAuth();
+    
+    return useQuery({
+        queryKey: ["financial-entries"],
+        queryFn: async () => {
+            const sixtyDaysAgo = new Date();
+            sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+            const sixtyDaysAgoStr = sixtyDaysAgo.toISOString().split("T")[0];
+
+            const { data, error } = await supabase
+                .from("financial_entries")
+                .select("*")
+                .gte("entry_date", sixtyDaysAgoStr)
+                .order("entry_date", { ascending: false });
+
+            if (error) throw error;
+            return data || [];
+        },
+        ...DASHBOARD_QUERY_CONFIG,
+        ...options,
+        enabled: !!user && (options.enabled !== undefined ? options.enabled : true)
+    });
+}
+
+// ============================================
+// DAILY REPORTS HOOK
+// ============================================
+export function useDailyReports(options: any = {}) {
+    const { user } = useAuth();
+    
+    return useQuery({
+        queryKey: ["daily-reports"],
+        queryFn: async () => {
+            const sixtyDaysAgo = new Date();
+            sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+            const sixtyDaysAgoStr = sixtyDaysAgo.toISOString().split("T")[0];
+
+            const { data, error } = await supabase
+                .from("daily_reports")
+                .select("*")
+                .gte("report_date", sixtyDaysAgoStr)
+                .order("report_date", { ascending: false });
+
+            if (error) throw error;
+            return data || [];
+        },
+        ...DASHBOARD_QUERY_CONFIG,
+        ...options,
+        enabled: !!user && (options.enabled !== undefined ? options.enabled : true)
+    });
+}
+
+// ============================================
+// ACADEMY SALES TARGETS HOOK
+// ============================================
+export function useSalesTargets(options: any = {}) {
+    const { user } = useAuth();
+    
+    return useQuery({
+        queryKey: ["sales-targets"],
+        queryFn: async () => {
+            const currentMonth = new Date();
+            currentMonth.setDate(1);
+            const monthStr = currentMonth.toISOString().split("T")[0];
+
+            const { data, error } = await supabase
+                .from("academy_sales_targets")
+                .select("*")
+                .eq("target_month", monthStr)
+                .maybeSingle();
+
+            if (error) throw error;
+            return data || { target_month: monthStr, leads_target: 1000, evaluation_target: 70, conversion_target: 15 };
+        },
+        ...DASHBOARD_QUERY_CONFIG,
+        ...options,
+        enabled: !!user && (options.enabled !== undefined ? options.enabled : true)
+    });
+}
+
+
