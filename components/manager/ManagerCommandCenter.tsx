@@ -865,8 +865,8 @@ export function ManagerCommandCenter({
 
                 {/* Left Column - Action Portal, Sparks, Request Tracker & Community Board */}
                 <div className="col-span-12 lg:col-span-3 space-y-6 order-3 lg:order-1">
-                    {/* Department Daily Controls - ADDED FOR FINANCE/SALES MANAGERS */}
-                    {(department === "Finance" || department === "Sales") && (
+                    {/* Department Daily Controls - ADDED FOR FINANCE/SALES/MARKETING MANAGERS */}
+                    {(department === "Finance" || department === "Sales" || department === "Marketing") && (
                         <div className="bg-[#1e1b4b] rounded-2xl md:rounded-[2.5rem] p-5 md:p-6 text-white shadow-[0_8px_30px_rgba(30,27,75,0.2)] relative overflow-hidden border border-indigo-500/20 group">
                             <div className="absolute top-0 right-0 w-32 h-32 rounded-full opacity-20 bg-indigo-500 filter blur-[40px] group-hover:opacity-30 transition-opacity"></div>
                             
@@ -881,25 +881,30 @@ export function ManagerCommandCenter({
                                     </div>
                                     <div>
                                         <span className="text-[10px] font-black tracking-widest uppercase text-indigo-200/70">
-                                            {department} Control
+                                            {department === "Marketing" ? "Sales" : department} Control
                                         </span>
                                         <h4 className="text-xs font-black text-white uppercase">
-                                            Daily Operations
+                                            {department === "Marketing" ? "Intelligence" : "Daily Operations"}
                                         </h4>
                                     </div>
                                 </div>
                                 <p className="text-[11px] text-indigo-100/60 mb-5 leading-relaxed font-medium">
-                                    Record and transmit today&apos;s {department.toLowerCase()} metrics to the CEO dashboard.
+                                    {department === "Marketing"
+                                        ? "Access real-time sales intelligence, lead analytics, and conversions."
+                                        : `Record and transmit today's ${department.toLowerCase()} metrics to the CEO dashboard.`}
                                 </p>
-                                <button
-                                    onClick={() => {
-                                        if (department === "Finance") router.push("/finance-manager/daily-finance");
-                                        else router.push("/sales-manager/daily-sales");
-                                    }}
-                                    className="w-full py-3 bg-white text-indigo-900 hover:bg-indigo-50 rounded-2xl font-black text-[9px] tracking-widest uppercase transition-all flex items-center justify-center gap-2 shadow-lg active:scale-95 mb-3"
-                                >
-                                    Update Daily {department} <ArrowRight className="w-3 h-3" />
-                                </button>
+                                
+                                {department !== "Marketing" && (
+                                    <button
+                                        onClick={() => {
+                                            if (department === "Finance") router.push("/finance-manager/daily-finance");
+                                            else router.push("/sales-manager/daily-sales");
+                                        }}
+                                        className="w-full py-3 bg-white text-indigo-900 hover:bg-indigo-50 rounded-2xl font-black text-[9px] tracking-widest uppercase transition-all flex items-center justify-center gap-2 shadow-lg active:scale-95 mb-3"
+                                    >
+                                        Update Daily {department} <ArrowRight className="w-3 h-3" />
+                                    </button>
+                                )}
 
                                 <button
                                     onClick={() => {
