@@ -242,25 +242,25 @@ export function ManagerCommandCenter({
                 .in("status", ["completed", "COMPLETED"]);
 
             if (managerDepartmentAccess) {
-                let accessibleStaffIds: string[] = [];
                 if (department === "Marketing") {
-                    accessibleStaffIds = staffData.map((s) => s.id);
+                    activeQuery = activeQuery.or(`created_by.eq.${profile.id},assigned_to.eq.${profile.id}`);
+                    completedQuery = completedQuery.or(`created_by.eq.${profile.id},assigned_to.eq.${profile.id}`);
                 } else {
-                    accessibleStaffIds = staffData
+                    const accessibleStaffIds = staffData
                         .filter(
                             (s) =>
                                 s.department &&
                                 managerDepartmentAccess.includes(s.department),
                         )
                         .map((s) => s.id);
-                }
-                accessibleStaffIds.push(profile.id);
+                    accessibleStaffIds.push(profile.id);
 
-                activeQuery = activeQuery.in("assigned_to", accessibleStaffIds);
-                completedQuery = completedQuery.in(
-                    "assigned_to",
-                    accessibleStaffIds,
-                );
+                    activeQuery = activeQuery.in("assigned_to", accessibleStaffIds);
+                    completedQuery = completedQuery.in(
+                        "assigned_to",
+                        accessibleStaffIds,
+                    );
+                }
             }
 
             const [activeRes, completedRes, requestsRes] = await Promise.all([
