@@ -147,6 +147,7 @@ export function ManagerCommandCenter({
 }: ManagerCommandCenterProps) {
     const { profile, user, signOut } = useAuth();
     const router = useRouter();
+    const isV2Enabled = process.env.NEXT_PUBLIC_ENABLE_V2_FEATURES === "true" || (typeof window !== "undefined" && window.localStorage.getItem("ENABLE_V2_FEATURES") === "true");
 
     // Use prop department if provided, otherwise fallback to profile department
     const department = useMemo(() => {
@@ -199,15 +200,18 @@ export function ManagerCommandCenter({
         return depts;
     }, [profile, department]);
 
-    // Filter staff for the Personnel card (only department staff)
+    // Filter staff for the Personnel card (only department staff, unless Marketing Manager who gets all)
     const accessibleStaff = useMemo(() => {
         if (!managerDepartmentAccess) return staffData;
+        if (department === "Marketing") {
+            return staffData;
+        }
         return staffData.filter((staff) =>
             managerDepartmentAccess.includes(staff.department),
         );
-    }, [staffData, managerDepartmentAccess]);
+    }, [staffData, managerDepartmentAccess, department]);
 
-    // Filtered Staff for Search in Task Assignment (Department only)
+    // Filtered Staff for Search in Task Assignment
     const filteredStaffForSearch = useMemo(() => {
         return accessibleStaff.filter((s) =>
             s.name.toLowerCase().includes(assigneeSearch.toLowerCase()),
@@ -238,13 +242,18 @@ export function ManagerCommandCenter({
                 .in("status", ["completed", "COMPLETED"]);
 
             if (managerDepartmentAccess) {
-                const accessibleStaffIds = staffData
-                    .filter(
-                        (s) =>
-                            s.department &&
-                            managerDepartmentAccess.includes(s.department),
-                    )
-                    .map((s) => s.id);
+                let accessibleStaffIds: string[] = [];
+                if (department === "Marketing") {
+                    accessibleStaffIds = staffData.map((s) => s.id);
+                } else {
+                    accessibleStaffIds = staffData
+                        .filter(
+                            (s) =>
+                                s.department &&
+                                managerDepartmentAccess.includes(s.department),
+                        )
+                        .map((s) => s.id);
+                }
                 accessibleStaffIds.push(profile.id);
 
                 activeQuery = activeQuery.in("assigned_to", accessibleStaffIds);
@@ -1295,6 +1304,33 @@ export function ManagerCommandCenter({
                                                                 URGENT
                                                             </Badge>
                                                         )}
+                                                        {isV2Enabled && task.assigned_to !== profile?.id && (task.created_by === profile?.id || (task as any).assigned_by === profile?.id) && (
+                                                             <div className="flex items-center gap-0.5 text-slate-400 dark:text-zinc-500 select-none ml-1 shrink-0">
+                                                                 {(() => {
+                                                                     const status = (task.status as any) === "completed" || (task.status as any) === "reviewed" ? "read" : ((task as any).delivery_status || "sent");
+                                                                     if (status === "sent") {
+                                                                         return <Check className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />;
+                                                                     }
+                                                                     if (status === "delivered") {
+                                                                         return (
+                                                                             <div className="flex -space-x-1.5">
+                                                                                 <Check className="w-3.5 h-3.5 text-slate-400" />
+                                                                                 <Check className="w-3.5 h-3.5 text-slate-400" />
+                                                                             </div>
+                                                                         );
+                                                                     }
+                                                                     if (status === "read") {
+                                                                         return (
+                                                                             <div className="flex -space-x-1.5">
+                                                                                 <Check className="w-3.5 h-3.5 text-[#EF4A24]" />
+                                                                                 <Check className="w-3.5 h-3.5 text-[#EF4A24]" />
+                                                                             </div>
+                                                                         );
+                                                                     }
+                                                                     return null;
+                                                                 })()}
+                                                             </div>
+                                                         )}
                                                     </div>
                                                     <p className="text-[10px] text-slate-500 font-medium tracking-wide line-clamp-2 leading-relaxed mt-1">
                                                         {task.description ||

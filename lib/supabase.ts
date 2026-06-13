@@ -64,6 +64,8 @@ export type Task = {
     signal_cleared?: boolean;
     reviewed_at?: string | null;
     reviewed_by_info?: string | null;
+    is_escalated?: boolean;
+    escalated_at?: string;
     assigned_to_user?: {
         full_name: string;
         department: string;

@@ -23,8 +23,8 @@ export function useBadgeCounts() {
       // Fetch data in parallel
       const today = new Date().toISOString().split('T')[0];
       const [pendingRes, victoriesRes] = await Promise.all([
-        supabase.from("requests").select("*", { count: "exact", head: true }).eq("status", "pending").eq("signal_cleared", false),
-        supabase.from("tasks").select("*", { count: "exact", head: true }).eq("status", "completed").gte("updated_at", today)
+        supabase.from("requests").select("id", { count: "exact" }).eq("status", "pending").eq("signal_cleared", false),
+        supabase.from("tasks").select("id", { count: "exact" }).eq("status", "completed").gte("updated_at", today)
       ]);
 
       if (isMounted) {

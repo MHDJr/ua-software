@@ -15,6 +15,11 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { NetworkStatusProvider } from "@/components/network-status-provider";
 import { TabResiliencyEngine } from "@/components/tab-resiliency-engine";
 import { MobileBottomNav } from "@/components/mobile-bottom-nav";
+import dynamic from "next/dynamic";
+
+const CommandBar = dynamic(() => import("@/components/command-bar"), {
+    ssr: false,
+});
 
 export const metadata: Metadata = {
     title: "Usthad Academy - Executive Command",
@@ -66,6 +71,7 @@ export default function RootLayout({
                                         <TabResiliencyEngine>
                                             {children}
                                             <MobileBottomNav />
+                                            {process.env.NEXT_PUBLIC_ENABLE_V2_FEATURES === "true" && <CommandBar />}
                                         </TabResiliencyEngine>
                                         <Toaster
                                             position="top-right"

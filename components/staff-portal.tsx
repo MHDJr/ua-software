@@ -63,6 +63,7 @@ import { toast } from "sonner";
 import { compressImage } from "@/lib/image-utils";
 import { uploadPublicFile, deleteFile } from "@/lib/storage";
 import MobileNavigation from "@/components/mobile-navigation";
+import { usePushSubscription } from "@/hooks/use-push-subscription";
 import { motion, AnimatePresence } from "framer-motion";
 import { format, differenceInMinutes } from "date-fns";
 import { RequestModal } from "@/components/RequestModal";
@@ -579,6 +580,8 @@ const renderDigitalGauge = (task: Task, showCompleted: boolean) => {
 export default function StaffPortal() {
     const { user, refreshProfile } = useAuth();
     const router = useRouter();
+    usePushSubscription();
+    const isV2Enabled = process.env.NEXT_PUBLIC_ENABLE_V2_FEATURES === "true" || (typeof window !== "undefined" && window.localStorage.getItem("ENABLE_V2_FEATURES") === "true");
     const [profile, setProfile] = useState<Profile | null>(null);
     const [time, setTime] = useState("");
     const [vibe, setVibe] = useState("Focused");
@@ -625,6 +628,23 @@ export default function StaffPortal() {
     }, []);
 
     useTabResiliency(handleResync, isRefreshing, setIsRefreshing);
+
+    useEffect(() => {
+        if (typeof window !== "undefined" && isV2Enabled) {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get("escalated") === "true") {
+                if (navigator.vibrate) {
+                    navigator.vibrate([100, 50, 100]);
+                }
+                try {
+                    const cleanUrl = window.location.pathname;
+                    window.history.replaceState({}, document.title, cleanUrl);
+                } catch (e) {
+                    console.error("Url query param clean failed:", e);
+                }
+            }
+        }
+    }, [isV2Enabled]);
 
     // Manager task assignment state
     const [isAssignTaskOpen, setIsAssignTaskOpen] = useState(false);
@@ -1043,6 +1063,58 @@ export default function StaffPortal() {
         }
     }, [sessionStart]);
 
+    // UAAE V2: Automatically mark all tasks as read when they are loaded in the Staff Portal
+    useEffect(() => {
+        if (!isV2Enabled) return;
+        
+        const unreadTasks = tasks.filter((t) => (t as any).delivery_status !== "read");
+        const unreadCompleted = completedTasks.filter((t) => (t as any).delivery_status !== "read");
+        
+        if (unreadTasks.length > 0 || unreadCompleted.length > 0) {
+            const allUnreadIds = [
+                ...unreadTasks.map((t) => t.id),
+                ...unreadCompleted.map((t) => t.id)
+            ];
+            
+            console.log("UAAE V2: Auto-marking tasks as read upon visibility:", allUnreadIds);
+            
+            const nowIso = new Date().toISOString();
+            if (unreadTasks.length > 0) {
+                setTasks((prev) =>
+                    prev.map((t) =>
+                        (t as any).delivery_status !== "read"
+                            ? { ...t, delivery_status: "read", read_at: nowIso }
+                            : t
+                    )
+                );
+            }
+            if (unreadCompleted.length > 0) {
+                setCompletedTasks((prev) =>
+                    prev.map((t) =>
+                        (t as any).delivery_status !== "read"
+                            ? { ...t, delivery_status: "read", read_at: nowIso }
+                            : t
+                    )
+                );
+            }
+            
+            supabase
+                .from("tasks")
+                .update({
+                    delivery_status: "read",
+                    read_at: nowIso
+                })
+                .in("id", allUnreadIds)
+                .then(({ error }) => {
+                    if (error) {
+                        console.error("Failed to auto-update task read state in database:", error);
+                    } else {
+                        console.log("Successfully auto-marked tasks as read in database");
+                    }
+                });
+        }
+    }, [tasks, completedTasks, isV2Enabled]);
+
     // Filter tasks based on active tab
     const filteredTasks = useMemo(() => {
         const taskList = tasks.map((task) => ({
@@ -1209,6 +1281,53 @@ export default function StaffPortal() {
         } catch (err) {
             console.error("Update progress exception:", err);
             toast.error("Something went wrong updating progress");
+        }
+    };
+
+    const handleTaskClick = async (task: Task) => {
+        const isOpening = expandedTask !== task.id;
+        setExpandedTask(isOpening ? task.id : null);
+
+        // UAAE V2 Read Receipt Logic Gated Tightly
+        if (isOpening && isV2Enabled) {
+            if ((task as any).delivery_status !== "read") {
+                try {
+                    // Update state locally for instant UI response
+                    setTasks((prev) =>
+                        prev.map((t) =>
+                            t.id === task.id
+                                ? { ...t, delivery_status: "read", read_at: new Date().toISOString() }
+                                : t
+                        )
+                    );
+                    setCompletedTasks((prev) =>
+                        prev.map((t) =>
+                            t.id === task.id
+                                ? { ...t, delivery_status: "read", read_at: new Date().toISOString() }
+                                : t
+                        )
+                    );
+
+                    // Update Supabase ledger
+                    const { error } = await supabase
+                        .from("tasks")
+                        .update({
+                            delivery_status: "read",
+                            read_at: new Date().toISOString()
+                        })
+                        .eq("id", task.id);
+                        
+                    if (error) {
+                        console.error("Failed to update task read state:", error);
+                        toast.error(`Read status update failed: ${error.message}`);
+                    } else {
+                        console.log("Successfully marked task as read in database");
+                    }
+                } catch (err: any) {
+                    console.error("Failed to update task read state:", err);
+                    toast.error(`Failed to update task read state: ${err.message}`);
+                }
+            }
         }
     };
 
@@ -1695,9 +1814,14 @@ export default function StaffPortal() {
                                                 className={cn(
                                                     "p-3 rounded-xl border transition-all duration-300 relative overflow-hidden flex flex-col gap-1.5 group hover:scale-[1.01]",
                                                     isUrgent 
-                                                        ? "bg-red-500/10 border-red-500/30 ring-1 ring-red-500/20 hover:border-red-500/50 hover:bg-red-500/15" 
+                                                        ? "bg-red-500/10 border-red-500/30 ring-1 ring-red-500/20 hover:border-red-500/50 hover:bg-red-500/15 cursor-pointer" 
                                                         : "bg-white/5 border-white/10 hover:border-white/20 hover:bg-white/10"
                                                 )}
+                                                onClick={() => {
+                                                    if (isV2Enabled && isUrgent && navigator.vibrate) {
+                                                        navigator.vibrate([100, 50, 100]);
+                                                    }
+                                                }}
                                             >
                                                 <div className="flex justify-between items-center gap-2">
                                                     <Badge 
@@ -1766,9 +1890,14 @@ export default function StaffPortal() {
                                                 className={cn(
                                                     "p-3 rounded-2xl border transition-all duration-300 relative overflow-hidden flex flex-col gap-1.5 group hover:scale-[1.02]",
                                                     isUrgent 
-                                                        ? "bg-red-500/10 border-red-500/30 ring-1 ring-red-500/20 hover:border-red-500/50 hover:bg-red-500/15" 
+                                                        ? "bg-red-500/10 border-red-500/30 ring-1 ring-red-500/20 hover:border-red-500/50 hover:bg-red-500/15 cursor-pointer" 
                                                         : "bg-white/5 border-white/10 hover:border-white/20 hover:bg-white/10"
                                                 )}
+                                                onClick={() => {
+                                                    if (isV2Enabled && isUrgent && navigator.vibrate) {
+                                                        navigator.vibrate([100, 50, 100]);
+                                                    }
+                                                }}
                                             >
                                                 <div className="flex justify-between items-center gap-2">
                                                     <Badge 
@@ -2089,14 +2218,7 @@ export default function StaffPortal() {
                             >
                                 <div
                                     className="p-5 md:p-6 cursor-pointer flex items-center justify-between min-h-[56px]"
-                                    onClick={() =>
-                                        setExpandedTask(
-                                            expandedTask &&
-                                                expandedTask === task.id
-                                                ? null
-                                                : task.id,
-                                        )
-                                    }
+                                    onClick={() => handleTaskClick(task)}
                                 >
                                     <div className="flex items-center gap-3 md:gap-5 flex-1 min-w-0">
                                         <div
@@ -2136,6 +2258,7 @@ export default function StaffPortal() {
                                                 >
                                                     {showCompleted ? "COMPLETED" : task.priority?.toUpperCase()}
                                                 </span>
+
                                                 {showCompleted && ((task as any).reviewed_at || (task as any).ceo_reviewed) && (
                                                     <span className="flex items-center gap-1 text-[9px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 uppercase tracking-widest animate-pulse">
                                                         <Check className="w-2.5 h-2.5 text-emerald-500" />
@@ -2230,25 +2353,67 @@ export default function StaffPortal() {
                                                                     </div>
                                                                     
                                                                     {/* Premium Glassmorphic Slider Track */}
-                                                                    <div className="relative flex items-center select-none">
-                                                                        <input 
-                                                                            type="range"
-                                                                            min="0"
-                                                                            max="100"
-                                                                            value={task.progress || 10}
-                                                                            onChange={(e) => {
-                                                                                const val = parseInt(e.target.value);
-                                                                                // Update locally for instant fluid drag response
-                                                                                setTasks(prev => prev.map(t => t.id === task.id ? { ...t, progress: val } : t));
-                                                                            }}
-                                                                            onMouseUp={(e: any) => {
-                                                                                updateTaskProgress(task.id, parseInt(e.target.value));
-                                                                            }}
-                                                                            onTouchEnd={(e: any) => {
-                                                                                updateTaskProgress(task.id, parseInt(e.target.value));
-                                                                            }}
-                                                                            className="w-full h-2 bg-slate-200 dark:bg-zinc-800 border border-slate-300 dark:border-white/5 rounded-lg appearance-none cursor-pointer accent-blue-500 focus:outline-none"
-                                                                        />
+                                                                    <div className="relative flex items-center select-none w-full h-6">
+                                                                        {isV2Enabled ? (
+                                                                            <>
+                                                                                {/* Custom Track Background */}
+                                                                                <div className="absolute inset-x-0 h-2 bg-slate-200 dark:bg-zinc-800 rounded-full border border-slate-300 dark:border-white/5" />
+                                                                                
+                                                                                {/* Custom Track Fill */}
+                                                                                <div 
+                                                                                    className="absolute left-0 h-2 bg-gradient-to-r from-orange-500 to-[#EF4A24] rounded-full"
+                                                                                    style={{ width: `${task.progress || 10}%` }}
+                                                                                />
+                                                                                
+                                                                                {/* Custom Track Micro-Glow */}
+                                                                                <div 
+                                                                                    className="absolute left-0 h-2 bg-orange-500 rounded-full blur-[4px] opacity-60 transition-all duration-150 shadow-[0_0_12px_rgba(239,74,36,0.5)]"
+                                                                                    style={{ width: `${task.progress || 10}%` }}
+                                                                                />
+
+                                                                                {/* Custom Slider Thumb Knob */}
+                                                                                <div 
+                                                                                    className="absolute w-4 h-4 bg-white dark:bg-zinc-100 rounded-full border border-orange-500 shadow-[0_0_8px_rgba(239,74,36,0.6)] transition-all duration-150 pointer-events-none"
+                                                                                    style={{ left: `calc(${task.progress || 10}% - 8px)` }}
+                                                                                />
+
+                                                                                <input 
+                                                                                    type="range"
+                                                                                    min="0"
+                                                                                    max="100"
+                                                                                    value={task.progress || 10}
+                                                                                    onChange={(e) => {
+                                                                                        const val = parseInt(e.target.value);
+                                                                                        setTasks(prev => prev.map(t => t.id === task.id ? { ...t, progress: val } : t));
+                                                                                    }}
+                                                                                    onMouseUp={(e: any) => {
+                                                                                        updateTaskProgress(task.id, parseInt(e.target.value));
+                                                                                    }}
+                                                                                    onTouchEnd={(e: any) => {
+                                                                                        updateTaskProgress(task.id, parseInt(e.target.value));
+                                                                                    }}
+                                                                                    className="absolute w-full h-6 opacity-0 cursor-pointer z-10"
+                                                                                />
+                                                                            </>
+                                                                        ) : (
+                                                                            <input 
+                                                                                type="range"
+                                                                                min="0"
+                                                                                max="100"
+                                                                                value={task.progress || 10}
+                                                                                onChange={(e) => {
+                                                                                    const val = parseInt(e.target.value);
+                                                                                    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, progress: val } : t));
+                                                                                }}
+                                                                                onMouseUp={(e: any) => {
+                                                                                    updateTaskProgress(task.id, parseInt(e.target.value));
+                                                                                }}
+                                                                                onTouchEnd={(e: any) => {
+                                                                                    updateTaskProgress(task.id, parseInt(e.target.value));
+                                                                                }}
+                                                                                className="w-full h-2 bg-slate-200 dark:bg-zinc-800 border border-slate-300 dark:border-white/5 rounded-lg appearance-none cursor-pointer accent-blue-500 focus:outline-none"
+                                                                            />
+                                                                        )}
                                                                     </div>
                                                                     
                                                                     {/* Quick Percentage Tabs */}

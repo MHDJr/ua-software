@@ -781,7 +781,7 @@ export function ExecutiveSalesOverview() {
             // Fetch unassigned students count
             const { count: unassignedData, error: unassignedError } = await supabase
                 .from("conversions")
-                .select("id", { count: 'exact', head: true })
+                .select("id", { count: 'exact' })
                 .is("assigned_tutor", null);
 
             if (unassignedError) {

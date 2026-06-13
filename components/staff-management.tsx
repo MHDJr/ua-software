@@ -1648,22 +1648,13 @@ export function StaffManagement() {
 
             const uid = staffToDelete.id;
 
-            // 2. Call the Admin API for PERMANENT deletion (Auth + Public Schema Purge)
-            // This ensures email and username are freed for future use.
-            const response = await fetch("/api/admin/delete-staff", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ 
-                    userId: uid,
-                    email: staffToDelete.email,
-                    username: staffToDelete.username 
-                }),
+            // 2. Call the database function to cascade delete the staff profile, auth user, and all relations
+            const { data: rpcSuccess, error: rpcError } = await supabase.rpc('delete_profile_cascade', {
+                profile_uuid: uid
             });
 
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.error || "Failed to purge staff records");
+            if (rpcError) {
+                throw new Error(rpcError.message || "Failed to purge staff records");
             }
 
             toast.success("OPERATIVE TERMINATED & DATA PURGED");

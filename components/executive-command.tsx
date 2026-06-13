@@ -33,6 +33,7 @@ import {
 } from "@/lib/supabase";
 import { createClient } from "@supabase/supabase-js";
 import { useAuth } from "@/lib/auth-context";
+import { computeVelocityMetrics } from "@/lib/velocity-engine";
 import { useTheme } from "./theme-provider";
 import { Button } from "@/components/ui/button";
 import {
@@ -203,6 +204,7 @@ CommandCard.displayName = "CommandCard";
 const ExecutivePerformanceEngine = React.memo(
     ({ tasks, completedTasks }: { tasks: Task[]; completedTasks: Task[] }) => {
         const { userRole } = useAuth();
+        const isV2Enabled = process.env.NEXT_PUBLIC_ENABLE_V2_FEATURES === "true" || (typeof window !== "undefined" && window.localStorage.getItem("ENABLE_V2_FEATURES") === "true");
 
         // Optimization: Pre-calculate velocity to avoid complex filtering in render
         const { velocity, activeTasksCount, completedTodayCount } = useMemo(() => {
@@ -222,6 +224,13 @@ const ExecutivePerformanceEngine = React.memo(
             };
         }, [tasks, completedTasks]);
 
+        const v2Metrics = useMemo(() => {
+            if (!isV2Enabled) return null;
+            return computeVelocityMetrics(tasks, completedTasks);
+        }, [tasks, completedTasks, isV2Enabled]);
+
+        const finalVelocity = isV2Enabled && v2Metrics ? v2Metrics.velocityScore : velocity;
+
         // Optimization: Memoize load distribution
         const loadDist = useMemo(() => {
             const departments = [
@@ -231,13 +240,15 @@ const ExecutivePerformanceEngine = React.memo(
                 "Finance",
             ];
             return departments.map((dept) => {
-                const count = tasks.filter((t) => {
+                const deptTasks = tasks.filter((t) => {
                     const deptName =
                         (t as any).assigned_to_user?.department?.toLowerCase() ||
                         "";
                     return deptName === dept.toLowerCase();
-                }).length;
-                return { name: dept, count };
+                });
+                const count = deptTasks.length;
+                const hasEscalated = deptTasks.some((t) => t.is_escalated === true);
+                return { name: dept, count, hasEscalated };
             });
         }, [tasks]);
 
@@ -273,13 +284,13 @@ const ExecutivePerformanceEngine = React.memo(
                             Operational Velocity
                         </span>
                         <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
-                            {velocity}%
+                            {finalVelocity}%
                         </span>
                     </div>
                     <div className="h-2.5 w-full bg-white dark:bg-zinc-900 rounded-full overflow-hidden flex p-0.5 border border-slate-100 dark:border-zinc-800 shadow-sm">
                         <motion.div
                             initial={{ width: 0 }}
-                            animate={{ width: `${velocity}%` }}
+                            animate={{ width: `${finalVelocity}%` }}
                             transition={{ duration: 1, ease: "easeOut" }}
                             className="h-full bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-400 rounded-full shadow-[0_0_12px_rgba(16,185,129,0.3)]"
                         />
@@ -300,6 +311,19 @@ const ExecutivePerformanceEngine = React.memo(
                     </div>
                 </div>
 
+                {isV2Enabled && v2Metrics && (
+                    <div className="grid grid-cols-2 gap-4 mb-6 p-4 rounded-2xl bg-slate-50/50 dark:bg-zinc-850/30 border border-slate-200/50 dark:border-zinc-800/30 text-[10px] font-mono shadow-sm">
+                        <div className="flex flex-col">
+                            <span className="text-slate-400 dark:text-zinc-500 uppercase tracking-wider text-[9px] font-black">Avg Read Lag</span>
+                            <span className="text-xs font-black text-slate-800 dark:text-slate-200 mt-0.5">{v2Metrics.averageReadLagMinutes}m</span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-slate-400 dark:text-zinc-500 uppercase tracking-wider text-[9px] font-black">Execution Speed</span>
+                            <span className="text-xs font-black text-slate-800 dark:text-slate-200 mt-0.5">{v2Metrics.averageExecutionHours}h</span>
+                        </div>
+                    </div>
+                )}
+
                 {/* Departmental Load Distribution */}
                 <div className="mb-2">
                     <div className="flex items-center gap-2 mb-5">
@@ -318,13 +342,15 @@ const ExecutivePerformanceEngine = React.memo(
                                     <span
                                         className={cn(
                                             "w-1.5 h-4 rounded-full transition-all duration-500 shadow-sm",
-                                            dept.name === "Administration"
-                                                ? "bg-slate-400 dark:bg-zinc-500"
-                                                : dept.name === "Marketing"
-                                                  ? "bg-purple-500 dark:bg-purple-600"
-                                                  : dept.name === "Sales"
-                                                    ? "bg-orange-500 dark:bg-orange-600"
-                                                    : "bg-blue-500 dark:bg-blue-600",
+                                            isV2Enabled && (dept as any).hasEscalated
+                                                ? "bg-red-500 dark:bg-red-650 animate-pulse ring-2 ring-red-500/30 shadow-[0_0_10px_rgba(239,68,68,0.8)]"
+                                                : dept.name === "Administration"
+                                                  ? "bg-slate-400 dark:bg-zinc-500"
+                                                  : dept.name === "Marketing"
+                                                    ? "bg-purple-500 dark:bg-purple-600"
+                                                    : dept.name === "Sales"
+                                                      ? "bg-orange-500 dark:bg-orange-600"
+                                                      : "bg-blue-500 dark:bg-blue-600",
                                         )}
                                     />
                                     <span className="text-[11px] font-black text-slate-400 dark:text-zinc-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors uppercase tracking-tight">
@@ -339,14 +365,16 @@ const ExecutivePerformanceEngine = React.memo(
                                                 width: `${(dept.count / maxLoad) * 100}%`,
                                             }}
                                             className={cn(
-                                                "h-full rounded-full opacity-80 shadow-sm",
-                                                dept.name === "Administration"
-                                                    ? "bg-slate-400 dark:bg-zinc-500"
-                                                    : dept.name === "Marketing"
-                                                      ? "bg-purple-500 dark:bg-purple-600"
-                                                      : dept.name === "Sales"
-                                                        ? "bg-orange-500 dark:bg-orange-600"
-                                                        : "bg-blue-500 dark:bg-blue-600",
+                                                "h-full rounded-full opacity-80 shadow-sm transition-all duration-500",
+                                                isV2Enabled && (dept as any).hasEscalated
+                                                    ? "bg-gradient-to-r from-red-600 via-red-500 to-red-400 shadow-[0_0_8px_rgba(239,68,68,0.6)] animate-pulse"
+                                                    : dept.name === "Administration"
+                                                      ? "bg-slate-400 dark:bg-zinc-500"
+                                                      : dept.name === "Marketing"
+                                                        ? "bg-purple-500 dark:bg-purple-600"
+                                                        : dept.name === "Sales"
+                                                          ? "bg-orange-500 dark:bg-orange-600"
+                                                          : "bg-blue-500 dark:bg-blue-600",
                                             )}
                                         />
                                     </div>
@@ -429,6 +457,7 @@ const renderCEOTaskGauge = (t: Task) => {
 
 export function ExecutiveCommand({ currentView }: { currentView?: string }) {
     const router = useRouter();
+    const isV2Enabled = process.env.NEXT_PUBLIC_ENABLE_V2_FEATURES === "true" || (typeof window !== "undefined" && window.localStorage.getItem("ENABLE_V2_FEATURES") === "true");
     const { profile, signOut, userRole, loading } = useAuth();
     const { theme } = useTheme();
     const queryClient = useQueryClient();
@@ -538,6 +567,9 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
         new Set(),
     );
     const [deletingTaskIds, setDeletingTaskIds] = useState<Set<string>>(
+        new Set(),
+    );
+    const [escalatingTaskIds, setEscalatingTaskIds] = useState<Set<string>>(
         new Set(),
     );
     const [clearedNotifications, setClearedNotifications] = useState<
@@ -913,12 +945,14 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
         
         // 1. Escalations (High Priority)
         tasks.forEach(t => {
-            if (t.priority === "urgent" && !(t as any).signal_cleared) {
+            if ((t.priority === "urgent" || (isV2Enabled && t.is_escalated)) && !(t as any).signal_cleared) {
                 items.push({
                     id: `esc-${t.id}`,
                     category: "escalation",
-                    title: "Operation Escalated",
-                    description: `Urgent: ${t.title}`,
+                    title: t.is_escalated ? "Critical Escalation" : "Operation Escalated",
+                    description: t.is_escalated 
+                        ? `OPERATION ESCALATED: "${t.title}" is critically overdue!` 
+                        : `Urgent: ${t.title}`,
                     time: t.updated_at || t.created_at,
                     icon: AlertCircle,
                     color: "#ef4444",
@@ -1100,6 +1134,7 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
         completedTasks,
         meetings,
         clearedNotifications,
+        isV2Enabled,
     ]);
 
     // Clear Signal Feed
@@ -1327,7 +1362,13 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
         }).length;
         
         const totalToday = tasks.length + completedTodayCount;
-        const operationalVelocity = totalToday > 0 ? Math.round((completedTodayCount / totalToday) * 100) : 0;
+        
+        // Use v2 velocity aggregation engine if enabled
+        const isV2Enabled = process.env.NEXT_PUBLIC_ENABLE_V2_FEATURES === "true" || (typeof window !== "undefined" && window.localStorage.getItem("ENABLE_V2_FEATURES") === "true");
+        const v2Metrics = isV2Enabled ? computeVelocityMetrics(tasks, completedTasks) : null;
+        const operationalVelocity = v2Metrics 
+            ? v2Metrics.velocityScore 
+            : (totalToday > 0 ? Math.round((completedTodayCount / totalToday) * 100) : 0);
 
         // Financial metrics (Current calendar month balance)
         const currentMonthStr = new Date().toISOString().slice(0, 7); // YYYY-MM
@@ -1587,22 +1628,13 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
 
             const uid = staffToRemove.id;
 
-            // 2. Call the Admin API for PERMANENT deletion (Auth + Public Schema Purge)
-            // This ensures email and username are freed for future use.
-            const response = await fetch("/api/admin/delete-staff", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ 
-                    userId: uid,
-                    email: staffToRemove.email,
-                    username: staffToRemove.username 
-                }),
+            // 2. Call the database function to cascade delete the staff profile, auth user, and all relations
+            const { data: rpcSuccess, error: rpcError } = await supabase.rpc('delete_profile_cascade', {
+                profile_uuid: uid
             });
 
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.error || "Failed to purge staff records");
+            if (rpcError) {
+                throw new Error(rpcError.message || "Failed to purge staff records");
             }
 
             toast.success("OPERATIVE TERMINATED & DATA PURGED");
@@ -2055,6 +2087,44 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
         } catch (error) {
             console.error("Approve and close exception:", error);
             toast.error("Something went wrong approving and closing the task");
+        }
+    };
+
+    const escalateTask = async (id: string) => {
+        try {
+            console.log("Escalating task:", id);
+            setEscalatingTaskIds((prev) => {
+                const next = new Set(prev);
+                next.add(id);
+                return next;
+            });
+
+            const response = await fetch("/api/tasks/escalate", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ taskId: id }),
+            });
+
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                throw new Error(errData.error || "Failed to escalate task");
+            }
+
+            toast.success("Task escalated to Core operations!");
+            // Invalidate queries to trigger real-time refresh instantly
+            queryClient.invalidateQueries({ queryKey: ["tasks"] });
+            fetchData();
+        } catch (error: any) {
+            console.error("Escalation exception:", error);
+            toast.error(error.message || "Something went wrong escalating the task");
+        } finally {
+            setEscalatingTaskIds((prev) => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+            });
         }
     };
 
@@ -3000,6 +3070,33 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                                                                       )}
                                                                   </Badge>
                                                               )}
+                                                              {isV2Enabled && t.assigned_to !== profile?.id && (t.created_by === profile?.id || (t as any).assigned_by === profile?.id) && (
+                                                                  <div className="flex items-center gap-0.5 text-slate-400 dark:text-zinc-500 select-none ml-1 shrink-0">
+                                                                      {(() => {
+                                                                          const status = t.status === "completed" || t.status === "reviewed" ? "read" : (t.delivery_status || "sent");
+                                                                          if (status === "sent") {
+                                                                              return <Check className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />;
+                                                                          }
+                                                                          if (status === "delivered") {
+                                                                              return (
+                                                                                  <div className="flex -space-x-1.5">
+                                                                                      <Check className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />
+                                                                                      <Check className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />
+                                                                                  </div>
+                                                                              );
+                                                                          }
+                                                                          if (status === "read") {
+                                                                              return (
+                                                                                  <div className="flex -space-x-1.5">
+                                                                                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                                                                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                                                                  </div>
+                                                                              );
+                                                                          }
+                                                                          return null;
+                                                                      })()}
+                                                                  </div>
+                                                              )}
                                                           </div>
                                                           <p className="text-[10px] text-slate-400 dark:text-zinc-400 font-medium tracking-wide line-clamp-2 leading-relaxed mt-1">
                                                               {t.description ||
@@ -3137,6 +3234,96 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                                                           )}
                                                       </div>
                                                       <div className="flex items-center gap-2">
+                                                          {(() => {
+                                                              const isAssigner =
+                                                                  t.created_by ===
+                                                                      profile?.id ||
+                                                                  (t as any)
+                                                                      .assigned_by ===
+                                                                      profile?.id;
+                                                              const isCeoOrAssigner =
+                                                                  userRole ===
+                                                                      "CEO" ||
+                                                                  isAssigner;
+                                                              const progressValue =
+                                                                  (
+                                                                      t.status ||
+                                                                      "PENDING"
+                                                                  ).toUpperCase() ===
+                                                                  "COMPLETED"
+                                                                      ? 100
+                                                                      : (t.progress ||
+                                                                            0);
+                                                              const showEscalateButton =
+                                                                  isV2Enabled &&
+                                                                  isCeoOrAssigner &&
+                                                                  isOverdue &&
+                                                                  progressValue <
+                                                                      100;
+
+                                                              if (
+                                                                  !showEscalateButton
+                                                              )
+                                                                  return null;
+
+                                                              const escalatedAtDate = t.escalated_at ? new Date(t.escalated_at) : null;
+                                                              const isCoolingDown = escalatedAtDate && (Math.abs(new Date().getTime() - escalatedAtDate.getTime()) < 5 * 60 * 1000);
+
+                                                              if (isCoolingDown) {
+                                                                  return (
+                                                                      <button
+                                                                          disabled
+                                                                          className="h-8 px-3 text-[9px] font-black uppercase bg-red-500/5 text-red-400/50 border border-red-500/10 cursor-not-allowed flex items-center gap-1.5 shadow-none"
+                                                                      >
+                                                                          <Clock className="w-3.5 h-3.5 text-red-500/40 animate-pulse" />
+                                                                          Escalation Cooling Down...
+                                                                      </button>
+                                                                  );
+                                                              }
+
+                                                              if (t.is_escalated) {
+                                                                  return (
+                                                                      <button
+                                                                          disabled
+                                                                          className="h-8 px-3 text-[9px] font-black uppercase bg-red-500/5 text-red-400/55 border border-red-500/20 rounded-xl cursor-not-allowed flex items-center gap-1.5 shadow-none"
+                                                                      >
+                                                                          <ShieldAlert className="w-3.5 h-3.5 text-red-500/50" />
+                                                                          Escalated to Core
+                                                                      </button>
+                                                                  );
+                                                              }
+
+                                                              return (
+                                                                  <button
+                                                                      onClick={() =>
+                                                                          escalateTask(
+                                                                              t.id,
+                                                                          )
+                                                                      }
+                                                                      disabled={escalatingTaskIds.has(
+                                                                          t.id,
+                                                                      )}
+                                                                      className="h-8 px-3 text-[9px] font-black uppercase bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.2)] animate-pulse rounded-xl transition-all flex items-center gap-1.5 hover:-translate-y-0.5"
+                                                                      title="Escalate Overdue Task"
+                                                                  >
+                                                                      {escalatingTaskIds.has(
+                                                                          t.id,
+                                                                      ) ? (
+                                                                          <>
+                                                                              <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                                                                              Escalating...
+                                                                          </>
+                                                                      ) : (
+                                                                          <>
+                                                                              <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+                                                                              Escalate
+                                                                              to
+                                                                              Core
+                                                                          </>
+                                                                      )}
+                                                                  </button>
+                                                              );
+                                                          })()}
                                                           {((
                                                               t.status || ""
                                                           ).toUpperCase() ===

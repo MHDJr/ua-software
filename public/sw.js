@@ -2,6 +2,7 @@
 self.addEventListener('push', function(event) {
   if (event.data) {
     const data = event.data.json();
+    const isEscalated = data.title === 'Critical Operational Delay' || (data.body && data.body.includes('escalated'));
     const options = {
       body: data.body,
       icon: '/images/alert-icon.png', // Ensure this icon exists or use a placeholder
@@ -9,7 +10,8 @@ self.addEventListener('push', function(event) {
       vibrate: [200, 100, 200, 100, 200, 100, 200], // Distinctive vibration pattern
       data: {
         dateOfArrival: Date.now(),
-        primaryKey: '2'
+        primaryKey: '2',
+        isEscalated: isEscalated
       },
       actions: [
         {action: 'explore', title: 'View Details', icon: '/images/checkmark.png'},
@@ -33,26 +35,43 @@ self.addEventListener('push', function(event) {
 
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();
+  const isEscalated = event.notification.data && event.notification.data.isEscalated;
 
-  if (event.action === 'explore') {
-    // Open the app
-    event.waitUntil(
-      clients.matchAll({type: 'window'}).then( windowClients => {
-        // Check if there is already a window/tab open with the target URL
-        for (var i = 0; i < windowClients.length; i++) {
-          var client = windowClients[i];
-          // If so, just focus it.
-          if (client.url === '/' && 'focus' in client) {
+  // Focus browser window or load the '/staff' route context upon interaction
+  event.waitUntil(
+    clients.matchAll({type: 'window', includeUncontrolled: true}).then(windowClients => {
+      // Check if there is already a window/tab open with the staff portal
+      for (var i = 0; i < windowClients.length; i++) {
+        var client = windowClients[i];
+        try {
+          var clientUrl = new URL(client.url);
+          if ((clientUrl.pathname === '/staff' || clientUrl.pathname === '/staff/') && 'focus' in client) {
+            if (isEscalated) {
+              return client.navigate('/staff?escalated=true').then(c => {
+                if (c && 'focus' in c) return c.focus();
+              });
+            }
+            return client.focus();
+          }
+        } catch (e) {
+          // Fallback if URL parsing fails
+          if (client.url.indexOf('/staff') !== -1 && 'focus' in client) {
+            if (isEscalated) {
+              return client.navigate('/staff?escalated=true').then(c => {
+                if (c && 'focus' in c) return c.focus();
+              });
+            }
             return client.focus();
           }
         }
-        // If not, then open the target URL in a new window/tab.
-        if (clients.openWindow) {
-          return clients.openWindow('/');
-        }
-      })
-    );
-  }
+      }
+      // If not, open a new window/tab targeting the /staff portal
+      if (clients.openWindow) {
+        const targetUrl = isEscalated ? '/staff?escalated=true' : '/staff';
+        return clients.openWindow(targetUrl);
+      }
+    })
+  );
 });
 
 self.addEventListener('install', function(event) {
