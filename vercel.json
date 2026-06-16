@@ -1,10 +1,10 @@
 {
   "cleanUrls": true,
   "trailingSlash": true,
-  "rewrites": [
+  "crons": [
     {
-      "source": "/(.*)",
-      "destination": "/index.html"
+      "path": "/api/cron/purge-messages",
+      "schedule": "0 * * * *"
     }
   ]
 }
