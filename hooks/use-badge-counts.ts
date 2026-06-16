@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 export interface BadgeCounts {
   pendingRequests: number;
   victories: number;
+  unreadNotifications: number;
 }
 
 export function useBadgeCounts() {
@@ -14,6 +15,7 @@ export function useBadgeCounts() {
   const [badgeCounts, setBadgeCounts] = useState<BadgeCounts>({
     pendingRequests: 0,
     victories: 0,
+    unreadNotifications: 0,
   });
   const [loading, setLoading] = useState(true);
   const subscriptionsRef = useRef<any[]>([]);
@@ -22,15 +24,27 @@ export function useBadgeCounts() {
     try {
       // Fetch data in parallel
       const today = new Date().toISOString().split('T')[0];
-      const [pendingRes, victoriesRes] = await Promise.all([
+      const queries: any[] = [
         supabase.from("requests").select("id", { count: "exact" }).eq("status", "pending").eq("signal_cleared", false),
         supabase.from("tasks").select("id", { count: "exact" }).eq("status", "completed").gte("updated_at", today)
-      ]);
+      ];
+
+      if (user?.id) {
+        queries.push(
+          supabase.from("notifications").select("id", { count: "exact" }).eq("user_id", user.id).eq("read", false)
+        );
+      }
+
+      const results = await Promise.all(queries);
+      const pendingRes = results[0];
+      const victoriesRes = results[1];
+      const notificationsRes = user?.id ? results[2] : { count: 0 };
 
       if (isMounted) {
         setBadgeCounts({
           pendingRequests: pendingRes.count || 0,
           victories: victoriesRes.count || 0,
+          unreadNotifications: notificationsRes?.count || 0,
         });
       }
     } catch (error) {
@@ -38,7 +52,7 @@ export function useBadgeCounts() {
     } finally {
       if (isMounted) setLoading(false);
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     if (authLoading || !user) {
@@ -85,7 +99,12 @@ export function useBadgeCounts() {
         .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, debouncedFetch)
         .subscribe();
         
-      subscriptionsRef.current = [requestsSub, tasksSub];
+      const notificationsSub = supabase
+        .channel(`badge-notifications-changes-${instanceId}`)
+        .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, debouncedFetch)
+        .subscribe();
+        
+      subscriptionsRef.current = [requestsSub, tasksSub, notificationsSub];
     };
 
     fetchBadgeCounts(isMounted);

@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { LayoutDashboard, Users, Mail, ChevronRight, ChevronLeft, TrendingUp, LogOut, Wallet, Brain, Plus, Calendar } from "lucide-react";
+import { LayoutDashboard, Users, Mail, ChevronRight, ChevronLeft, TrendingUp, LogOut, Wallet, Brain, Plus, Calendar, MessageSquare } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn, isValidAvatarUrl } from "@/lib/utils";
 import { useBadgeCounts } from "@/hooks/use-badge-counts";
@@ -63,9 +63,11 @@ interface CEOSidebarProps {
     activeView: string;
     onMinimizedChange?: (isMinimized: boolean) => void;
     onViewChange?: (view: string) => void;
+    unreadCommsCount?: number;
+    isCommsOpen?: boolean;
 }
 
-export function CEOSidebar({ activeView, onMinimizedChange, onViewChange }: CEOSidebarProps) {
+export function CEOSidebar({ activeView, onMinimizedChange, onViewChange, unreadCommsCount, isCommsOpen }: CEOSidebarProps) {
     const [isMinimized, setIsMinimized] = useState(true);
     const [hoveredItem, setHoveredItem] = useState<string | null>(null);
     const { badgeCounts } = useBadgeCounts();
@@ -117,7 +119,8 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange }: CEOS
         const Icon = item.icon;
 
         const badgeCount = (item.id === "staff-management") ? badgeCounts.pendingRequests : 
-                           (item.id === "inbox") ? badgeCounts.victories : 0;
+                           (item.id === "inbox") ? badgeCounts.unreadNotifications : 
+                           (item.id === "comms") ? (unreadCommsCount ?? 0) : 0;
 
         return (
             <li key={item.id}>

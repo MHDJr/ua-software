@@ -10,8 +10,12 @@ import { useAuth } from "@/lib/auth-context";
 import { useEffect, useState, useMemo, Suspense, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Loader2, ShieldCheck, ShieldAlert, Plus, Target, Clock, UserPlus, Megaphone } from "lucide-react";
+import { Loader2, ShieldCheck, ShieldAlert, Plus, Target, Clock, UserPlus, Megaphone, MessageSquare, Bell, MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase";
+import { CEOCommsDrawer } from "@/components/ceo-comms-drawer";
+import { toast } from "sonner";
+import { useRef } from "react";
 
 type CEOView = "command-center" | "inbox" | "staff-management" | "sales-intelligence" | "financial-intelligence";
 
@@ -26,6 +30,70 @@ function CEOPageContent() {
     const [isSidebarMinimized, setIsSidebarMinimized] = useState(true);
     const [isTransitioning, setIsTransitioning] = useState(false);
     const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
+    
+    // Comms Drawer States
+    const [isCommsOpen, setIsCommsOpen] = useState(false);
+    const [unreadCommsCount, setUnreadCommsCount] = useState(0);
+
+    const fetchUnreadCommsCount = useCallback(async () => {
+        if (!profile?.id) return;
+        try {
+            const { count, error } = await supabase
+                .from("notifications")
+                .select("*", { count: "exact", head: true })
+                .eq("user_id", profile.id)
+                .eq("read", false);
+            if (!error && count !== null) {
+                setUnreadCommsCount(count);
+            }
+        } catch (err) {
+            console.error("Error fetching unread count:", err);
+        }
+    }, [profile?.id]);
+
+    useEffect(() => {
+        if (profile?.id) {
+            fetchUnreadCommsCount();
+            
+            // Poll for unread count every 30 seconds
+            const interval = setInterval(fetchUnreadCommsCount, 30000);
+            return () => clearInterval(interval);
+        }
+    }, [profile?.id, fetchUnreadCommsCount]);
+
+    useEffect(() => {
+        if (!isCommsOpen && profile?.id) {
+            fetchUnreadCommsCount();
+        }
+    }, [isCommsOpen, profile?.id, fetchUnreadCommsCount]);
+
+    // Listen for toggle-hq-messenger event from header button
+    useEffect(() => {
+        const handleToggle = () => setIsCommsOpen(prev => !prev);
+        window.addEventListener("toggle-hq-messenger", handleToggle);
+        return () => window.removeEventListener("toggle-hq-messenger", handleToggle);
+    }, []);
+
+    // Listen for open-hq-messenger event (one-way open)
+    useEffect(() => {
+        const handleOpen = () => setIsCommsOpen(true);
+        window.addEventListener("open-hq-messenger", handleOpen);
+        return () => window.removeEventListener("open-hq-messenger", handleOpen);
+    }, []);
+
+    // Toast alert on incoming unread messages
+    const prevCountRef = useRef(0);
+    useEffect(() => {
+        if (unreadCommsCount > prevCountRef.current) {
+            toast.info("New message received in Communications Terminal", {
+                action: {
+                    label: "Open",
+                    onClick: () => setIsCommsOpen(true)
+                }
+            });
+        }
+        prevCountRef.current = unreadCommsCount;
+    }, [unreadCommsCount]);
 
     // Permission Guard: Only allow authorized roles
     const isAuthorized = useMemo(() => {
@@ -149,8 +217,11 @@ function CEOPageContent() {
                     activeView={activeView}
                     onMinimizedChange={setIsSidebarMinimized}
                     onViewChange={handleViewChange}
+                    unreadCommsCount={unreadCommsCount}
+                    isCommsOpen={isCommsOpen}
                 />
             </div>
+
 
             {/* Global Block Overlay / Backdrop for FAB */}
             {isActionMenuOpen && (
@@ -244,6 +315,15 @@ function CEOPageContent() {
                     {activeView === "sales-intelligence" && <ExecutiveSalesOverview />}
                 </Suspense>
             </main>
+
+
+
+
+            <CEOCommsDrawer 
+                isOpen={isCommsOpen}
+                onClose={() => setIsCommsOpen(false)}
+                profile={profile}
+            />
         </div>
     );
 }

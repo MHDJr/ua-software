@@ -94,15 +94,11 @@ export function MobileBottomNav({ activeView, onViewChange }: MobileBottomNavPro
 
     // Get badge count based on item ID
     const getBadgeCount = (id: string) => {
-        if (userRole === "CEO") {
-            switch (id) {
-                case "staff-management":
-                    return badgeCounts.pendingRequests;
-                case "inbox":
-                    return badgeCounts.victories;
-                default:
-                    return 0;
-            }
+        if (id === "inbox") {
+            return badgeCounts.unreadNotifications;
+        }
+        if (userRole === "CEO" && id === "staff-management") {
+            return badgeCounts.pendingRequests;
         }
         return 0;
     };

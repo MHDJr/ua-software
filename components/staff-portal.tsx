@@ -57,7 +57,9 @@ import {
     Wallet,
     Circle,
     Crown,
+    Loader2,
 } from "lucide-react";
+import { MessageDialog } from "@/components/message-dialog";
 import Link from "next/link";
 import { toast } from "sonner";
 import { compressImage } from "@/lib/image-utils";
@@ -602,6 +604,140 @@ export default function StaffPortal() {
     const [requests, setRequests] = useState<any[]>([]);
     const [notifications, setNotifications] = useState<any[]>([]);
     const [profiles, setProfiles] = useState<Profile[]>([]);
+
+    // Message Actions and Reply States
+    const [replyingToNotification, setReplyingToNotification] = useState<any | null>(null);
+    const [replyMessage, setReplyMessage] = useState("");
+    const [isSendingReply, setIsSendingReply] = useState(false);
+    const [activeReplyId, setActiveReplyId] = useState<string | null>(null);
+    const [isMessageDialogOpen, setIsMessageDialogOpen] = useState(false);
+    const [isBellOpen, setIsBellOpen] = useState(false);
+
+    const parseMessagePayload = (msgText: string) => {
+        if (!msgText) return { senderId: null, cleanText: "" };
+        const match = msgText.match(/^\[sender_id:([\w-]+)\](.*)/s);
+        return {
+            senderId: match ? match[1] : null,
+            cleanText: match ? match[2].trim() : msgText
+        };
+    };
+
+    const handleSendReply = async () => {
+        if (!replyingToNotification || !replyMessage.trim()) return;
+        setIsSendingReply(true);
+        try {
+            const { senderId } = parseMessagePayload(replyingToNotification.message);
+            let recipientId = senderId;
+            
+            // Fallback: If no sender_id is parsed, find the CEO id
+            if (!recipientId) {
+                recipientId = profiles.find(p => p.role === "ceo")?.id || null;
+            }
+            
+            if (!recipientId) {
+                throw new Error("Could not determine reply recipient. No sender ID found and no CEO profile available.");
+            }
+            
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+            
+            const response = await fetch("/api/send-message", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+                },
+                body: JSON.stringify({
+                    user_id: recipientId,
+                    title: `REPLY FROM ${profile?.full_name?.toUpperCase() || "STAFF"}`,
+                    message: `[sender_id:${profile?.id || ""}] ${replyMessage.trim()}`,
+                    type: "direct"
+                })
+            });
+            
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.error || "Failed to send reply");
+            }
+            
+            toast.success("Reply dispatched successfully");
+            setReplyMessage("");
+            setReplyingToNotification(null);
+            fetchData(); // Sync live feed
+        } catch (err: any) {
+            console.error("Reply error:", err);
+            toast.error(err.message || "Failed to send reply");
+        } finally {
+            setIsSendingReply(false);
+        }
+    };
+
+    const handleSendInlineReply = async (notif: any) => {
+        if (!replyMessage.trim()) return;
+        setIsSendingReply(true);
+        try {
+            const { senderId } = parseMessagePayload(notif.message);
+            let recipientId = senderId;
+            
+            // Fallback: If no sender_id is parsed, find the CEO id
+            if (!recipientId) {
+                recipientId = profiles.find(p => p.role === "ceo")?.id || null;
+            }
+            
+            if (!recipientId) {
+                throw new Error("Could not determine reply recipient. No sender ID found and no CEO profile available.");
+            }
+            
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+            
+            const response = await fetch("/api/send-message", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+                },
+                body: JSON.stringify({
+                    user_id: recipientId,
+                    title: `REPLY FROM ${profile?.full_name?.toUpperCase() || "STAFF"}`,
+                    message: `[sender_id:${profile?.id || ""}] ${replyMessage.trim()}`,
+                    type: "direct"
+                })
+            });
+            
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.error || "Failed to send reply");
+            }
+            
+            toast.success("Reply dispatched successfully");
+            setReplyMessage("");
+            setActiveReplyId(null);
+            fetchData(); // Sync live feed
+        } catch (err: any) {
+            console.error("Reply error:", err);
+            toast.error(err.message || "Failed to send reply");
+        } finally {
+            setIsSendingReply(false);
+        }
+    };
+
+    const handleMarkAsRead = async (notifId: string) => {
+        try {
+            const { error } = await supabase
+                .from("notifications")
+                .update({ read: true })
+                .eq("id", notifId);
+            if (error) throw error;
+            
+            // Update local state directly for instant feedback
+            setNotifications(prev => prev.map(n => n.id === notifId ? { ...n, read: true } : n));
+            toast.success("Message marked as read");
+        } catch (err: any) {
+            console.error("Mark as read error:", err);
+            toast.error("Failed to mark as read: " + err.message);
+        }
+    };
     // Add state to track user interactions
     const [isUserInteracting, setIsUserInteracting] = useState(false);
     const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -943,13 +1079,39 @@ export default function StaffPortal() {
 
             // Create CEO notification
             if (!attendanceError && !presenceError) {
-                await supabase.from("notifications").insert({
-                    user_id: "ceo-profile-id",
-                    title: "Mission Start Alert",
-                    message: `${profile.full_name || profile.email} is now ON MISSION`,
-                    type: "alert",
-                    created_at: new Date().toISOString(),
-                });
+                let targetCeoId = profiles.find(p => p.role === "ceo")?.id;
+                if (!targetCeoId) {
+                    const { data: ceoProfile } = await supabase
+                        .from("profiles")
+                        .select("id")
+                        .eq("role", "ceo")
+                        .limit(1)
+                        .maybeSingle();
+                    if (ceoProfile) targetCeoId = ceoProfile.id;
+                }
+
+                if (targetCeoId) {
+                    try {
+                        const { data: { session } } = await supabase.auth.getSession();
+                        const token = session?.access_token;
+                        
+                        await fetch("/api/send-message", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                                ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+                            },
+                            body: JSON.stringify({
+                                user_id: targetCeoId,
+                                title: "Mission Start Alert",
+                                message: `${profile.full_name || profile.email} is now ON MISSION`,
+                                type: "alert"
+                            })
+                        });
+                    } catch (err) {
+                        console.error("Failed to notify CEO of mission start:", err);
+                    }
+                }
 
                 setUserStatus("on_mission");
                 setSessionStart(new Date());
@@ -1448,6 +1610,179 @@ export default function StaffPortal() {
             : 0;
     }, [tasks]);
 
+    const canSendMessage = useMemo(() => {
+        if (!profile) return false;
+        const role = profile.role?.toLowerCase();
+        const dept = profile.department?.toLowerCase();
+        return role === "ceo" || role === "manager" || profile.is_manager || dept === "administration" || dept === "admin";
+    }, [profile]);
+
+    const isHigherOfficial = (senderProfile: Profile | null, title?: string) => {
+        if (senderProfile) {
+            const role = senderProfile.role?.toLowerCase();
+            const dept = senderProfile.department?.toLowerCase();
+            return role === "ceo" || role === "manager" || senderProfile.is_manager || dept === "administration" || dept === "admin";
+        }
+        const t = title?.toLowerCase() || "";
+        return t.includes("ceo") || t.includes("manager") || t.includes("administrator");
+    };
+
+    const renderLiveFeedItem = (notif: any, isMobile: boolean = false) => {
+        const isUrgent = notif.type === "alert";
+        const { senderId, cleanText } = parseMessagePayload(notif.message);
+        const senderProfile = profiles.find(p => p.id === senderId);
+        const isFromHigher = isHigherOfficial(senderProfile || null, notif.title);
+        const isUnread = !notif.read;
+
+        const senderName = senderProfile 
+            ? senderProfile.full_name 
+            : (notif.title?.toUpperCase().includes("CEO") ? "SALIM PA (CEO)" : (notif.title || "USTHAD ACADEMY"));
+            
+        const senderDesignation = senderProfile 
+            ? (senderProfile.role === "ceo" ? "CEO" : senderProfile.is_manager ? `${senderProfile.department} Manager` : senderProfile.role?.toUpperCase()) 
+            : (notif.title?.toUpperCase().includes("CEO") ? "CEO" : "");
+
+        const cardId = notif.id;
+
+        return (
+            <motion.div
+                key={notif.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={cn(
+                    "p-4 border transition-all duration-300 relative overflow-hidden flex flex-col gap-2 group hover:scale-[1.02] bg-white/5 border-white/10 hover:border-white/20 hover:bg-white/10 text-left",
+                    isMobile ? "rounded-xl" : "rounded-2xl",
+                    isUrgent && "bg-red-500/10 border-red-500/30 ring-1 ring-red-500/20 hover:border-red-500/50 hover:bg-red-500/15 cursor-pointer",
+                    isUnread && isFromHigher && "border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.12)] animate-[pulse_3s_infinite]"
+                )}
+                onClick={() => {
+                    if (isV2Enabled && isUrgent && navigator.vibrate) {
+                        navigator.vibrate([100, 50, 100]);
+                    }
+                }}
+            >
+                {/* High Priority Accent Bar */}
+                {isUnread && isFromHigher && (
+                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-yellow-500 via-amber-500 to-yellow-600 shadow-[0_0_12px_#f59e0b] rounded-l-2xl animate-pulse" />
+                )}
+
+                {/* Card Header */}
+                <div className="flex justify-between items-start gap-2">
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                        <span className={cn(
+                            "text-xs font-black tracking-wide flex items-center gap-1.5 truncate",
+                            isFromHigher ? "text-amber-400 font-extrabold" : "text-white"
+                        )}>
+                            {senderName}
+                            {senderDesignation && (
+                                <span className="text-[8px] font-black tracking-widest text-[#F15A24] bg-[#F15A24]/10 px-1.5 py-0.5 rounded uppercase flex-shrink-0">
+                                    {senderDesignation}
+                                </span>
+                            )}
+                        </span>
+                        <span className="text-[8px] text-white/35 font-bold uppercase tracking-wider">
+                            {format(new Date(notif.created_at), 'MMM d, h:mm a')}
+                        </span>
+                    </div>
+
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                        {isUnread && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                        )}
+                        <Badge 
+                            className={cn(
+                                "text-[7px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border-none",
+                                isUrgent 
+                                    ? "bg-red-500 text-white animate-pulse" 
+                                    : "bg-indigo-500/20 text-indigo-300"
+                            )}
+                        >
+                            {notif.title || (isUrgent ? "URGENT ALERT" : "MESSAGE")}
+                        </Badge>
+                    </div>
+                </div>
+
+                {/* Message Body */}
+                <p className="text-xs font-medium leading-relaxed text-slate-100 tracking-wide break-words mt-1">
+                    {cleanText}
+                </p>
+
+                {/* Glassmorphic Action Footer */}
+                <div className="flex items-center justify-between border-t border-white/5 pt-2 mt-2">
+                    {isUnread ? (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleMarkAsRead(notif.id);
+                            }}
+                            className="flex items-center gap-1.5 text-[8px] font-bold uppercase tracking-wider text-emerald-400 hover:text-emerald-350 bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-1 rounded-lg transition-all"
+                        >
+                            <Check className="w-2.5 h-2.5" /> Read
+                        </button>
+                    ) : (
+                        <span className="text-[8px] text-white/30 font-bold uppercase tracking-wider">✓ Read</span>
+                    )}
+
+                    {senderId && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveReplyId(prev => prev === cardId ? null : cardId);
+                                setReplyMessage("");
+                            }}
+                            className="flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider text-indigo-300 hover:text-white bg-indigo-500/20 hover:bg-indigo-655/30 px-2 py-1 rounded-lg transition-all"
+                        >
+                            <MessageSquare className="w-2.5 h-2.5" /> {activeReplyId === cardId ? "Cancel" : "Reply"}
+                        </button>
+                    )}
+                </div>
+
+                {/* Inline Reply Form with Framer Motion */}
+                <AnimatePresence>
+                    {activeReplyId === cardId && (
+                        <motion.div
+                            initial={{ height: 0, opacity: 0, marginTop: 0 }}
+                            animate={{ height: "auto", opacity: 1, marginTop: 8 }}
+                            exit={{ height: 0, opacity: 0, marginTop: 0 }}
+                            transition={{ duration: 0.2, ease: "easeInOut" }}
+                            className="overflow-hidden"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <form 
+                                onSubmit={(e) => {
+                                    e.preventDefault();
+                                    handleSendInlineReply(notif);
+                                }}
+                                className="relative flex items-center bg-white/5 border border-white/10 rounded-xl p-1 focus-within:border-amber-500/50 transition-colors"
+                            >
+                                <input
+                                    type="text"
+                                    value={replyMessage}
+                                    onChange={(e) => setReplyMessage(e.target.value)}
+                                    placeholder={`Reply to ${senderName}...`}
+                                    className="w-full bg-transparent text-xs text-white placeholder-white/35 px-3 py-2 focus:outline-none pr-10"
+                                    disabled={isSendingReply}
+                                    autoFocus
+                                />
+                                <button
+                                    type="submit"
+                                    disabled={isSendingReply || !replyMessage.trim()}
+                                    className="absolute right-1 w-8 h-8 rounded-lg bg-indigo-650 hover:bg-indigo-550 text-white flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isSendingReply ? (
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                        <Send className="w-3.5 h-3.5" />
+                                    )}
+                                </button>
+                            </form>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </motion.div>
+        );
+    };
+
     if (isInitialLoading) {
         return (
             <div className="min-h-screen bg-[#F4F7FE] flex items-center justify-center">
@@ -1612,6 +1947,67 @@ export default function StaffPortal() {
                             </span>
                         </a>
                     )}
+
+                    {canSendMessage && (
+                        <Button
+                            onClick={() => setIsMessageDialogOpen(true)}
+                            className="hidden md:flex items-center gap-2 px-4 py-2.5 bg-[#2F1E73] hover:bg-[#201552] text-white rounded-full transition-all duration-300 shadow-sm text-[10px] font-black uppercase tracking-widest border border-indigo-500/20"
+                        >
+                            <Send className="w-3 h-3 text-white" />
+                            Send Message
+                        </Button>
+                    )}
+
+                    {/* Header Bell Icon / UA Messenger Toggle */}
+                    <div className="relative">
+                        {(() => {
+                            const count = notifications.filter(n => {
+                                if (n.read) return false;
+                                const { senderId } = parseMessagePayload(n.message);
+                                const senderProfile = profiles.find(p => p.id === senderId);
+                                return isHigherOfficial(senderProfile || null, n.title);
+                            }).length;
+
+                            return (
+                                <>
+                                    <style>{`
+                                        @keyframes bell-shake {
+                                            0%, 100% { transform: rotate(0deg); }
+                                            15% { transform: rotate(-12deg); }
+                                            30% { transform: rotate(10deg); }
+                                            45% { transform: rotate(-8deg); }
+                                            60% { transform: rotate(6deg); }
+                                            75% { transform: rotate(-4deg); }
+                                            90% { transform: rotate(2deg); }
+                                        }
+                                        .animate-bell-shake {
+                                            animation: bell-shake 0.8s ease-in-out infinite;
+                                            transform-origin: top center;
+                                        }
+                                    `}</style>
+                                    <button
+                                        onClick={() => setIsBellOpen(prev => !prev)}
+                                        className={cn(
+                                            "relative p-2.5 rounded-2xl transition-all duration-300 shadow-sm shrink-0 border",
+                                            isBellOpen
+                                                ? "bg-gradient-to-br from-[#31267D] to-[#4f3fbf] text-white border-[#31267D] shadow-[#31267D]/30"
+                                                : count > 0 
+                                                    ? "bg-orange-50 hover:bg-orange-100 text-orange-600 border-orange-200 ring-4 ring-orange-500/20 shadow-[0_0_15px_rgba(241,90,36,0.35)] animate-bell-shake" 
+                                                    : "bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-600"
+                                        )}
+                                        title="UA Messenger"
+                                    >
+                                        <Bell className="w-3.5 h-3.5" />
+                                        {count > 0 && (
+                                            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[8px] font-black text-white shadow-lg animate-pulse">
+                                                {count}
+                                            </span>
+                                        )}
+                                    </button>
+                                </>
+                            );
+                        })()}
+                    </div>
 
                     <button
                         onClick={handleLogout}
@@ -1781,156 +2177,11 @@ export default function StaffPortal() {
                     </div>
                 </div>
 
-                {/* Mobile: Live Feed at Top */}
-                <div className="col-span-12 lg:hidden order-first">
-                    <div
-                        style={{ backgroundColor: brand.navy }}
-                        className="rounded-2xl md:rounded-[2.5rem] p-5 text-white shadow-2xl relative overflow-hidden"
-                    >
-                        <div className="relative z-10">
-                            <div className="flex items-center justify-between mb-4">
-                                <div className="flex items-center gap-2">
-                                    <Activity className="w-4 h-4 text-orange-400 animate-pulse" />
-                                    <span className="text-[10px] font-black tracking-widest uppercase flex items-center gap-2">
-                                        Live Feed
-                                        <span className="relative flex h-2 w-2">
-                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
-                                        </span>
-                                    </span>
-                                </div>
-                                <div className="w-2 h-2 rounded-full bg-orange-400 animate-ping"></div>
-                            </div>
-                            
-                            <div className="max-h-[220px] overflow-y-auto pr-1 space-y-2.5 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-                                {notifications.length > 0 ? (
-                                    notifications.map((notif) => {
-                                        const isUrgent = notif.type === "alert";
-                                        return (
-                                            <motion.div
-                                                key={notif.id}
-                                                initial={{ opacity: 0, y: 10 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                className={cn(
-                                                    "p-3 rounded-xl border transition-all duration-300 relative overflow-hidden flex flex-col gap-1.5 group hover:scale-[1.01]",
-                                                    isUrgent 
-                                                        ? "bg-red-500/10 border-red-500/30 ring-1 ring-red-500/20 hover:border-red-500/50 hover:bg-red-500/15 cursor-pointer" 
-                                                        : "bg-white/5 border-white/10 hover:border-white/20 hover:bg-white/10"
-                                                )}
-                                                onClick={() => {
-                                                    if (isV2Enabled && isUrgent && navigator.vibrate) {
-                                                        navigator.vibrate([100, 50, 100]);
-                                                    }
-                                                }}
-                                            >
-                                                <div className="flex justify-between items-center gap-2">
-                                                    <Badge 
-                                                        className={cn(
-                                                            "text-[7px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border-none",
-                                                            isUrgent 
-                                                                ? "bg-red-500 text-white animate-pulse" 
-                                                                : "bg-indigo-500/20 text-indigo-300"
-                                                        )}
-                                                    >
-                                                        {notif.title || (isUrgent ? "URGENT ALERT" : "MESSAGE")}
-                                                    </Badge>
-                                                    <span className="text-[7px] text-white/30 font-bold uppercase tracking-wider">
-                                                        {format(new Date(notif.created_at), 'MMM d, h:mm a')}
-                                                    </span>
-                                                </div>
-                                                <p className="text-[10px] font-medium leading-relaxed text-white/90">
-                                                    {notif.message}
-                                                </p>
-                                            </motion.div>
-                                        );
-                                    })
-                                ) : (
-                                    <div className="text-center py-8 text-white/30 flex flex-col items-center justify-center gap-2">
-                                        <Bell className="w-6 h-6 opacity-20" />
-                                        <p className="text-[10px] font-black uppercase tracking-widest">
-                                            No messages or alerts
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                {/* Mobile: Live Feed at Top (Removed - Migrated to Header Bell Popover) */}
 
                 {/* Left Column - Hidden on mobile (moved to bottom or inside Mission Control flow) */}
                 <div className="col-span-12 lg:col-span-3 space-y-6 hidden lg:block">
-                    <div
-                        style={{ backgroundColor: brand.navy }}
-                        className="rounded-[2.5rem] p-7 text-white shadow-[0_12px_40px_rgba(0,0,0,0.03)] border border-white/20 dark:border-zinc-800/30 relative overflow-hidden"
-                    >
-                        <div className="relative z-10">
-                            <div className="flex items-center justify-between mb-5">
-                                <div className="flex items-center gap-2">
-                                    <Activity className="w-4 h-4 text-orange-400 animate-pulse" />
-                                    <span className="text-[10px] font-black tracking-widest uppercase flex items-center gap-2">
-                                        Live Feed
-                                        <span className="relative flex h-2 w-2">
-                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
-                                        </span>
-                                    </span>
-                                </div>
-                                <div className="w-2 h-2 rounded-full bg-orange-405 animate-ping"></div>
-                            </div>
-                            
-                            <div className="max-h-[360px] overflow-y-auto pr-1 space-y-3 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-                                {notifications.length > 0 ? (
-                                    notifications.map((notif) => {
-                                        const isUrgent = notif.type === "alert";
-                                        return (
-                                            <motion.div
-                                                key={notif.id}
-                                                initial={{ opacity: 0, y: 10 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                className={cn(
-                                                    "p-3 rounded-2xl border transition-all duration-300 relative overflow-hidden flex flex-col gap-1.5 group hover:scale-[1.02]",
-                                                    isUrgent 
-                                                        ? "bg-red-500/10 border-red-500/30 ring-1 ring-red-500/20 hover:border-red-500/50 hover:bg-red-500/15 cursor-pointer" 
-                                                        : "bg-white/5 border-white/10 hover:border-white/20 hover:bg-white/10"
-                                                )}
-                                                onClick={() => {
-                                                    if (isV2Enabled && isUrgent && navigator.vibrate) {
-                                                        navigator.vibrate([100, 50, 100]);
-                                                    }
-                                                }}
-                                            >
-                                                <div className="flex justify-between items-center gap-2">
-                                                    <Badge 
-                                                        className={cn(
-                                                            "text-[7px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border-none",
-                                                            isUrgent 
-                                                                ? "bg-red-500 text-white animate-pulse" 
-                                                                : "bg-indigo-500/20 text-indigo-300"
-                                                        )}
-                                                    >
-                                                        {notif.title || (isUrgent ? "URGENT ALERT" : "MESSAGE")}
-                                                    </Badge>
-                                                    <span className="text-[7px] text-white/30 font-bold uppercase tracking-wider">
-                                                        {format(new Date(notif.created_at), 'MMM d, h:mm a')}
-                                                    </span>
-                                                </div>
-                                                <p className="text-[10px] font-medium leading-relaxed text-white/90">
-                                                    {notif.message}
-                                                </p>
-                                            </motion.div>
-                                        );
-                                    })
-                                ) : (
-                                    <div className="text-center py-12 text-white/30 flex flex-col items-center justify-center gap-2">
-                                        <Bell className="w-8 h-8 opacity-20" />
-                                        <p className="text-[10px] font-black uppercase tracking-widest">
-                                            No messages or alerts
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
+                    {/* Live Feed Sidebar Card (Removed - Migrated to Header Bell Popover) */}
 
                     {/* New Share Idea Card */}
                     <div className="bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl rounded-[2rem] p-7 shadow-[0_12px_40px_rgba(0,0,0,0.02)] border border-white/60 dark:border-zinc-800/50 group hover:border-orange-200 transition-all duration-300">
@@ -2936,8 +3187,70 @@ export default function StaffPortal() {
                 setInteracting={setIsUserInteracting}
             />
 
-            {/* Mobile Bottom Navigation */}
+            {/* Direct Message Reply Modal */}
+            <Dialog open={!!replyingToNotification} onOpenChange={(open) => { if (!open) setReplyingToNotification(null); }}>
+                <DialogContent className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-slate-900 dark:text-zinc-100 max-w-md rounded-3xl shadow-2xl overflow-hidden p-0 flex flex-col">
+                    <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-500 to-[#2C2171] z-50" />
+                    
+                    <div className="px-8 pt-8 pb-4 relative flex-shrink-0">
+                        <DialogHeader>
+                            <DialogTitle className="text-lg font-black uppercase tracking-widest flex items-center gap-3">
+                                <div className="p-2 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl">
+                                    <MessageSquare className="h-4 w-4 text-indigo-500" />
+                                </div>
+                                Reply to Command
+                            </DialogTitle>
+                        </DialogHeader>
+                        {replyingToNotification && (
+                            <p className="text-slate-405 dark:text-zinc-505 text-xs mt-3 bg-slate-50 dark:bg-zinc-850 p-3 rounded-xl border border-slate-100 dark:border-zinc-800 italic">
+                                &quot;{parseMessagePayload(replyingToNotification.message).cleanText}&quot;
+                            </p>
+                        )}
+                    </div>
+
+                    <div className="px-8 py-4 space-y-4">
+                        <div className="space-y-2">
+                            <label className="text-[10px] uppercase font-black tracking-widest text-slate-400">
+                                Message Content
+                            </label>
+                            <textarea
+                                placeholder="Type your reply here..."
+                                value={replyMessage}
+                                onChange={(e) => setReplyMessage(e.target.value)}
+                                className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 focus:border-indigo-500 rounded-xl h-28 resize-none text-sm p-4 font-semibold shadow-inner transition-all leading-relaxed focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="p-6 bg-slate-50 dark:bg-zinc-950 border-t border-slate-150 dark:border-zinc-800 flex justify-end gap-3">
+                        <button
+                            type="button"
+                            onClick={() => setReplyingToNotification(null)}
+                            className="px-5 py-2.5 text-slate-500 hover:text-slate-700 font-bold uppercase tracking-widest text-[10px] rounded-xl border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-900 transition-colors"
+                        >
+                            Cancel
+                        </button>
+                        <Button
+                            onClick={handleSendReply}
+                            disabled={isSendingReply || !replyMessage.trim()}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-widest text-[10px] px-6 py-2.5 rounded-xl transition-all flex items-center gap-1.5"
+                        >
+                            {isSendingReply ? "Sending..." : "Send Reply"}
+                            <Send className="w-3.5 h-3.5" />
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
             <MobileNavigation currentPage="home" />
+
+            {isMessageDialogOpen && (
+                <MessageDialog
+                    isOpen={isMessageDialogOpen}
+                    onClose={() => setIsMessageDialogOpen(false)}
+                    onSuccess={fetchData}
+                />
+            )}
 
             {/* Profile Settings Modal */}
             {/* Profile Sidebar */}
@@ -3299,7 +3612,264 @@ export default function StaffPortal() {
                 </Modal>
             )}
 
+            {/* ===== UA Messenger Drawer — Frosted White Glass (ROOT-LEVEL fixed) ===== */}
+            {/* Backdrop */}
+            {isBellOpen && (
+                <div 
+                    className="fixed inset-0 bg-black/30 backdrop-blur-[2px] z-[100] transition-opacity duration-300" 
+                    onClick={() => setIsBellOpen(false)} 
+                />
+            )}
 
+            {/* Slide-out Panel — slides from RIGHT */}
+            <AnimatePresence>
+                {isBellOpen && (
+                    <motion.div
+                        initial={{ x: "110%", opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        exit={{ x: "110%", opacity: 0 }}
+                        transition={{ type: "spring", stiffness: 300, damping: 28 }}
+                        className="fixed right-4 top-4 bottom-4 w-80 md:w-96 flex flex-col z-[101]"
+                        style={{ filter: "drop-shadow(0 25px 60px rgba(0,0,0,0.15))" }}
+                    >
+                        {/* Frosted Glass Container */}
+                        <div className="flex flex-col flex-1 rounded-3xl border border-white/60 bg-white/82 backdrop-blur-xl overflow-hidden shadow-2xl">
+                            
+                            {/* Gradient Top Bar */}
+                            <div className="h-1 w-full bg-gradient-to-r from-[#31267D] via-[#F15A24] to-[#31267D] opacity-80" />
+
+                            {/* Header */}
+                            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100/80 flex-shrink-0 bg-white/60">
+                                <div className="flex items-center gap-2.5">
+                                    {/* Icon */}
+                                    <div className="relative w-8 h-8 rounded-xl bg-gradient-to-br from-[#31267D] to-[#4f3fbf] flex items-center justify-center shadow-md shadow-[#31267D]/20 flex-shrink-0">
+                                        <Bell className="w-4 h-4 text-white" />
+                                        {(() => {
+                                            const count = notifications.filter(n => {
+                                                if (n.read) return false;
+                                                const { senderId } = parseMessagePayload(n.message);
+                                                const senderProfile = profiles.find(p => p.id === senderId);
+                                                return isHigherOfficial(senderProfile || null, n.title);
+                                            }).length;
+                                            return count > 0 ? (
+                                                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#F14D24] text-[7px] font-black text-white flex items-center justify-center shadow-sm">
+                                                    {count > 9 ? "9+" : count}
+                                                </span>
+                                            ) : null;
+                                        })()}
+                                    </div>
+                                    <div>
+                                        <h2 className="text-sm font-black tracking-tight text-slate-900">UA Messenger</h2>
+                                        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Command Link</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {(() => {
+                                        const count = notifications.filter(n => {
+                                            if (n.read) return false;
+                                            const { senderId } = parseMessagePayload(n.message);
+                                            const senderProfile = profiles.find(p => p.id === senderId);
+                                            return isHigherOfficial(senderProfile || null, n.title);
+                                        }).length;
+                                        return count > 0 ? (
+                                            <span className="text-[9px] font-bold text-[#F14D24] bg-orange-50 border border-orange-200 px-2.5 py-0.5 rounded-full">
+                                                {count} New
+                                            </span>
+                                        ) : null;
+                                    })()}
+                                    <button 
+                                        onClick={() => setIsBellOpen(false)}
+                                        className="p-2 hover:bg-slate-100 border border-transparent hover:border-slate-200 text-slate-400 hover:text-slate-700 rounded-xl transition-colors"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Scrollable Content */}
+                            <div className="flex-1 overflow-y-auto px-5 pb-5 pt-3 space-y-3 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+                                {notifications.length > 0 ? (
+                                    notifications.map((notif) => {
+                                        const { senderId, cleanText } = parseMessagePayload(notif.message);
+                                        const senderProfile = profiles.find(p => p.id === senderId);
+                                        const isFromHigher = isHigherOfficial(senderProfile || null, notif.title);
+                                        const isUnread = !notif.read;
+                                        const cardId = notif.id;
+
+                                        const senderName = senderProfile 
+                                            ? senderProfile.full_name 
+                                            : (notif.title?.toUpperCase().includes("CEO") ? "Salim PA (CEO)" : (notif.title || "Usthad Academy"));
+                                            
+                                        const senderDesignation = senderProfile 
+                                            ? (senderProfile.role === "ceo" ? "CEO" : senderProfile.is_manager ? `${senderProfile.department} Manager` : senderProfile.role?.toUpperCase()) 
+                                            : (notif.title?.toUpperCase().includes("CEO") ? "CEO" : "");
+
+                                        return (
+                                            <div
+                                                key={notif.id}
+                                                className={cn(
+                                                    "bg-white rounded-2xl p-4 border border-slate-100/80 hover:border-slate-200 hover:shadow-md transition-all duration-300 flex flex-col gap-2.5 relative overflow-hidden group",
+                                                    isUnread && isFromHigher && "border-l-4 border-l-[#F14D24] shadow-sm"
+                                                )}
+                                            >
+                                                {isUnread && isFromHigher && (
+                                                    <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-[#F14D24] animate-pulse" />
+                                                )}
+
+                                                <div className="flex justify-between items-start gap-2">
+                                                    <div className="flex flex-col min-w-0">
+                                                        <span className={cn(
+                                                            "text-[11px] font-black tracking-wide flex items-center gap-1.5 truncate",
+                                                            isFromHigher ? "text-[#F14D24]" : "text-slate-900"
+                                                        )}>
+                                                            {senderName}
+                                                            {senderDesignation && (
+                                                                <span className="text-[7px] font-black tracking-widest text-[#31267D] bg-[#31267D]/8 px-1.5 py-0.5 rounded-lg uppercase flex-shrink-0 border border-[#31267D]/12">
+                                                                    {senderDesignation}
+                                                                </span>
+                                                            )}
+                                                        </span>
+                                                        <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">
+                                                            {format(new Date(notif.created_at), 'MMM d, h:mm a')}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
+                                                    <p className="text-[11px] font-medium leading-normal text-slate-800 tracking-wide break-words">
+                                                        {cleanText}
+                                                    </p>
+                                                </div>
+
+                                                <div className="flex items-center justify-between border-t border-slate-100 pt-2.5 mt-1 gap-2">
+                                                    {isUnread ? (
+                                                        <button
+                                                            onClick={async (e) => {
+                                                                e.stopPropagation();
+                                                                try {
+                                                                    const { error } = await supabase
+                                                                        .from("notifications")
+                                                                        .update({ 
+                                                                            read: true,
+                                                                            read_at: new Date().toISOString()
+                                                                        })
+                                                                        .eq("id", notif.id);
+                                                                    if (error) throw error;
+                                                                    setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, read: true, read_at: new Date().toISOString() } : n));
+                                                                    toast.success("Directive marked as read");
+                                                                } catch (err: any) {
+                                                                    toast.error("Failed to mark read: " + err.message);
+                                                                }
+                                                            }}
+                                                            className="flex items-center gap-1 text-[8px] font-black uppercase tracking-wider text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg transition-all border border-emerald-100 hover:border-emerald-200"
+                                                        >
+                                                            ✓ READ
+                                                        </button>
+                                                    ) : (
+                                                        <span className="text-[8px] text-slate-300 font-bold uppercase tracking-wider flex items-center gap-1">
+                                                            ✓ Read
+                                                        </span>
+                                                    )}
+
+                                                    {senderId && (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setActiveReplyId(prev => prev === cardId ? null : cardId);
+                                                                setReplyMessage("");
+                                                            }}
+                                                            className="flex items-center gap-1 text-[8px] font-black uppercase tracking-wider text-[#31267D] hover:text-white bg-[#31267D]/8 hover:bg-[#31267D] px-2.5 py-1 rounded-lg transition-all border border-[#31267D]/15 hover:border-[#31267D]"
+                                                        >
+                                                            REPLY
+                                                        </button>
+                                                    )}
+                                                </div>
+
+                                                {activeReplyId === cardId && (
+                                                    <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                                                        <form 
+                                                            onSubmit={async (e) => {
+                                                                e.preventDefault();
+                                                                if (!replyMessage.trim()) return;
+                                                                setIsSendingReply(true);
+                                                                try {
+                                                                    const payload = `[sender_id:${profile?.id}] ${replyMessage.trim()}`;
+                                                                    const queries: any[] = [
+                                                                        fetch("/api/send-message", {
+                                                                            method: "POST",
+                                                                            headers: { "Content-Type": "application/json" },
+                                                                            body: JSON.stringify({
+                                                                                user_id: senderId,
+                                                                                title: `REPLY: ${notif.title || "MESSAGE"}`,
+                                                                                message: payload,
+                                                                                type: "direct"
+                                                                            })
+                                                                        })
+                                                                    ];
+                                                                    if (isUnread) {
+                                                                        queries.push(
+                                                                            supabase
+                                                                                .from("notifications")
+                                                                                .update({ read: true, read_at: new Date().toISOString() })
+                                                                                .eq("id", notif.id)
+                                                                        );
+                                                                    }
+                                                                    await Promise.all(queries);
+                                                                    toast.success("Reply dispatched successfully");
+                                                                    setReplyMessage("");
+                                                                    setActiveReplyId(null);
+                                                                    fetchData();
+                                                                } catch (err: any) {
+                                                                    toast.error(err.message || "Failed to send reply");
+                                                                } finally {
+                                                                    setIsSendingReply(false);
+                                                                }
+                                                            }}
+                                                            className="relative flex items-center bg-slate-50 border border-slate-200 rounded-2xl p-1.5 focus-within:border-[#31267D]/50 focus-within:shadow-[0_0_0_3px_rgba(49,38,125,0.08)] transition-all duration-300"
+                                                        >
+                                                            <input
+                                                                type="text"
+                                                                value={replyMessage}
+                                                                onChange={(e) => setReplyMessage(e.target.value)}
+                                                                placeholder="Type reply..."
+                                                                className="flex-1 bg-transparent text-[11px] text-slate-800 placeholder-slate-400 px-3 py-1 outline-none min-w-0 font-medium"
+                                                                disabled={isSendingReply}
+                                                            />
+                                                            <button
+                                                                type="submit"
+                                                                className="p-2 text-white rounded-xl bg-[#F14D24] hover:bg-[#e03f14] transition-colors flex-shrink-0 shadow-sm shadow-orange-500/20 disabled:opacity-50"
+                                                                disabled={isSendingReply || !replyMessage.trim()}
+                                                            >
+                                                                {isSendingReply ? (
+                                                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                                                ) : (
+                                                                    <Send className="w-3.5 h-3.5 text-white" />
+                                                                )}
+                                                            </button>
+                                                        </form>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })
+                                ) : (
+                                    <div className="text-center py-12 flex flex-col items-center justify-center gap-3">
+                                        <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center">
+                                            <Bell className="w-7 h-7 text-slate-300" />
+                                        </div>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                            No active directives
+                                        </p>
+                                        <p className="text-[9px] text-slate-300 max-w-[180px] text-center leading-relaxed">
+                                            Messages from CEO and managers will appear here.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
         </div>
     );

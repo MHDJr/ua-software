@@ -592,6 +592,10 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
     const isVisibleRef = useRef(true);
     const lastValidProfileIdRef = useRef<string | null>(profile?.id || null);
 
+    // UA Messenger unread count (feeds the header button badge)
+    const [hqUnreadCount, setHqUnreadCount] = useState(0);
+    const [hqIsOpen, setHqIsOpen] = useState(false);
+
     // ============================================
     // 2. DERIVED STATE & MEMOS
     // ============================================
@@ -600,6 +604,39 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
     useEffect(() => {
         const interval = setInterval(() => setCurrentTime(Date.now()), 60000);
         return () => clearInterval(interval);
+    }, []);
+
+    // UA Messenger unread count polling
+    useEffect(() => {
+        if (!profile?.id) return;
+        const fetchCount = async () => {
+            try {
+                const { count } = await supabase
+                    .from("notifications")
+                    .select("*", { count: "exact", head: true })
+                    .eq("user_id", profile.id)
+                    .eq("read", false);
+                setHqUnreadCount(count ?? 0);
+            } catch {}
+        };
+        fetchCount();
+        const interval = setInterval(fetchCount, 30000);
+        return () => clearInterval(interval);
+    }, [profile?.id]);
+
+    // Sync hqIsOpen state with external toggle events
+    useEffect(() => {
+        const onToggle = () => setHqIsOpen(prev => !prev);
+        const onOpen = () => setHqIsOpen(true);
+        const onClose = () => setHqIsOpen(false);
+        window.addEventListener("toggle-hq-messenger", onToggle);
+        window.addEventListener("open-hq-messenger", onOpen);
+        window.addEventListener("close-hq-messenger", onClose);
+        return () => {
+            window.removeEventListener("toggle-hq-messenger", onToggle);
+            window.removeEventListener("open-hq-messenger", onOpen);
+            window.removeEventListener("close-hq-messenger", onClose);
+        };
     }, []);
 
 
@@ -2222,17 +2259,37 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
     const sendChatMessage = async () => {
         if (!selectedStaffForChat || !chatMessage.trim()) return;
 
-        await supabase.from("notifications").insert({
-            user_id: selectedStaffForChat.id,
-            title: "URGENT MESSAGE FROM CEO",
-            message: chatMessage.trim(),
-            type: "message",
-        });
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
 
-        toast.success(`Message sent to ${selectedStaffForChat.full_name}`);
-        setChatMessage("");
-        setIsChatModalOpen(false);
-        setSelectedStaffForChat(null);
+            const response = await fetch("/api/send-message", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+                },
+                body: JSON.stringify({
+                    user_id: selectedStaffForChat.id,
+                    title: `MESSAGE FROM ${profile?.full_name?.toUpperCase() || "CEO"}`,
+                    message: `[sender_id:${profile?.id || ""}] ${chatMessage.trim()}`,
+                    type: "direct",
+                }),
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error || "Failed to dispatch message");
+            }
+
+            toast.success(`Message sent to ${selectedStaffForChat.full_name}`);
+            setChatMessage("");
+            setIsChatModalOpen(false);
+            setSelectedStaffForChat(null);
+        } catch (error: any) {
+            console.error("Failed to send message:", error);
+            toast.error(error.message || "Failed to send message");
+        }
     };
 
     const openChatModal = (staff: Profile) => {
@@ -2371,6 +2428,56 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                                 : "ADMINISTRATOR DASHBOARD"}
                         </h1>
                     </div>
+
+                    {/* ✦ UA Messenger Header Button — fires toggle-hq-messenger event */}
+                    {(() => {
+                        const hasUnread = hqUnreadCount > 0;
+                        return (
+                            <>
+                                <style>{`
+                                    @keyframes hq-header-bell {
+                                        0%, 80%, 100% { transform: rotate(0deg); }
+                                        85% { transform: rotate(-12deg); }
+                                        90% { transform: rotate(11deg); }
+                                        95% { transform: rotate(-8deg); }
+                                    }
+                                    .hq-header-bell-shake {
+                                        animation: hq-header-bell 2.5s ease-in-out infinite;
+                                        transform-origin: top center;
+                                    }
+                                `}</style>
+                                <button
+                                    onClick={() => window.dispatchEvent(new CustomEvent("toggle-hq-messenger"))}
+                                    className={`relative hidden md:flex items-center gap-2.5 pl-3.5 pr-4 py-1.5 rounded-full border transition-all duration-300 group shadow-sm hover:scale-[1.03] active:scale-95 ${
+                                        hqIsOpen
+                                            ? 'bg-[#31267D] border-[#31267D] text-white shadow-md shadow-[#31267D]/25'
+                                            : hasUnread
+                                                ? 'bg-orange-50 dark:bg-orange-950/30 border-orange-300 dark:border-orange-700 text-[#F14D24] shadow-orange-200/60 dark:shadow-orange-800/30'
+                                                : 'bg-white/60 dark:bg-zinc-800/60 border-white/50 dark:border-zinc-700/60 text-slate-600 dark:text-zinc-300 hover:bg-white dark:hover:bg-zinc-800 hover:border-[#31267D]/30'
+                                    }`}
+                                    title="UA Messenger"
+                                >
+                                    <Bell className={`w-3.5 h-3.5 flex-shrink-0 ${
+                                        hasUnread && !hqIsOpen ? 'hq-header-bell-shake' : ''
+                                    } ${hqIsOpen ? 'text-white' : hasUnread ? 'text-[#F14D24]' : 'text-slate-500 dark:text-zinc-400 group-hover:text-[#31267D]'}`} />
+                                    <span className={`text-[10px] font-black uppercase tracking-[0.15em] whitespace-nowrap ${
+                                        hqIsOpen ? 'text-white' : hasUnread ? 'text-[#F14D24]' : 'text-slate-600 dark:text-zinc-300 group-hover:text-[#31267D]'
+                                    }`}>
+                                        UA Messenger
+                                    </span>
+                                    {hasUnread && (
+                                        <span className={`flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[9px] font-black shadow-sm ${
+                                            hqIsOpen
+                                                ? 'bg-white/25 text-white border border-white/30'
+                                                : 'bg-[#F14D24] text-white shadow-orange-500/30'
+                                        }`}>
+                                            {hqUnreadCount > 9 ? '9+' : hqUnreadCount}
+                                        </span>
+                                    )}
+                                </button>
+                            </>
+                        );
+                    })()}
 
                     <ThemeToggle />
 

@@ -38,9 +38,10 @@ interface MessageDialogProps {
     onClose: () => void;
     defaultType?: MessageType;
     onSuccess?: () => void;
+    defaultSelectedStaffId?: string;
 }
 
-export function MessageDialog({ isOpen, onClose, defaultType = "direct", onSuccess }: MessageDialogProps) {
+export function MessageDialog({ isOpen, onClose, defaultType = "direct", onSuccess, defaultSelectedStaffId }: MessageDialogProps) {
     const [messageType, setMessageType] = useState<MessageType>(defaultType);
     const [selectedStaff, setSelectedStaff] = useState<StaffProfile | null>(null);
     const [message, setMessage] = useState("");
@@ -59,6 +60,14 @@ export function MessageDialog({ isOpen, onClose, defaultType = "direct", onSucce
     // Common configurations
     const [expiryDuration, setExpiryDuration] = useState<"5h" | "12h" | "1d" | "7d">("7d");
     const [isUrgent, setIsUrgent] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
+
+    const filteredStaffList = staffList.filter(staff => 
+        staff.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        staff.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        staff.role?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (staff.department && staff.department.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
 
     const getExpiryDate = (duration: "5h" | "12h" | "1d" | "7d") => {
         const date = new Date();
@@ -98,9 +107,37 @@ export function MessageDialog({ isOpen, onClose, defaultType = "direct", onSucce
                     .order("full_name");
 
                 if (error) throw error;
-                setStaffList(data || []);
-                if (data && data.length > 0) {
-                    setSelectedStaff(ALL_STAFF_OPTION);
+                
+                let filtered = data || [];
+                const isCeo = (profile?.role as string) === 'ceo';
+                const isAdmin = (profile?.role as string) === 'admin' || (profile?.role as string) === 'administrator' || profile?.department?.toLowerCase() === 'administration' || profile?.department?.toLowerCase() === 'admin';
+                const isManager = (profile?.role as string) === 'manager' || profile?.is_manager === true;
+                
+                if (!isCeo && !isAdmin && isManager) {
+                    // Manager: filter by department. Can only assign tasks to their own department's staff
+                    const managerDept = profile?.department;
+                    if (managerDept) {
+                        const allowedDepts = [managerDept];
+                        if (managerDept === "Marketing") {
+                            allowedDepts.push("Sales");
+                        }
+                        // Marketing manager sees everyone or department + Sales. Let's filter if not Marketing
+                        if (managerDept !== "Marketing") {
+                            filtered = filtered.filter((s: any) => s.department && allowedDepts.includes(s.department));
+                        }
+                    }
+                }
+                
+                setStaffList(filtered);
+                if (filtered && filtered.length > 0) {
+                    if (defaultSelectedStaffId) {
+                        const found = filtered.find((s: any) => s.id === defaultSelectedStaffId);
+                        setSelectedStaff(found || null);
+                    } else {
+                        // Default: no selection — start with search field open
+                        setSelectedStaff(null);
+                        setIsDropdownOpen(false);
+                    }
                 }
             } catch (error) {
                 console.error("Error fetching staff:", error);
@@ -112,7 +149,7 @@ export function MessageDialog({ isOpen, onClose, defaultType = "direct", onSucce
         if (isOpen && user) {
             fetchStaff();
         }
-    }, [isOpen, user]);
+    }, [isOpen, user, defaultSelectedStaffId, profile]);
 
     const handleDeployAnnouncement = async () => {
         if (!announcementMessage.trim()) {
@@ -198,24 +235,40 @@ export function MessageDialog({ isOpen, onClose, defaultType = "direct", onSucce
                 
                 if (selectedStaff.id === "all") {
                     if (staffList.length > 0) {
-                        const notifications = staffList.map((staff) => ({
-                            user_id: staff.id,
-                            title: isUrgent ? `URGENT MESSAGE FROM ${senderRole.toUpperCase()}` : `MESSAGE FROM ${senderRole.toUpperCase()}`,
-                            message: message.trim(),
-                            type: isUrgent ? "alert" : "direct",
+                        await Promise.all(staffList.map(async (staff) => {
+                            const response = await fetch("/api/send-message", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                    user_id: staff.id,
+                                    title: isUrgent ? `URGENT MESSAGE FROM ${senderRole.toUpperCase()}` : `MESSAGE FROM ${senderRole.toUpperCase()}`,
+                                    message: `[sender_id:${profile?.id || ""}] ${message.trim()}`,
+                                    type: isUrgent ? "alert" : "direct",
+                                }),
+                            });
+                            if (!response.ok) {
+                                const err = await response.json();
+                                throw new Error(err.error || "Failed to send to " + staff.full_name);
+                            }
                         }));
-                        const { error } = await supabase.from("notifications").insert(notifications);
-                        if (error) throw error;
                     }
                     toast.success("Message sent to all staff members");
                 } else {
-                    const { error } = await supabase.from("notifications").insert({
-                        user_id: selectedStaff.id,
-                        title: isUrgent ? `URGENT MESSAGE FROM ${senderRole.toUpperCase()}` : `MESSAGE FROM ${senderRole.toUpperCase()}`,
-                        message: message.trim(),
-                        type: isUrgent ? "alert" : "direct",
+                    const response = await fetch("/api/send-message", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            user_id: selectedStaff.id,
+                            title: isUrgent ? `URGENT MESSAGE FROM ${senderRole.toUpperCase()}` : `MESSAGE FROM ${senderRole.toUpperCase()}`,
+                            message: `[sender_id:${profile?.id || ""}] ${message.trim()}`,
+                            type: isUrgent ? "alert" : "direct",
+                        }),
                     });
-                    if (error) throw error;
+
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.error || "Failed to send message");
+                    }
                     toast.success(`Message sent to ${selectedStaff.full_name}`);
                 }
             }
@@ -296,61 +349,99 @@ export function MessageDialog({ isOpen, onClose, defaultType = "direct", onSucce
 
                 {/* Direct Message Fields */}
                 {messageType === "direct" && (
-                    <div className="mb-6">
+                    <div className="mb-6 relative">
                         <label className="block text-xs font-bold uppercase tracking-widest text-gray-700 mb-2">
                             Send To
                         </label>
-                        <div className="relative">
-                            <button
-                                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                                className="w-full px-4 py-3 text-left bg-white border border-gray-200 rounded-xl shadow-sm hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200 flex items-center justify-between"
-                                disabled={staffList.length === 0}
-                            >
-                                {selectedStaff ? (
-                                    <div className="flex items-center gap-3">
-                                        <div
-                                            className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold text-xs"
-                                            style={{ backgroundColor: selectedStaff.id === "all" ? BRAND_COLORS.orange : BRAND_COLORS.indigo }}
-                                        >
-                                            {selectedStaff.full_name.charAt(0).toUpperCase()}
-                                        </div>
-                                        <div>
-                                            <div className="font-semibold text-gray-900">{selectedStaff.full_name}</div>
-                                            <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">{selectedStaff.role} {selectedStaff.department ? `• ${selectedStaff.department}` : ''}</div>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="text-gray-500">No staff available</div>
-                                )}
-                                <X className="w-4 h-4 text-gray-400 transform rotate-180" />
-                            </button>
-                            
-                            {isDropdownOpen && staffList.length > 0 && (
-                                <div className="absolute z-10 w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
-                                    {[ALL_STAFF_OPTION, ...staffList].map((staff) => (
-                                        <button
-                                            key={staff.id}
-                                            onClick={() => {
-                                                setSelectedStaff(staff);
-                                                setIsDropdownOpen(false);
-                                            }}
-                                            className="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors duration-150 flex items-center gap-3 border-b border-gray-100 last:border-0"
-                                        >
-                                            <div
-                                                className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold text-xs"
-                                                style={{ backgroundColor: staff.id === "all" ? BRAND_COLORS.orange : BRAND_COLORS.indigo }}
-                                            >
-                                                {staff.full_name.charAt(0).toUpperCase()}
-                                            </div>
-                                            <div>
-                                                <div className="font-semibold text-gray-900">{staff.full_name}</div>
-                                                <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">{staff.role} {staff.department ? `• ${staff.department}` : ''}</div>
-                                            </div>
-                                        </button>
-                                    ))}
+                        {selectedStaff ? (
+                            <div className="h-14 px-4 rounded-xl border border-gray-200 bg-gray-50 flex items-center gap-3 group relative select-none">
+                                <div
+                                    className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold text-xs"
+                                    style={{ backgroundColor: selectedStaff.id === "all" ? BRAND_COLORS.orange : BRAND_COLORS.indigo }}
+                                >
+                                    {selectedStaff.full_name.charAt(0).toUpperCase()}
                                 </div>
-                            )}
-                        </div>
+                                <div className="flex-grow min-w-0">
+                                    <div className="font-semibold text-gray-900 truncate text-sm">{selectedStaff.full_name}</div>
+                                    <div className="text-[10px] text-gray-550 font-bold uppercase tracking-wider truncate">
+                                        {selectedStaff.role} {selectedStaff.department ? `• ${selectedStaff.department}` : ''}
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setSelectedStaff(null);
+                                        setSearchQuery("");
+                                    }}
+                                    className="p-1 hover:bg-gray-200 rounded-full transition-colors"
+                                >
+                                    <X className="w-4 h-4 text-gray-400 hover:text-red-500" />
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="relative">
+                                <input
+                                    placeholder="Search staff..."
+                                    value={searchQuery}
+                                    onChange={(e) => {
+                                        setSearchQuery(e.target.value);
+                                        setIsDropdownOpen(true);
+                                    }}
+                                    onFocus={() => setIsDropdownOpen(true)}
+                                    className="w-full h-12 pl-10 pr-4 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
+                                />
+                                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-gray-400" />
+                            </div>
+                        )}
+                        
+                        {isDropdownOpen && (
+                            <>
+                                <div 
+                                    className="fixed inset-0 z-[99990]" 
+                                    onClick={() => setIsDropdownOpen(false)}
+                                />
+                                <div className="absolute z-[99991] w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-60 overflow-y-auto">
+                                    {(() => {
+                                        const showAllStaff = ((profile?.role as string) === 'ceo' || (profile?.role as string) === 'admin' || (profile?.role as string) === 'administrator' || profile?.department?.toLowerCase() === 'administration' || profile?.department?.toLowerCase() === 'admin');
+                                        const options = showAllStaff ? [ALL_STAFF_OPTION, ...filteredStaffList] : filteredStaffList;
+                                        
+                                        if (options.length === 0) {
+                                            return (
+                                                <div className="p-4 text-center text-xs text-gray-500 font-semibold">
+                                                    No staff found
+                                                </div>
+                                            );
+                                        }
+                                        
+                                        return options.map((staff) => (
+                                            <button
+                                                key={staff.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedStaff(staff);
+                                                    setIsDropdownOpen(false);
+                                                    setSearchQuery("");
+                                                }}
+                                                className="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors duration-150 flex items-center gap-3 border-b border-gray-100 last:border-0"
+                                            >
+                                                <div
+                                                    className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold text-xs"
+                                                    style={{ backgroundColor: staff.id === "all" ? BRAND_COLORS.orange : BRAND_COLORS.indigo }}
+                                                >
+                                                    {staff.full_name.charAt(0).toUpperCase()}
+                                                </div>
+                                                <div>
+                                                    <div className="font-semibold text-gray-900 text-sm">{staff.full_name}</div>
+                                                    <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+                                                        {staff.role} {staff.department ? `• ${staff.department}` : ''}
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        ));
+                                    })()}
+                                </div>
+                            </>
+                        )}
                     </div>
                 )}
 
