@@ -13,7 +13,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Loader2, ShieldCheck, ShieldAlert, Plus, Target, Clock, UserPlus, Megaphone, MessageSquare, Bell, MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
-import { CEOCommsDrawer } from "@/components/ceo-comms-drawer";
+import { UAMessengerDrawer } from "@/components/ua-messenger-drawer";
 import { toast } from "sonner";
 import { useRef } from "react";
 
@@ -232,71 +232,73 @@ function CEOPageContent() {
             )}
 
             {/* 6?????? FLOATING QUICK ACTION BUTTON - Universal */}
-            <div className="fixed bottom-24 md:bottom-8 right-6 md:right-8 z-[100]">
-                <div className="relative">
-                    {/* Expandable Menu */}
-                    {isActionMenuOpen && (
-                        <div
-                            className="absolute bottom-full right-0 mb-4 flex flex-col gap-2 items-end transition-all duration-300 animate-in fade-in slide-in-from-bottom-2 duration-200"
-                        >
-                            <button
-                                onClick={() => {
-                                    window.dispatchEvent(new CustomEvent("fab-action", { detail: { action: "new-directive" } }));
-                                    setIsActionMenuOpen(false);
-                                }}
-                                className="flex items-center gap-3 bg-theme-card text-theme-text border border-theme-border-10 px-4 py-3 rounded-2xl shadow-lg hover:bg-theme-bg-white-5 hover:border-theme-brand/30 transition-all hover:-translate-x-1"
+            {!isCommsOpen && (
+                <div className="fixed bottom-24 md:bottom-8 right-6 md:right-8 z-[100]">
+                    <div className="relative">
+                        {/* Expandable Menu */}
+                        {isActionMenuOpen && (
+                            <div
+                                className="absolute bottom-full right-0 mb-4 flex flex-col gap-2 items-end transition-all duration-300 animate-in fade-in slide-in-from-bottom-2 duration-200"
                             >
-                                <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
-                                    Assign Task
-                                </span>
-                                <div className="p-1.5 bg-[#2F1E73]/10 text-[#2F1E73] dark:text-purple-400 rounded-lg">
-                                    <Target className="w-4 h-4" />
-                                </div>
-                            </button>
-                            <button
-                                onClick={() => {
-                                    window.dispatchEvent(new CustomEvent("fab-action", { detail: { action: "announcement" } }));
-                                    setIsActionMenuOpen(false);
-                                }}
-                                className="flex items-center gap-3 bg-theme-card text-theme-text border border-theme-border-10 px-4 py-3 rounded-2xl shadow-lg hover:bg-theme-bg-white-5 hover:border-theme-brand/30 transition-all hover:-translate-x-1"
-                            >
-                                <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
-                                    Send Broadcast
-                                </span>
-                                <div className="p-1.5 bg-[#F14D24]/10 text-[#F14D24] rounded-lg">
-                                    <Megaphone className="w-4 h-4" />
-                                </div>
-                            </button>
-                            {(userRole === 'CEO' || userRole === 'MANAGER' || (profile && profile.role === 'ceo')) && (
                                 <button
                                     onClick={() => {
-                                        window.dispatchEvent(new CustomEvent("fab-action", { detail: { action: "add-staff" } }));
+                                        window.dispatchEvent(new CustomEvent("fab-action", { detail: { action: "new-directive" } }));
                                         setIsActionMenuOpen(false);
                                     }}
                                     className="flex items-center gap-3 bg-theme-card text-theme-text border border-theme-border-10 px-4 py-3 rounded-2xl shadow-lg hover:bg-theme-bg-white-5 hover:border-theme-brand/30 transition-all hover:-translate-x-1"
                                 >
                                     <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
-                                        Add Staff
+                                        Assign Task
                                     </span>
-                                    <div className="p-1.5 bg-[#FA4616]/10 text-[#FA4616] rounded-lg">
-                                        <UserPlus className="w-4 h-4" />
+                                    <div className="p-1.5 bg-[#2F1E73]/10 text-[#2F1E73] dark:text-purple-400 rounded-lg">
+                                        <Target className="w-4 h-4" />
                                     </div>
                                 </button>
-                            )}
-                        </div>
-                    )}
+                                <button
+                                    onClick={() => {
+                                        window.dispatchEvent(new CustomEvent("fab-action", { detail: { action: "announcement" } }));
+                                        setIsActionMenuOpen(false);
+                                    }}
+                                    className="flex items-center gap-3 bg-theme-card text-theme-text border border-theme-border-10 px-4 py-3 rounded-2xl shadow-lg hover:bg-theme-bg-white-5 hover:border-theme-brand/30 transition-all hover:-translate-x-1"
+                                >
+                                    <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
+                                        Send Broadcast
+                                    </span>
+                                    <div className="p-1.5 bg-[#F14D24]/10 text-[#F14D24] rounded-lg">
+                                        <Megaphone className="w-4 h-4" />
+                                    </div>
+                                </button>
+                                {(userRole === 'CEO' || userRole === 'MANAGER' || (profile && profile.role === 'ceo')) && (
+                                    <button
+                                        onClick={() => {
+                                            window.dispatchEvent(new CustomEvent("fab-action", { detail: { action: "add-staff" } }));
+                                            setIsActionMenuOpen(false);
+                                        }}
+                                        className="flex items-center gap-3 bg-theme-card text-theme-text border border-theme-border-10 px-4 py-3 rounded-2xl shadow-lg hover:bg-theme-bg-white-5 hover:border-theme-brand/30 transition-all hover:-translate-x-1"
+                                    >
+                                        <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
+                                            Add Staff
+                                        </span>
+                                        <div className="p-1.5 bg-[#FA4616]/10 text-[#FA4616] rounded-lg">
+                                            <UserPlus className="w-4 h-4" />
+                                        </div>
+                                    </button>
+                                )}
+                            </div>
+                        )}
 
-                    {/* Main Button */}
-                    <button
-                        onClick={() => setIsActionMenuOpen(!isActionMenuOpen)}
-                        className="w-14 h-14 bg-[#FA4616] hover:bg-[#e03f14] text-white rounded-full flex items-center justify-center shadow-[0_8px_30px_rgba(250,70,22,0.4)] hover:shadow-[0_8px_30px_rgba(250,70,22,0.6)] transition-all hover:scale-110 cursor-pointer relative z-10"
-                    >
-                        <Plus
-                            className={`w-6 h-6 transition-transform duration-300 ${isActionMenuOpen ? "rotate-45" : ""}`}
-                        />
-                    </button>
+                        {/* Main Button */}
+                        <button
+                            onClick={() => setIsActionMenuOpen(!isActionMenuOpen)}
+                            className="w-14 h-14 bg-[#FA4616] hover:bg-[#e03f14] text-white rounded-full flex items-center justify-center shadow-[0_8px_30px_rgba(250,70,22,0.4)] hover:shadow-[0_8px_30px_rgba(250,70,22,0.6)] transition-all hover:scale-110 cursor-pointer relative z-10"
+                        >
+                            <Plus
+                                className={`w-6 h-6 transition-transform duration-300 ${isActionMenuOpen ? "rotate-45" : ""}`}
+                            />
+                        </button>
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* Main Content Area - Optimized for performance */}
             <main 
@@ -319,7 +321,7 @@ function CEOPageContent() {
 
 
 
-            <CEOCommsDrawer 
+            <UAMessengerDrawer 
                 isOpen={isCommsOpen}
                 onClose={() => setIsCommsOpen(false)}
                 profile={profile}

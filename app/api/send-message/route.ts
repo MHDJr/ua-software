@@ -32,6 +32,41 @@ export async function POST(req: Request) {
             },
         });
 
+        // Backend security validation: staff can only message CEO, Admins, or Department Managers
+        const match = message.match(/^\[sender_id:([\w-]+)\]/);
+        const senderId = match ? match[1] : null;
+
+        if (senderId) {
+            const [{ data: senderProfile }, { data: recipientProfile }] = await Promise.all([
+                supabaseAdmin.from("profiles").select("*").eq("id", senderId).single(),
+                supabaseAdmin.from("profiles").select("*").eq("id", user_id).single()
+            ]);
+
+            if (senderProfile && recipientProfile) {
+                const senderRole = senderProfile.role?.toLowerCase();
+                const senderDept = senderProfile.department?.toLowerCase();
+                const isSenderCeoOrManager = senderRole === "ceo" || senderProfile.is_manager || senderRole === "manager";
+                const isSenderAdmin = senderRole === "admin" || senderRole === "administrator" || ((senderDept === "administration" || senderDept === "admin") && (senderProfile.is_manager || senderRole === "manager"));
+
+                // Regular Staff validation
+                if (!isSenderCeoOrManager && !isSenderAdmin) {
+                    const recRole = recipientProfile.role?.toLowerCase();
+                    const recDept = recipientProfile.department?.toLowerCase();
+
+                    const isRecCeo = recRole === "ceo";
+                    const isRecAdmin = recRole === "admin" || recRole === "administrator" || ((recDept === "administration" || recDept === "admin") && (recipientProfile.is_manager || recRole === "manager"));
+                    const isRecMyManager = (recipientProfile.is_manager === true || recRole === "manager") && recipientProfile.department === senderProfile.department;
+
+                    if (!isRecCeo && !isRecAdmin && !isRecMyManager) {
+                        return NextResponse.json(
+                            { error: "Forbidden: Staff members can only communicate with the CEO, Administrators, or their Department Managers." },
+                            { status: 403 }
+                        );
+                    }
+                }
+            }
+        }
+
         // Insert notification using the service role key (auth check removed —
         // sender identity is enforced via the [sender_id:UUID] prefix in message body,
         // and RLS policies handle privacy at the database level).

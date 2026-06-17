@@ -10,6 +10,7 @@ import { useTabResiliency } from "./tab-resiliency-engine";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn, isValidAvatarUrl } from "@/lib/utils";
+import { UAMessengerDrawer } from "@/components/ua-messenger-drawer";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
     Clock,
@@ -761,6 +762,12 @@ export default function StaffPortal() {
             "[StaffPortal] Throttled resync event received. Refreshing data...",
         );
         fetchData();
+    }, []);
+
+    useEffect(() => {
+        const handleToggle = () => setIsBellOpen(prev => !prev);
+        window.addEventListener("toggle-hq-messenger", handleToggle);
+        return () => window.removeEventListener("toggle-hq-messenger", handleToggle);
     }, []);
 
     useTabResiliency(handleResync, isRefreshing, setIsRefreshing);
@@ -3613,263 +3620,14 @@ export default function StaffPortal() {
             )}
 
             {/* ===== UA Messenger Drawer — Frosted White Glass (ROOT-LEVEL fixed) ===== */}
-            {/* Backdrop */}
-            {isBellOpen && (
-                <div 
-                    className="fixed inset-0 bg-black/30 backdrop-blur-[2px] z-[100] transition-opacity duration-300" 
-                    onClick={() => setIsBellOpen(false)} 
-                />
-            )}
-
-            {/* Slide-out Panel — slides from RIGHT */}
-            <AnimatePresence>
-                {isBellOpen && (
-                    <motion.div
-                        initial={{ x: "110%", opacity: 0 }}
-                        animate={{ x: 0, opacity: 1 }}
-                        exit={{ x: "110%", opacity: 0 }}
-                        transition={{ type: "spring", stiffness: 300, damping: 28 }}
-                        className="fixed right-4 top-4 bottom-4 w-80 md:w-96 flex flex-col z-[101]"
-                        style={{ filter: "drop-shadow(0 25px 60px rgba(0,0,0,0.15))" }}
-                    >
-                        {/* Frosted Glass Container */}
-                        <div className="flex flex-col flex-1 rounded-3xl border border-white/60 bg-white/82 backdrop-blur-xl overflow-hidden shadow-2xl">
-                            
-                            {/* Gradient Top Bar */}
-                            <div className="h-1 w-full bg-gradient-to-r from-[#31267D] via-[#F15A24] to-[#31267D] opacity-80" />
-
-                            {/* Header */}
-                            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100/80 flex-shrink-0 bg-white/60">
-                                <div className="flex items-center gap-2.5">
-                                    {/* Icon */}
-                                    <div className="relative w-8 h-8 rounded-xl bg-gradient-to-br from-[#31267D] to-[#4f3fbf] flex items-center justify-center shadow-md shadow-[#31267D]/20 flex-shrink-0">
-                                        <Bell className="w-4 h-4 text-white" />
-                                        {(() => {
-                                            const count = notifications.filter(n => {
-                                                if (n.read) return false;
-                                                const { senderId } = parseMessagePayload(n.message);
-                                                const senderProfile = profiles.find(p => p.id === senderId);
-                                                return isHigherOfficial(senderProfile || null, n.title);
-                                            }).length;
-                                            return count > 0 ? (
-                                                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#F14D24] text-[7px] font-black text-white flex items-center justify-center shadow-sm">
-                                                    {count > 9 ? "9+" : count}
-                                                </span>
-                                            ) : null;
-                                        })()}
-                                    </div>
-                                    <div>
-                                        <h2 className="text-sm font-black tracking-tight text-slate-900">UA Messenger</h2>
-                                        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Command Link</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    {(() => {
-                                        const count = notifications.filter(n => {
-                                            if (n.read) return false;
-                                            const { senderId } = parseMessagePayload(n.message);
-                                            const senderProfile = profiles.find(p => p.id === senderId);
-                                            return isHigherOfficial(senderProfile || null, n.title);
-                                        }).length;
-                                        return count > 0 ? (
-                                            <span className="text-[9px] font-bold text-[#F14D24] bg-orange-50 border border-orange-200 px-2.5 py-0.5 rounded-full">
-                                                {count} New
-                                            </span>
-                                        ) : null;
-                                    })()}
-                                    <button 
-                                        onClick={() => setIsBellOpen(false)}
-                                        className="p-2 hover:bg-slate-100 border border-transparent hover:border-slate-200 text-slate-400 hover:text-slate-700 rounded-xl transition-colors"
-                                    >
-                                        <X className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Scrollable Content */}
-                            <div className="flex-1 overflow-y-auto px-5 pb-5 pt-3 space-y-3 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
-                                {notifications.length > 0 ? (
-                                    notifications.map((notif) => {
-                                        const { senderId, cleanText } = parseMessagePayload(notif.message);
-                                        const senderProfile = profiles.find(p => p.id === senderId);
-                                        const isFromHigher = isHigherOfficial(senderProfile || null, notif.title);
-                                        const isUnread = !notif.read;
-                                        const cardId = notif.id;
-
-                                        const senderName = senderProfile 
-                                            ? senderProfile.full_name 
-                                            : (notif.title?.toUpperCase().includes("CEO") ? "Salim PA (CEO)" : (notif.title || "Usthad Academy"));
-                                            
-                                        const senderDesignation = senderProfile 
-                                            ? (senderProfile.role === "ceo" ? "CEO" : senderProfile.is_manager ? `${senderProfile.department} Manager` : senderProfile.role?.toUpperCase()) 
-                                            : (notif.title?.toUpperCase().includes("CEO") ? "CEO" : "");
-
-                                        return (
-                                            <div
-                                                key={notif.id}
-                                                className={cn(
-                                                    "bg-white rounded-2xl p-4 border border-slate-100/80 hover:border-slate-200 hover:shadow-md transition-all duration-300 flex flex-col gap-2.5 relative overflow-hidden group",
-                                                    isUnread && isFromHigher && "border-l-4 border-l-[#F14D24] shadow-sm"
-                                                )}
-                                            >
-                                                {isUnread && isFromHigher && (
-                                                    <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-[#F14D24] animate-pulse" />
-                                                )}
-
-                                                <div className="flex justify-between items-start gap-2">
-                                                    <div className="flex flex-col min-w-0">
-                                                        <span className={cn(
-                                                            "text-[11px] font-black tracking-wide flex items-center gap-1.5 truncate",
-                                                            isFromHigher ? "text-[#F14D24]" : "text-slate-900"
-                                                        )}>
-                                                            {senderName}
-                                                            {senderDesignation && (
-                                                                <span className="text-[7px] font-black tracking-widest text-[#31267D] bg-[#31267D]/8 px-1.5 py-0.5 rounded-lg uppercase flex-shrink-0 border border-[#31267D]/12">
-                                                                    {senderDesignation}
-                                                                </span>
-                                                            )}
-                                                        </span>
-                                                        <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">
-                                                            {format(new Date(notif.created_at), 'MMM d, h:mm a')}
-                                                        </span>
-                                                    </div>
-                                                </div>
-
-                                                <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
-                                                    <p className="text-[11px] font-medium leading-normal text-slate-800 tracking-wide break-words">
-                                                        {cleanText}
-                                                    </p>
-                                                </div>
-
-                                                <div className="flex items-center justify-between border-t border-slate-100 pt-2.5 mt-1 gap-2">
-                                                    {isUnread ? (
-                                                        <button
-                                                            onClick={async (e) => {
-                                                                e.stopPropagation();
-                                                                try {
-                                                                    const { error } = await supabase
-                                                                        .from("notifications")
-                                                                        .update({ 
-                                                                            read: true,
-                                                                            read_at: new Date().toISOString()
-                                                                        })
-                                                                        .eq("id", notif.id);
-                                                                    if (error) throw error;
-                                                                    setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, read: true, read_at: new Date().toISOString() } : n));
-                                                                    toast.success("Directive marked as read");
-                                                                } catch (err: any) {
-                                                                    toast.error("Failed to mark read: " + err.message);
-                                                                }
-                                                            }}
-                                                            className="flex items-center gap-1 text-[8px] font-black uppercase tracking-wider text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg transition-all border border-emerald-100 hover:border-emerald-200"
-                                                        >
-                                                            ✓ READ
-                                                        </button>
-                                                    ) : (
-                                                        <span className="text-[8px] text-slate-300 font-bold uppercase tracking-wider flex items-center gap-1">
-                                                            ✓ Read
-                                                        </span>
-                                                    )}
-
-                                                    {senderId && (
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setActiveReplyId(prev => prev === cardId ? null : cardId);
-                                                                setReplyMessage("");
-                                                            }}
-                                                            className="flex items-center gap-1 text-[8px] font-black uppercase tracking-wider text-[#31267D] hover:text-white bg-[#31267D]/8 hover:bg-[#31267D] px-2.5 py-1 rounded-lg transition-all border border-[#31267D]/15 hover:border-[#31267D]"
-                                                        >
-                                                            REPLY
-                                                        </button>
-                                                    )}
-                                                </div>
-
-                                                {activeReplyId === cardId && (
-                                                    <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-                                                        <form 
-                                                            onSubmit={async (e) => {
-                                                                e.preventDefault();
-                                                                if (!replyMessage.trim()) return;
-                                                                setIsSendingReply(true);
-                                                                try {
-                                                                    const payload = `[sender_id:${profile?.id}] ${replyMessage.trim()}`;
-                                                                    const queries: any[] = [
-                                                                        fetch("/api/send-message", {
-                                                                            method: "POST",
-                                                                            headers: { "Content-Type": "application/json" },
-                                                                            body: JSON.stringify({
-                                                                                user_id: senderId,
-                                                                                title: `REPLY: ${notif.title || "MESSAGE"}`,
-                                                                                message: payload,
-                                                                                type: "direct"
-                                                                            })
-                                                                        })
-                                                                    ];
-                                                                    if (isUnread) {
-                                                                        queries.push(
-                                                                            supabase
-                                                                                .from("notifications")
-                                                                                .update({ read: true, read_at: new Date().toISOString() })
-                                                                                .eq("id", notif.id)
-                                                                        );
-                                                                    }
-                                                                    await Promise.all(queries);
-                                                                    toast.success("Reply dispatched successfully");
-                                                                    setReplyMessage("");
-                                                                    setActiveReplyId(null);
-                                                                    fetchData();
-                                                                } catch (err: any) {
-                                                                    toast.error(err.message || "Failed to send reply");
-                                                                } finally {
-                                                                    setIsSendingReply(false);
-                                                                }
-                                                            }}
-                                                            className="relative flex items-center bg-slate-50 border border-slate-200 rounded-2xl p-1.5 focus-within:border-[#31267D]/50 focus-within:shadow-[0_0_0_3px_rgba(49,38,125,0.08)] transition-all duration-300"
-                                                        >
-                                                            <input
-                                                                type="text"
-                                                                value={replyMessage}
-                                                                onChange={(e) => setReplyMessage(e.target.value)}
-                                                                placeholder="Type reply..."
-                                                                className="flex-1 bg-transparent text-[11px] text-slate-800 placeholder-slate-400 px-3 py-1 outline-none min-w-0 font-medium"
-                                                                disabled={isSendingReply}
-                                                            />
-                                                            <button
-                                                                type="submit"
-                                                                className="p-2 text-white rounded-xl bg-[#F14D24] hover:bg-[#e03f14] transition-colors flex-shrink-0 shadow-sm shadow-orange-500/20 disabled:opacity-50"
-                                                                disabled={isSendingReply || !replyMessage.trim()}
-                                                            >
-                                                                {isSendingReply ? (
-                                                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                                                ) : (
-                                                                    <Send className="w-3.5 h-3.5 text-white" />
-                                                                )}
-                                                            </button>
-                                                        </form>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })
-                                ) : (
-                                    <div className="text-center py-12 flex flex-col items-center justify-center gap-3">
-                                        <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center">
-                                            <Bell className="w-7 h-7 text-slate-300" />
-                                        </div>
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                            No active directives
-                                        </p>
-                                        <p className="text-[9px] text-slate-300 max-w-[180px] text-center leading-relaxed">
-                                            Messages from CEO and managers will appear here.
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+            <UAMessengerDrawer 
+                isOpen={isBellOpen}
+                onClose={() => {
+                    setIsBellOpen(false);
+                    fetchData();
+                }}
+                profile={profile}
+            />
 
         </div>
     );
