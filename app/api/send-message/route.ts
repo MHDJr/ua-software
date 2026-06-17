@@ -15,10 +15,10 @@ export async function POST(req: Request) {
 
         // Initialize Supabase admin client (service role — bypasses RLS)
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;
 
         if (!supabaseUrl || !supabaseServiceRoleKey) {
-            console.error("[SendMessageAPI] Missing Supabase backend credentials.");
+            console.error("[SendMessageAPI] Missing Supabase backend credentials (SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY).");
             return NextResponse.json(
                 { error: "Server Configuration Error: Missing database credentials." },
                 { status: 500 }
