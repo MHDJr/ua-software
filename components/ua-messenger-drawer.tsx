@@ -286,10 +286,15 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
                             {/* Header */}
                             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100/80 flex-shrink-0 bg-white/60">
                                 <div className="flex items-center gap-2.5">
-                                    <div className="relative flex items-center justify-center w-8 h-8 rounded-xl bg-gradient-to-br from-[#31267D] to-[#4f3fbf] shadow-md shadow-[#31267D]/20">
-                                        <MessageCircle className="w-4 h-4 text-white" />
+                                    <div className="relative flex items-center justify-center w-8 h-8 rounded-xl bg-white shadow-sm border border-slate-100">
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img 
+                                            src="/images/usthadacademylogo2.svg" 
+                                            alt="UA Logo" 
+                                            className="w-5 h-5 object-contain"
+                                        />
                                         {unreadCount > 0 && (
-                                            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#F14D24] text-[8px] font-black text-white flex items-center justify-center shadow-sm animate-pulse">
+                                            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#F14D24] text-[8px] font-black text-white flex items-center justify-center shadow-sm animate-pulse z-10">
                                                 {unreadCount > 9 ? "9+" : unreadCount}
                                             </span>
                                         )}
