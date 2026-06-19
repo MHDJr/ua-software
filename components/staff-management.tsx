@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Search, Plus, Star, CheckCircle2, Clock, XCircle, Wifi, Building2, Pencil, Trash2, Loader2, X, Mail, Users, FileText, BarChart3, Calendar, Eye } from "lucide-react";
+import { Search, Plus, Star, CheckCircle2, Clock, XCircle, Wifi, Building2, Pencil, Trash2, Loader2, X, Mail, Users, FileText, BarChart3, Calendar, Eye, Activity, ArrowLeft, ChevronRight, TrendingUp } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -113,6 +113,8 @@ export function StaffManagement() {
     const [selectedStaffForReport, setSelectedStaffForReport] = useState<StaffMember | null>(null);
     const [isReportOpen, setIsReportOpen] = useState(false);
     const [isMonthlyReportOpen, setIsMonthlyReportOpen] = useState(false);
+    const [isReportsCenterOpen, setIsReportsCenterOpen] = useState(false);
+    const [activeReportView, setActiveReportView] = useState<'selection' | 'operations' | 'leaves' | 'performance'>('selection');
     const [isDownloadingOperationsReport, setIsDownloadingOperationsReport] = useState(false);
     const [isDownloadingLeavesReport, setIsDownloadingLeavesReport] = useState(false);
 
@@ -1581,6 +1583,56 @@ export function StaffManagement() {
         return total > 0 ? Math.round((completed / total) * 100) : 100;
     }, [totalTasksAssigned, totalTasksCompleted]);
 
+    const operationsReportStats = useMemo(() => {
+        const totalSales = activeTasks.filter(t => (getStaffDepartment(t.assigned_to)?.toLowerCase() || "") === "sales").length +
+                           completedTasks.filter(t => (getStaffDepartment(t.assigned_to)?.toLowerCase() || "") === "sales").length;
+        const completedSales = completedTasks.filter(t => (getStaffDepartment(t.assigned_to)?.toLowerCase() || "") === "sales").length;
+
+        const isAdmin = (t: Task) => {
+            const dept = getStaffDepartment(t.assigned_to)?.toLowerCase() || "";
+            return dept === "administration" || dept === "admin" || dept === "general" || !dept;
+        };
+        const totalAdmin = activeTasks.filter(isAdmin).length + completedTasks.filter(isAdmin).length;
+        const completedAdmin = completedTasks.filter(isAdmin).length;
+
+        const isFinance = (t: Task) => {
+            const dept = getStaffDepartment(t.assigned_to)?.toLowerCase() || "";
+            return dept === "finance" || dept === "accounts";
+        };
+        const totalFinance = activeTasks.filter(isFinance).length + completedTasks.filter(isFinance).length;
+        const completedFinance = completedTasks.filter(isFinance).length;
+
+        const totalMarketing = activeTasks.filter(t => (getStaffDepartment(t.assigned_to)?.toLowerCase() || "") === "marketing").length +
+                               completedTasks.filter(t => (getStaffDepartment(t.assigned_to)?.toLowerCase() || "") === "marketing").length;
+        const completedMarketing = completedTasks.filter(t => (getStaffDepartment(t.assigned_to)?.toLowerCase() || "") === "marketing").length;
+
+        return {
+            sales: { total: totalSales, completed: completedSales },
+            admin: { total: totalAdmin, completed: completedAdmin },
+            finance: { total: totalFinance, completed: completedFinance },
+            marketing: { total: totalMarketing, completed: completedMarketing }
+        };
+    }, [activeTasks, completedTasks, staffProfiles]);
+
+    const leavesReportStats = useMemo(() => {
+        const filtered = rawRequests.filter(req => req.type === 'leave');
+        const pending = filtered.length;
+        return {
+            total: filtered.length,
+            pending,
+            recentLeaves: filtered.slice(0, 5).map((req: any) => {
+                const staffName = req.submitted_by?.full_name || req.submitted_by?.username || "Unknown Staff";
+                return {
+                    id: req.id,
+                    staffName,
+                    dates: req.dates || "N/A",
+                    status: req.status || "pending",
+                    purpose: req.purpose || req.description || "Personal Leave"
+                };
+            })
+        };
+    }, [rawRequests]);
+
     // Process pending requests for UI
     const pendingRequests = useMemo(() => {
         const filtered = rawRequests.filter(req => req.type !== 'idea');
@@ -1767,56 +1819,16 @@ export function StaffManagement() {
                     </div>
                     <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
                         {(userRole === 'CEO' || userRole === 'MANAGER' || profile?.role === 'ceo' || profile?.role === 'manager' || profile?.is_manager) && (
-                            <>
-                                <button
-                                    onClick={() => downloadMonthlyOperationsReport(true)}
-                                    disabled={isDownloadingOperationsReport}
-                                    className="bg-[#31267D]/10 hover:bg-[#31267D]/20 text-[#31267D] border border-[#31267D]/20 px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shrink-0 h-11 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {isDownloadingOperationsReport ? (
-                                        <Loader2 className="w-4 h-4 animate-spin animate-colors" />
-                                    ) : (
-                                        <Eye className="w-4 h-4" />
-                                    )}
-                                    View Operations Report
-                                </button>
-                                <button
-                                    onClick={() => downloadMonthlyOperationsReport(false)}
-                                    disabled={isDownloadingOperationsReport}
-                                    className="bg-[#31267D] hover:bg-[#251B60] text-white px-4 py-2 rounded-xl text-sm font-bold shadow-[0_4px_20px_rgba(49,38,125,0.15)] hover:shadow-[0_4px_20px_rgba(49,38,125,0.25)] transition-all flex items-center justify-center gap-2 shrink-0 h-11 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {isDownloadingOperationsReport ? (
-                                        <Loader2 className="w-4 h-4 animate-spin text-white" />
-                                    ) : (
-                                        <FileText className="w-4 h-4 text-white" />
-                                    )}
-                                    Download Operations Report
-                                </button>
-                                <button
-                                    onClick={() => downloadMonthlyLeavesReport(true)}
-                                    disabled={isDownloadingLeavesReport}
-                                    className="bg-[#F14D24]/10 hover:bg-[#F14D24]/20 text-[#F14D24] border border-[#F14D24]/20 px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shrink-0 h-11 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {isDownloadingLeavesReport ? (
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                        <Eye className="w-4 h-4" />
-                                    )}
-                                    View Leaves Report
-                                </button>
-                                <button
-                                    onClick={() => downloadMonthlyLeavesReport(false)}
-                                    disabled={isDownloadingLeavesReport}
-                                    className="bg-[#F14D24] hover:bg-[#d63f19] text-white px-4 py-2 rounded-xl text-sm font-bold shadow-[0_4px_20px_rgba(241,77,36,0.15)] hover:shadow-[0_4px_20px_rgba(241,77,36,0.25)] transition-all flex items-center justify-center gap-2 shrink-0 h-11 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {isDownloadingLeavesReport ? (
-                                        <Loader2 className="w-4 h-4 animate-spin text-white" />
-                                    ) : (
-                                        <Calendar className="w-4 h-4 text-white" />
-                                    )}
-                                    Download Leaves Report
-                                </button>
-                            </>
+                            <button
+                                onClick={() => {
+                                    setIsReportsCenterOpen(true);
+                                    setActiveReportView('selection');
+                                }}
+                                className="bg-[#31267D] hover:bg-[#251B60] text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-[0_4px_20px_rgba(49,38,125,0.15)] hover:shadow-[0_4px_20px_rgba(49,38,125,0.25)] transition-all flex items-center justify-center gap-2 shrink-0 h-11"
+                            >
+                                <FileText className="w-4 h-4 text-white" />
+                                Reports Center
+                            </button>
                         )}
                         {(userRole === 'CEO' || userRole === 'MANAGER') && (
                             <Button
@@ -2365,203 +2377,432 @@ export function StaffManagement() {
                 </DialogContent>
             </Dialog>
 
-            {/* Monthly Report Dialog */}
-            <Dialog open={isMonthlyReportOpen} onOpenChange={setIsMonthlyReportOpen}>
-                <DialogContent className="max-w-xl p-0 overflow-hidden rounded-[28px] border-0 bg-white shadow-2xl flex flex-col max-h-[85vh]">
+            {/* Reports Center Dialog */}
+            <Dialog open={isReportsCenterOpen} onOpenChange={setIsReportsCenterOpen}>
+                <DialogContent className="max-w-4xl p-0 overflow-hidden rounded-[28px] border-0 bg-white shadow-2xl flex flex-col max-h-[85vh]">
                     {/* Header */}
-                    <div className="bg-zinc-950 text-white p-6 relative flex items-center justify-between shrink-0">
+                    <div className="bg-zinc-950 text-white p-6 relative flex items-center justify-between shrink-0 font-sans">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center">
-                                <BarChart3 className="w-5 h-5 text-white" />
+                                <FileText className="w-5 h-5 text-white" />
                             </div>
                             <div>
-                                <h3 className="text-base font-black uppercase tracking-widest">Monthly Performance Report</h3>
-                                <p className="text-[9px] uppercase font-bold text-zinc-400 tracking-widest mt-0.5">Usthad Academy OS • Executive Briefing</p>
+                                <h3 className="text-base font-black uppercase tracking-widest">Academy Reports Center</h3>
+                                <p className="text-[9px] uppercase font-bold text-zinc-400 tracking-widest mt-0.5">Usthad Academy OS • Reports Directory</p>
                             </div>
                         </div>
-                        <button onClick={() => setIsMonthlyReportOpen(false)} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 active:scale-95 transition-all">
+                        <button onClick={() => setIsReportsCenterOpen(false)} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 active:scale-95 transition-all">
                             <X className="w-4 h-4 text-white" />
                         </button>
                     </div>
 
-                    <div className="p-6 md:p-8 flex-1 overflow-y-auto space-y-8 bg-zinc-50/50">
-                        {/* Employee of the Month Highlight Banner */}
-                        {employeeOfTheMonth && (
-                            <div className="relative overflow-hidden bg-gradient-to-r from-zinc-900 to-zinc-800 rounded-3xl p-6 text-white border border-zinc-700 shadow-lg flex flex-col md:flex-row items-center justify-between gap-6">
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -translate-y-12 translate-x-12 pointer-events-none" />
-                                <div className="flex items-center gap-5 flex-col md:flex-row text-center md:text-left">
-                                    <div className="relative shrink-0">
-                                        <Avatar className="w-20 h-20 border-4 border-zinc-700 shadow-xl rounded-2xl">
-                                            <AvatarImage src={isValidAvatarUrl(employeeOfTheMonth.avatar) ? employeeOfTheMonth.avatar : undefined} />
-                                            <AvatarFallback className="text-zinc-900 font-black text-2xl bg-white">
-                                                {employeeOfTheMonth.avatar && !isValidAvatarUrl(employeeOfTheMonth.avatar)
-                                                    ? employeeOfTheMonth.avatar
-                                                    : employeeOfTheMonth.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
-                                            </AvatarFallback>
-                                        </Avatar>
-                                        <div className="absolute -bottom-2 -right-2 bg-[#F14D24] text-white p-1.5 rounded-xl shadow-md border border-zinc-800">
-                                            <Star className="w-4 h-4 fill-white stroke-[2.5px]" />
+                    {activeReportView === 'selection' ? (
+                        /* Selection View: Report Cards */
+                        <div className="p-8 flex-1 overflow-y-auto space-y-6 bg-zinc-50/50">
+                            <div>
+                                <h4 className="text-sm font-black text-zinc-800 uppercase tracking-wider mb-2">Available Reports</h4>
+                                <p className="text-xs text-zinc-500 font-medium">Select a report card below to open its preview, summary statistics, and PDF export controls.</p>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {/* Operations Card */}
+                                <div 
+                                    onClick={() => setActiveReportView('operations')}
+                                    className="bg-white border border-zinc-100 hover:border-indigo-500/30 p-6 rounded-3xl shadow-sm hover:shadow-md cursor-pointer transition-all duration-300 flex flex-col justify-between group h-64"
+                                >
+                                    <div>
+                                        <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                                            <Activity className="w-6 h-6 text-[#31267D]" />
                                         </div>
+                                        <h5 className="font-black text-zinc-900 uppercase tracking-tight text-base mb-1.5">Operations Report</h5>
+                                        <p className="text-xs text-zinc-500 leading-relaxed font-medium">Departmental task ledger, execution speeds, and operational yield audits.</p>
                                     </div>
-                                    <div className="space-y-1 min-w-0">
-                                        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase bg-[#F14D24] text-white tracking-widest mb-1.5 shadow-md">
-                                            Employee of the Month
-                                        </div>
-                                        <h4 className="text-xl font-black uppercase tracking-tight truncate">{employeeOfTheMonth.name}</h4>
-                                        <p className="text-xs font-bold text-zinc-300 uppercase tracking-widest">{employeeOfTheMonth.role} • {employeeOfTheMonth.department}</p>
+                                    <div className="flex items-center justify-between text-[#31267D] font-bold text-xs uppercase mt-4">
+                                        <span>Open Preview</span>
+                                        <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                                     </div>
                                 </div>
-                                <div className="text-center md:text-right shrink-0 bg-white/5 border border-white/10 p-4 rounded-2xl backdrop-blur-md min-w-[180px]">
-                                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Operations Velocity</p>
-                                    <p className="text-3xl font-black text-white">{employeeOfTheMonth.tasksCompleted} <span className="text-xs font-normal text-zinc-400">Tasks Done</span></p>
-                                    <p className="text-xs font-bold text-emerald-400 uppercase tracking-widest mt-1">
-                                        {employeeOfTheMonth.tasksTotal > 0 ? Math.round((employeeOfTheMonth.tasksCompleted / employeeOfTheMonth.tasksTotal) * 100) : 100}% Yield Rate
-                                    </p>
+
+                                {/* Leaves Card */}
+                                <div 
+                                    onClick={() => setActiveReportView('leaves')}
+                                    className="bg-white border border-zinc-100 hover:border-orange-500/30 p-6 rounded-3xl shadow-sm hover:shadow-md cursor-pointer transition-all duration-300 flex flex-col justify-between group h-64"
+                                >
+                                    <div>
+                                        <div className="w-12 h-12 rounded-2xl bg-orange-50 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                                            <Calendar className="w-6 h-6 text-[#F14D24]" />
+                                        </div>
+                                        <h5 className="font-black text-zinc-900 uppercase tracking-tight text-base mb-1.5">Leaves & Absences</h5>
+                                        <p className="text-xs text-zinc-500 leading-relaxed font-medium">Absence requests, medical leave logs, approvals, and personnel availability lists.</p>
+                                    </div>
+                                    <div className="flex items-center justify-between text-[#F14D24] font-bold text-xs uppercase mt-4">
+                                        <span>Open Preview</span>
+                                        <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                                    </div>
+                                </div>
+
+                                {/* Performance Card */}
+                                <div 
+                                    onClick={() => setActiveReportView('performance')}
+                                    className="bg-white border border-zinc-100 hover:border-emerald-500/30 p-6 rounded-3xl shadow-sm hover:shadow-md cursor-pointer transition-all duration-300 flex flex-col justify-between group h-64"
+                                >
+                                    <div>
+                                        <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                                            <BarChart3 className="w-6 h-6 text-emerald-600" />
+                                        </div>
+                                        <h5 className="font-black text-zinc-900 uppercase tracking-tight text-base mb-1.5">Performance Report</h5>
+                                        <p className="text-xs text-zinc-500 leading-relaxed font-medium">Executive briefing showcasing Employee of the Month and department yields.</p>
+                                    </div>
+                                    <div className="flex items-center justify-between text-emerald-600 font-bold text-xs uppercase mt-4">
+                                        <span>Open Preview</span>
+                                        <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                                    </div>
                                 </div>
                             </div>
-                        )}
-
-                        {/* Institutional Metrics Grid */}
-                        <div className="space-y-3">
-                            <h4 className="text-xs font-black uppercase tracking-wider text-zinc-400">Institutional Performance</h4>
-                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                                <div className="bg-white border border-zinc-100 p-5 rounded-2xl shadow-sm text-center flex flex-col justify-center">
-                                    <span className="text-[9px] font-black uppercase text-zinc-400 tracking-wider">Active Staff</span>
-                                    <span className="text-2xl font-black text-zinc-900 mt-1">{stats.total}</span>
-                                </div>
-                                <div className="bg-white border border-zinc-100 p-5 rounded-2xl shadow-sm text-center flex flex-col justify-center">
-                                    <span className="text-[9px] font-black uppercase text-zinc-400 tracking-wider">Assigned Directives</span>
-                                    <span className="text-2xl font-black text-zinc-900 mt-1">{totalTasksAssigned}</span>
-                                </div>
-                                <div className="bg-white border border-zinc-100 p-5 rounded-2xl shadow-sm text-center flex flex-col justify-center">
-                                    <span className="text-[9px] font-black uppercase text-zinc-400 tracking-wider">Completed Tasks</span>
-                                    <span className="text-2xl font-black text-emerald-600 mt-1">{totalTasksCompleted}</span>
-                                </div>
-                                <div className="bg-white border border-zinc-100 p-5 rounded-2xl shadow-sm text-center flex flex-col justify-center">
-                                    <span className="text-[9px] font-black uppercase text-zinc-400 tracking-wider">Critical Delays</span>
-                                    <span className="text-[10px] font-black text-emerald-500 uppercase tracking-wider mt-2.5 py-0.5 px-2 bg-emerald-50 border border-emerald-500/10 rounded-full inline-block mx-auto">
-                                        0 • Stable
+                        </div>
+                    ) : activeReportView === 'operations' ? (
+                        /* Operations Sub-view */
+                        <>
+                            <div className="p-6 md:p-8 flex-1 overflow-y-auto space-y-6 bg-zinc-50/50">
+                                <div className="flex items-center justify-between">
+                                    <button 
+                                        onClick={() => setActiveReportView('selection')}
+                                        className="text-zinc-500 hover:text-zinc-800 flex items-center gap-1.5 text-xs font-bold uppercase transition-all"
+                                    >
+                                        <ArrowLeft className="w-4 h-4" />
+                                        Back to selection
+                                    </button>
+                                    <span className="text-[10px] bg-indigo-50 border border-indigo-200 text-[#31267D] px-3 py-1 rounded-full font-black uppercase tracking-wider">
+                                        Operations Analytics
                                     </span>
                                 </div>
-                                <div className="bg-white border border-zinc-100 p-5 rounded-2xl shadow-sm text-center flex flex-col justify-center col-span-2 md:col-span-1">
-                                    <span className="text-[9px] font-black uppercase text-zinc-400 tracking-wider">Velocity</span>
-                                    <span className="text-2xl font-black text-[#31267D] mt-1">{operationalVelocity}%</span>
+
+                                <div className="bg-white border border-zinc-100 p-6 rounded-3xl shadow-sm space-y-4">
+                                    <h4 className="font-black text-zinc-900 uppercase tracking-tight text-lg">Monthly Operations Briefing</h4>
+                                    <p className="text-xs text-zinc-500 leading-relaxed font-medium">
+                                        This report details task assignments, workflow milestones, and execution efficiency indicators across all functional departments of Usthad Academy.
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div className="bg-white border border-zinc-100 p-5 rounded-2xl shadow-sm text-center">
+                                        <span className="text-[9px] font-black uppercase text-zinc-400 tracking-wider block">Sales Directives</span>
+                                        <span className="text-2xl font-black text-zinc-900 mt-1 block">{operationsReportStats.sales.total}</span>
+                                        <span className="text-[10px] text-emerald-600 font-bold mt-1 block">{operationsReportStats.sales.completed} Completed</span>
+                                    </div>
+                                    <div className="bg-white border border-zinc-100 p-5 rounded-2xl shadow-sm text-center">
+                                        <span className="text-[9px] font-black uppercase text-zinc-400 tracking-wider block">Admin Tasks</span>
+                                        <span className="text-2xl font-black text-zinc-900 mt-1 block">{operationsReportStats.admin.total}</span>
+                                        <span className="text-[10px] text-emerald-600 font-bold mt-1 block">{operationsReportStats.admin.completed} Completed</span>
+                                    </div>
+                                    <div className="bg-white border border-zinc-100 p-5 rounded-2xl shadow-sm text-center">
+                                        <span className="text-[9px] font-black uppercase text-zinc-400 tracking-wider block">Finance Audits</span>
+                                        <span className="text-2xl font-black text-zinc-900 mt-1 block">{operationsReportStats.finance.total}</span>
+                                        <span className="text-[10px] text-emerald-600 font-bold mt-1 block">{operationsReportStats.finance.completed} Completed</span>
+                                    </div>
+                                    <div className="bg-white border border-zinc-100 p-5 rounded-2xl shadow-sm text-center">
+                                        <span className="text-[9px] font-black uppercase text-zinc-400 tracking-wider block">Marketing Campaigns</span>
+                                        <span className="text-2xl font-black text-zinc-900 mt-1 block">{operationsReportStats.marketing.total}</span>
+                                        <span className="text-[10px] text-emerald-600 font-bold mt-1 block">{operationsReportStats.marketing.completed} Completed</span>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-
-                        {/* Full Breakdown Table */}
-                        <div className="space-y-3">
-                            <h4 className="text-xs font-black uppercase tracking-wider text-zinc-400">Personnel Yield Audit</h4>
-                            <div className="border border-zinc-100 bg-white rounded-2xl overflow-hidden shadow-sm max-h-[300px] overflow-y-auto">
-                                <table className="w-full text-left border-collapse">
-                                    <thead className="bg-zinc-50 border-b border-zinc-100 sticky top-0 z-10">
-                                        <tr>
-                                            <th className="p-4 text-[9px] font-black text-zinc-400 uppercase tracking-widest">Personnel Profile</th>
-                                            <th className="p-4 text-[9px] font-black text-zinc-400 uppercase tracking-widest text-center">Assigned</th>
-                                            <th className="p-4 text-[9px] font-black text-zinc-400 uppercase tracking-widest text-center">Completed</th>
-                                            <th className="p-4 text-[9px] font-black text-zinc-400 uppercase tracking-widest text-center">Pending</th>
-                                            <th className="p-4 text-[9px] font-black text-zinc-400 uppercase tracking-widest text-right">Yield Velocity</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-zinc-100 text-zinc-900">
-                                        {staffData.map((s) => {
-                                            const pending = s.tasksTotal - s.tasksCompleted;
-                                            const yieldRate = s.tasksTotal > 0 ? Math.round((s.tasksCompleted / s.tasksTotal) * 100) : 100;
-                                            return (
-                                                <tr key={s.id} className="hover:bg-zinc-50/50 transition-colors">
-                                                    <td className="p-4">
-                                                        <div className="flex items-center gap-3">
-                                                            <Avatar className="w-8 h-8 border border-zinc-100 shadow-sm rounded-lg">
-                                                                <AvatarImage src={isValidAvatarUrl(s.avatar) ? s.avatar : undefined} />
-                                                                <AvatarFallback className="text-white font-black text-[10px]" style={{ backgroundColor: BRAND_COLORS.indigo }}>
-                                                                    {s.avatar && !isValidAvatarUrl(s.avatar)
-                                                                        ? s.avatar
-                                                                        : s.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
-                                                                </AvatarFallback>
-                                                            </Avatar>
-                                                            <div className="min-w-0">
-                                                                <p className="font-bold text-xs text-zinc-950 uppercase tracking-tight truncate">{s.name}</p>
-                                                                <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">{s.role}</p>
-                                                            </div>
-                                                        </div>
-                                                    </td>
-                                                    <td className="p-4 text-xs font-bold text-zinc-600 text-center">{s.tasksTotal}</td>
-                                                    <td className="p-4 text-xs font-bold text-emerald-600 text-center">{s.tasksCompleted}</td>
-                                                    <td className="p-4 text-xs font-bold text-zinc-500 text-center">{pending}</td>
-                                                    <td className="p-4 text-right">
-                                                        <span className={cn(
-                                                            "inline-flex items-center px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-wider",
-                                                            yieldRate >= 80 ? "bg-emerald-50 text-emerald-600 border border-emerald-500/10" :
-                                                            yieldRate >= 50 ? "bg-amber-50 text-amber-600 border border-amber-500/10" :
-                                                            "bg-red-50 text-red-600 border border-red-500/10"
-                                                        )}>
-                                                            {yieldRate}% Yield
-                                                        </span>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
+                            
+                            {/* Actions Footer */}
+                            <div className="bg-zinc-50 px-8 py-5 flex items-center justify-end gap-3 border-t border-zinc-100 rounded-b-[28px] shrink-0">
+                                <button
+                                    onClick={() => downloadMonthlyOperationsReport(true)}
+                                    disabled={isDownloadingOperationsReport}
+                                    className="px-6 py-3.5 rounded-2xl text-[#31267D] font-black uppercase tracking-wider text-[10px] bg-[#31267D]/10 hover:bg-[#31267D]/20 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isDownloadingOperationsReport ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                        <Eye className="w-4 h-4" />
+                                    )}
+                                    View Operations PDF
+                                </button>
+                                <button
+                                    onClick={() => downloadMonthlyOperationsReport(false)}
+                                    disabled={isDownloadingOperationsReport}
+                                    className="px-6 py-3.5 rounded-2xl text-white font-black uppercase tracking-wider text-[10px] bg-[#31267D] hover:bg-[#251B60] shadow-lg shadow-indigo-500/10 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isDownloadingOperationsReport ? (
+                                        <Loader2 className="w-4 h-4 animate-spin text-white" />
+                                    ) : (
+                                        <FileText className="w-4 h-4 text-white" />
+                                    )}
+                                    Download Operations PDF
+                                </button>
+                                <Button variant="outline" onClick={() => setIsReportsCenterOpen(false)} className="px-6 py-5 rounded-2xl font-black uppercase tracking-wider text-[10px] border-zinc-200">
+                                    Close
+                                </Button>
                             </div>
-                        </div>
-                    </div>
+                        </>
+                    ) : activeReportView === 'leaves' ? (
+                        /* Leaves Sub-view */
+                        <>
+                            <div className="p-6 md:p-8 flex-1 overflow-y-auto space-y-6 bg-zinc-50/50">
+                                <div className="flex items-center justify-between">
+                                    <button 
+                                        onClick={() => setActiveReportView('selection')}
+                                        className="text-zinc-500 hover:text-zinc-800 flex items-center gap-1.5 text-xs font-bold uppercase transition-all"
+                                    >
+                                        <ArrowLeft className="w-4 h-4" />
+                                        Back to selection
+                                    </button>
+                                    <span className="text-[10px] bg-orange-50 border border-orange-200 text-[#F14D24] px-3 py-1 rounded-full font-black uppercase tracking-wider">
+                                        Leaves Ledger
+                                    </span>
+                                </div>
 
-                    {/* Footer Actions */}
-                    <div className="bg-zinc-50 px-8 py-5 flex items-center justify-end gap-3 border-t border-zinc-100 rounded-b-[28px] shrink-0">
-                        <button
-                            onClick={() => downloadMonthlyOperationsReport(true)}
-                            disabled={isDownloadingOperationsReport}
-                            className="px-6 py-3.5 rounded-2xl text-[#31267D] font-black uppercase tracking-wider text-[10px] bg-[#31267D]/10 hover:bg-[#31267D]/20 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {isDownloadingOperationsReport ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                                <Eye className="w-4 h-4" />
-                            )}
-                            View Operations PDF
-                        </button>
-                        <button
-                            onClick={() => downloadMonthlyOperationsReport(false)}
-                            disabled={isDownloadingOperationsReport}
-                            className="px-6 py-3.5 rounded-2xl text-white font-black uppercase tracking-wider text-[10px] bg-[#31267D] hover:bg-[#251B60] shadow-lg shadow-indigo-500/10 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {isDownloadingOperationsReport ? (
-                                <Loader2 className="w-4 h-4 animate-spin text-white" />
-                            ) : (
-                                <FileText className="w-4 h-4 text-white" />
-                            )}
-                            Download Operations PDF
-                        </button>
-                        <button
-                            onClick={() => downloadMonthlyLeavesReport(true)}
-                            disabled={isDownloadingLeavesReport}
-                            className="px-6 py-3.5 rounded-2xl text-[#F14D24] font-black uppercase tracking-wider text-[10px] bg-[#F14D24]/10 hover:bg-[#F14D24]/20 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {isDownloadingLeavesReport ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                                <Eye className="w-4 h-4" />
-                            )}
-                            View Leaves PDF
-                        </button>
-                        <button
-                            onClick={() => downloadMonthlyLeavesReport(false)}
-                            disabled={isDownloadingLeavesReport}
-                            className="px-6 py-3.5 rounded-2xl text-white font-black uppercase tracking-wider text-[10px] bg-[#F14D24] hover:bg-[#d63f19] shadow-lg shadow-orange-500/10 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {isDownloadingLeavesReport ? (
-                                <Loader2 className="w-4 h-4 animate-spin text-white" />
-                            ) : (
-                                <Calendar className="w-4 h-4 text-white" />
-                            )}
-                            Download Leaves PDF
-                        </button>
-                        <Button variant="outline" onClick={() => setIsMonthlyReportOpen(false)} className="px-6 py-5 rounded-2xl font-black uppercase tracking-wider text-[10px] border-zinc-200">
-                            Close
-                        </Button>
-                    </div>
+                                <div className="bg-white border border-zinc-100 p-6 rounded-3xl shadow-sm space-y-4">
+                                    <h4 className="font-black text-zinc-900 uppercase tracking-tight text-lg">Leave Registry Summary</h4>
+                                    <p className="text-xs text-zinc-500 leading-relaxed font-medium">
+                                        A list of pending, approved, and processed absence request rosters to audit personnel availability for operational continuity.
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div className="bg-white border border-zinc-100 p-5 rounded-2xl shadow-sm text-center">
+                                        <span className="text-[9px] font-black uppercase text-zinc-400 tracking-wider block">Total Leaves Filed</span>
+                                        <span className="text-2xl font-black text-zinc-900 mt-1 block">{leavesReportStats.total}</span>
+                                    </div>
+                                    <div className="bg-white border border-zinc-100 p-5 rounded-2xl shadow-sm text-center">
+                                        <span className="text-[9px] font-black uppercase text-zinc-400 tracking-wider block">Pending Review</span>
+                                        <span className="text-2xl font-black text-amber-500 mt-1 block">{leavesReportStats.pending}</span>
+                                    </div>
+                                    <div className="bg-white border border-zinc-100 p-5 rounded-2xl shadow-sm text-center flex flex-col justify-center items-center">
+                                        <span className="text-[9px] font-black uppercase text-zinc-400 tracking-wider block">Operational Status</span>
+                                        <span className="text-[10px] font-black text-emerald-500 uppercase tracking-wider mt-2 py-0.5 px-3 bg-emerald-50 border border-emerald-500/10 rounded-full inline-block">
+                                            Stable
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {leavesReportStats.recentLeaves.length > 0 && (
+                                    <div className="space-y-3">
+                                        <h5 className="text-xs font-black uppercase tracking-wider text-zinc-400">Pending Leave Logs</h5>
+                                        <div className="border border-zinc-100 bg-white rounded-2xl overflow-hidden shadow-sm">
+                                            <table className="w-full text-left border-collapse">
+                                                <thead className="bg-zinc-50 border-b border-zinc-100">
+                                                    <tr>
+                                                        <th className="p-3 text-[9px] font-black text-zinc-400 uppercase tracking-widest">Staff Member</th>
+                                                        <th className="p-3 text-[9px] font-black text-zinc-400 uppercase tracking-widest">Leave Dates</th>
+                                                        <th className="p-3 text-[9px] font-black text-zinc-400 uppercase tracking-widest">Purpose</th>
+                                                        <th className="p-3 text-[9px] font-black text-zinc-400 uppercase tracking-widest text-right">Status</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-zinc-100 text-zinc-900 text-xs">
+                                                    {leavesReportStats.recentLeaves.map((l: any) => (
+                                                        <tr key={l.id} className="hover:bg-zinc-50/50">
+                                                            <td className="p-3 font-bold uppercase tracking-tight text-zinc-800">{l.staffName}</td>
+                                                            <td className="p-3 text-zinc-500 font-medium">{l.dates}</td>
+                                                            <td className="p-3 text-zinc-500 font-medium truncate max-w-[180px]">{l.purpose}</td>
+                                                            <td className="p-3 text-right">
+                                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider bg-amber-50 text-amber-600 border border-amber-500/10">
+                                                                    {l.status}
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            
+                            {/* Actions Footer */}
+                            <div className="bg-zinc-50 px-8 py-5 flex items-center justify-end gap-3 border-t border-zinc-100 rounded-b-[28px] shrink-0">
+                                <button
+                                    onClick={() => downloadMonthlyLeavesReport(true)}
+                                    disabled={isDownloadingLeavesReport}
+                                    className="px-6 py-3.5 rounded-2xl text-[#F14D24] font-black uppercase tracking-wider text-[10px] bg-[#F14D24]/10 hover:bg-[#F14D24]/20 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isDownloadingLeavesReport ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                        <Eye className="w-4 h-4" />
+                                    )}
+                                    View Leaves PDF
+                                </button>
+                                <button
+                                    onClick={() => downloadMonthlyLeavesReport(false)}
+                                    disabled={isDownloadingLeavesReport}
+                                    className="px-6 py-3.5 rounded-2xl text-white font-black uppercase tracking-wider text-[10px] bg-[#F14D24] hover:bg-[#d63f19] shadow-lg shadow-orange-500/10 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isDownloadingLeavesReport ? (
+                                        <Loader2 className="w-4 h-4 animate-spin text-white" />
+                                    ) : (
+                                        <Calendar className="w-4 h-4 text-white" />
+                                    )}
+                                    Download Leaves PDF
+                                </button>
+                                <Button variant="outline" onClick={() => setIsReportsCenterOpen(false)} className="px-6 py-5 rounded-2xl font-black uppercase tracking-wider text-[10px] border-zinc-200">
+                                    Close
+                                </Button>
+                            </div>
+                        </>
+                    ) : (
+                        /* Performance Sub-view (re-integrating existing HTML dashboard) */
+                        <>
+                            <div className="p-6 md:p-8 flex-1 overflow-y-auto space-y-6 bg-zinc-50/50">
+                                <div className="flex items-center justify-between">
+                                    <button 
+                                        onClick={() => setActiveReportView('selection')}
+                                        className="text-zinc-500 hover:text-zinc-800 flex items-center gap-1.5 text-xs font-bold uppercase transition-all"
+                                    >
+                                        <ArrowLeft className="w-4 h-4" />
+                                        Back to selection
+                                    </button>
+                                    <span className="text-[10px] bg-emerald-50 border border-emerald-200 text-emerald-600 px-3 py-1 rounded-full font-black uppercase tracking-wider">
+                                        Executive Briefing
+                                    </span>
+                                </div>
+
+                                {/* Employee of the Month Highlight Banner */}
+                                {employeeOfTheMonth && (
+                                    <div className="relative overflow-hidden bg-gradient-to-r from-zinc-900 to-zinc-800 rounded-3xl p-6 text-white border border-zinc-700 shadow-lg flex flex-col md:flex-row items-center justify-between gap-6">
+                                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -translate-y-12 translate-x-12 pointer-events-none" />
+                                        <div className="flex items-center gap-5 flex-col md:flex-row text-center md:text-left">
+                                            <div className="relative shrink-0">
+                                                <Avatar className="w-20 h-20 border-4 border-zinc-700 shadow-xl rounded-2xl">
+                                                    <AvatarImage src={isValidAvatarUrl(employeeOfTheMonth.avatar) ? employeeOfTheMonth.avatar : undefined} />
+                                                    <AvatarFallback className="text-zinc-900 font-black text-2xl bg-white">
+                                                        {employeeOfTheMonth.avatar && !isValidAvatarUrl(employeeOfTheMonth.avatar)
+                                                            ? employeeOfTheMonth.avatar
+                                                            : employeeOfTheMonth.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
+                                                    </AvatarFallback>
+                                                </Avatar>
+                                                <div className="absolute -bottom-2 -right-2 bg-[#F14D24] text-white p-1.5 rounded-xl shadow-md border border-zinc-800">
+                                                    <Star className="w-4 h-4 fill-white stroke-[2.5px]" />
+                                                </div>
+                                            </div>
+                                            <div className="space-y-1 min-w-0">
+                                                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase bg-[#F14D24] text-white tracking-widest mb-1.5 shadow-md">
+                                                    Employee of the Month
+                                                </div>
+                                                <h4 className="text-xl font-black uppercase tracking-tight truncate">{employeeOfTheMonth.name}</h4>
+                                                <p className="text-xs font-bold text-zinc-300 uppercase tracking-widest">{employeeOfTheMonth.role} • {employeeOfTheMonth.department}</p>
+                                            </div>
+                                        </div>
+                                        <div className="text-center md:text-right shrink-0 bg-white/5 border border-white/10 p-4 rounded-2xl backdrop-blur-md min-w-[180px]">
+                                            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Operations Velocity</p>
+                                            <p className="text-3xl font-black text-white">{employeeOfTheMonth.tasksCompleted} <span className="text-xs font-normal text-zinc-400">Tasks Done</span></p>
+                                            <p className="text-xs font-bold text-emerald-400 uppercase tracking-widest mt-1">
+                                                {employeeOfTheMonth.tasksTotal > 0 ? Math.round((employeeOfTheMonth.tasksCompleted / employeeOfTheMonth.tasksTotal) * 100) : 100}% Yield Rate
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Institutional Metrics Grid */}
+                                <div className="space-y-3">
+                                    <h4 className="text-xs font-black uppercase tracking-wider text-zinc-400">Institutional Performance</h4>
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                        <div className="bg-white border border-zinc-100 p-5 rounded-2xl shadow-sm text-center flex flex-col justify-center">
+                                            <span className="text-[9px] font-black uppercase text-zinc-400 tracking-wider">Active Staff</span>
+                                            <span className="text-2xl font-black text-zinc-900 mt-1">{stats.total}</span>
+                                        </div>
+                                        <div className="bg-white border border-zinc-100 p-5 rounded-2xl shadow-sm text-center flex flex-col justify-center">
+                                            <span className="text-[9px] font-black uppercase text-zinc-400 tracking-wider">Assigned Directives</span>
+                                            <span className="text-2xl font-black text-zinc-900 mt-1">{totalTasksAssigned}</span>
+                                        </div>
+                                        <div className="bg-white border border-zinc-100 p-5 rounded-2xl shadow-sm text-center flex flex-col justify-center">
+                                            <span className="text-[9px] font-black uppercase text-zinc-400 tracking-wider">Completed Tasks</span>
+                                            <span className="text-2xl font-black text-emerald-600 mt-1">{totalTasksCompleted}</span>
+                                        </div>
+                                        <div className="bg-white border border-zinc-100 p-5 rounded-2xl shadow-sm text-center flex flex-col justify-center">
+                                            <span className="text-[9px] font-black uppercase text-zinc-400 tracking-wider">Critical Delays</span>
+                                            <span className="text-[10px] font-black text-emerald-500 uppercase tracking-wider mt-2.5 py-0.5 px-2 bg-emerald-50 border border-emerald-500/10 rounded-full inline-block mx-auto">
+                                                0 • Stable
+                                            </span>
+                                        </div>
+                                        <div className="bg-white border border-zinc-100 p-5 rounded-2xl shadow-sm text-center flex flex-col justify-center col-span-2 md:col-span-1">
+                                            <span className="text-[9px] font-black uppercase text-zinc-400 tracking-wider">Velocity</span>
+                                            <span className="text-2xl font-black text-[#31267D] mt-1">{operationalVelocity}%</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Full Breakdown Table */}
+                                <div className="space-y-3">
+                                    <h4 className="text-xs font-black uppercase tracking-wider text-zinc-400">Personnel Yield Audit</h4>
+                                    <div className="border border-zinc-100 bg-white rounded-2xl overflow-hidden shadow-sm max-h-[300px] overflow-y-auto">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead className="bg-zinc-50 border-b border-zinc-100 sticky top-0 z-10">
+                                                <tr>
+                                                    <th className="p-4 text-[9px] font-black text-zinc-400 uppercase tracking-widest">Personnel Profile</th>
+                                                    <th className="p-4 text-[9px] font-black text-zinc-400 uppercase tracking-widest text-center">Assigned</th>
+                                                    <th className="p-4 text-[9px] font-black text-zinc-400 uppercase tracking-widest text-center">Completed</th>
+                                                    <th className="p-4 text-[9px] font-black text-zinc-400 uppercase tracking-widest text-center">Pending</th>
+                                                    <th className="p-4 text-[9px] font-black text-zinc-400 uppercase tracking-widest text-right">Yield Velocity</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-zinc-100 text-zinc-900">
+                                                {staffData.map((s) => {
+                                                    const pending = s.tasksTotal - s.tasksCompleted;
+                                                    const yieldRate = s.tasksTotal > 0 ? Math.round((s.tasksCompleted / s.tasksTotal) * 100) : 100;
+                                                    return (
+                                                        <tr key={s.id} className="hover:bg-zinc-50/50 transition-colors">
+                                                            <td className="p-4">
+                                                                <div className="flex items-center gap-3">
+                                                                    <Avatar className="w-8 h-8 border border-zinc-100 shadow-sm rounded-lg">
+                                                                        <AvatarImage src={isValidAvatarUrl(s.avatar) ? s.avatar : undefined} />
+                                                                        <AvatarFallback className="text-white font-black text-[10px]" style={{ backgroundColor: BRAND_COLORS.indigo }}>
+                                                                            {s.avatar && !isValidAvatarUrl(s.avatar)
+                                                                                ? s.avatar
+                                                                                : s.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
+                                                                        </AvatarFallback>
+                                                                    </Avatar>
+                                                                    <div className="min-w-0">
+                                                                        <p className="font-bold text-xs text-zinc-950 uppercase tracking-tight truncate">{s.name}</p>
+                                                                        <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">{s.role}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            <td className="p-4 text-xs font-bold text-zinc-600 text-center">{s.tasksTotal}</td>
+                                                            <td className="p-4 text-xs font-bold text-emerald-600 text-center">{s.tasksCompleted}</td>
+                                                            <td className="p-4 text-xs font-bold text-zinc-500 text-center">{pending}</td>
+                                                            <td className="p-4 text-right">
+                                                                <span className={cn(
+                                                                    "inline-flex items-center px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-wider",
+                                                                    yieldRate >= 80 ? "bg-emerald-50 text-emerald-600 border border-emerald-500/10" :
+                                                                    yieldRate >= 50 ? "bg-amber-50 text-amber-600 border border-amber-500/10" :
+                                                                    "bg-red-50 text-red-600 border border-red-500/10"
+                                                                )}>
+                                                                    {yieldRate}% Yield
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {/* Actions Footer */}
+                            <div className="bg-zinc-50 px-8 py-5 flex items-center justify-end gap-3 border-t border-zinc-100 rounded-b-[28px] shrink-0 font-sans">
+                                <button
+                                    onClick={() => downloadTaskReport("monthly")}
+                                    disabled={exporting === "general"}
+                                    className="px-6 py-3.5 rounded-2xl text-white font-black uppercase tracking-wider text-[10px] bg-[#31267D] hover:bg-[#251B60] shadow-lg shadow-indigo-500/10 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {exporting === "general" ? (
+                                        <Loader2 className="w-4 h-4 animate-spin text-white" />
+                                    ) : (
+                                        <FileText className="w-4 h-4 text-white" />
+                                    )}
+                                    Download Performance PDF
+                                </button>
+                                <Button variant="outline" onClick={() => setIsReportsCenterOpen(false)} className="px-6 py-5 rounded-2xl font-black uppercase tracking-wider text-[10px] border-zinc-200">
+                                    Close
+                                </Button>
+                            </div>
+                        </>
+                    )}
                 </DialogContent>
             </Dialog>
         </div>
