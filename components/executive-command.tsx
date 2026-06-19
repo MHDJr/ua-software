@@ -674,41 +674,67 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
         });
     }, [ideas, currentTime]);
 
+    const deptFilteredTasks = useMemo(() => {
+        return tasks.filter(t => {
+            if (departmentFilter === "ceo") return true;
+            const assignee = staff.find((s) => s.id === t.assigned_to);
+            if (!assignee) return false;
+            const dept = assignee.department?.toLowerCase() || "";
+            switch (departmentFilter) {
+                case "sales":
+                    return dept === "sales";
+                case "marketing":
+                    return dept === "marketing";
+                case "finance":
+                    return dept === "finance" || dept === "accounts";
+                case "administration":
+                    return dept === "administration" || dept === "admin" || dept === "hr";
+                default:
+                    return false;
+            }
+        });
+    }, [tasks, departmentFilter, staff]);
+
+    const deptFilteredCompletedTasks = useMemo(() => {
+        return completedTasks.filter(t => {
+            if (departmentFilter === "ceo") return true;
+            const assignee = staff.find((s) => s.id === t.assigned_to);
+            if (!assignee) return false;
+            const dept = assignee.department?.toLowerCase() || "";
+            switch (departmentFilter) {
+                case "sales":
+                    return dept === "sales";
+                case "marketing":
+                    return dept === "marketing";
+                case "finance":
+                    return dept === "finance" || dept === "accounts";
+                case "administration":
+                    return dept === "administration" || dept === "admin" || dept === "hr";
+                default:
+                    return false;
+            }
+        });
+    }, [completedTasks, departmentFilter, staff]);
+
+    const deptOverdueCount = useMemo(() => {
+        return deptFilteredTasks.filter(t => t.due_date && new Date(t.due_date) < new Date() && t.status !== "completed").length;
+    }, [deptFilteredTasks]);
+
+    const deptCompletedCount = useMemo(() => {
+        return deptFilteredCompletedTasks.length;
+    }, [deptFilteredCompletedTasks]);
+
     // Optimize displayed tasks
     const displayedTasks = useMemo(() => {
-        if (taskTab === "completed") return completedTasks;
+        if (taskTab === "completed") return deptFilteredCompletedTasks;
 
-        return tasks.filter((t) => {
+        return deptFilteredTasks.filter((t) => {
             if (deletingTaskIds.has(t.id)) return false;
 
             const isOverdue = t.due_date && new Date(t.due_date) < new Date();
             const isDaily = t.is_daily_task === true || t.repeat_daily === true;
 
-            // Department filtering
-            if (departmentFilter !== "ceo") {
-                const assignee = staff.find((s) => s.id === t.assigned_to);
-                if (!assignee) return false;
-
-                const dept = assignee.department?.toLowerCase() || "";
-                switch (departmentFilter) {
-                    case "sales":
-                        return dept === "sales";
-                    case "marketing":
-                        return dept === "marketing";
-                    case "finance":
-                        return dept === "finance" || dept === "accounts";
-                    case "administration":
-                        return (
-                            dept === "administration" ||
-                            dept === "admin" ||
-                            dept === "hr"
-                        );
-                    default:
-                        return false;
-                }
-            }
-
-            // CEO/My Tasks filter
+            // CEO/My Tasks filter (only apply if department is ceo)
             if (departmentFilter === "ceo") {
                 if (userRole === "MANAGER") {
                     const currentMe =
@@ -717,11 +743,6 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                     const isAssignedToMe = t.assigned_to === currentMe;
                     if (!isAssignedByCeo || !isAssignedToMe) return false;
                 }
-
-                if (taskTab === "daily") return isDaily;
-                if (taskTab === "overdue") return isOverdue;
-                if (taskTab === "blocked") return t.priority === "urgent";
-                return !isOverdue && t.priority !== "urgent";
             }
 
             if (taskTab === "daily") return isDaily;
@@ -731,11 +752,10 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
         });
     }, [
         taskTab,
-        tasks,
-        completedTasks,
+        deptFilteredTasks,
+        deptFilteredCompletedTasks,
         deletingTaskIds,
         departmentFilter,
-        staff,
         userRole,
         profile?.id,
     ]);
@@ -2545,12 +2565,6 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                         </p>
                         <div className="flex items-baseline gap-1">
                             <h2 className="text-2xl font-black text-slate-900 dark:text-zinc-100 tracking-tighter">
-                                {stats.staffOnline}
-                            </h2>
-                            <span className="text-slate-300 dark:text-zinc-700 font-bold">
-                                /
-                            </span>
-                            <h2 className="text-xl font-black text-slate-400 dark:text-zinc-500 tracking-tighter">
                                 {stats.staffTotal}
                             </h2>
                         </div>
@@ -2937,82 +2951,80 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                         color="bg-amber-500"
                     />
 
-                    {departmentFilter === "ceo" && (
-                        <div className="flex flex-wrap gap-1.5 md:gap-2 mb-2 p-1.5 bg-white/40 dark:bg-zinc-800/40 rounded-2xl border border-white/50 dark:border-zinc-700/50 w-full md:w-fit overflow-x-auto scrollbar-hide shadow-inner">
-                            <button
-                                onClick={() => setTaskTab("active")}
-                                className={`px-3 md:px-4 py-1.5 md:py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-shrink-0 ${
-                                    taskTab === "active"
-                                        ? "bg-theme-bg-white text-theme-inv-text shadow-lg"
-                                        : "text-theme-text-40 hover:text-theme-text hover:bg-theme-bg-white-10"
-                                }`}
-                            >
-                                Active
-                            </button>
-                            <button
-                                onClick={() => setTaskTab("blocked")}
-                                className={`px-3 md:px-4 py-1.5 md:py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-shrink-0 ${
-                                    taskTab === "blocked"
-                                        ? "bg-red-500 text-theme-text shadow-lg shadow-red-500/20"
-                                        : "text-theme-text-40 hover:text-theme-text hover:bg-theme-bg-white-10"
-                                }`}
-                            >
-                                Urgent
-                            </button>
-                            <button
-                                onClick={() => setTaskTab("overdue")}
-                                className={`px-3 md:px-4 py-1.5 md:py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-2 ${
-                                    taskTab === "overdue"
-                                        ? "bg-amber-500 text-theme-inv-text shadow-lg shadow-amber-500/20"
-                                        : "text-theme-text-40 hover:text-theme-text hover:bg-theme-bg-white-10"
-                                }`}
-                            >
-                                Overdue
-                                {stats.overdueCount > 0 && (
-                                    <span
-                                        className={`text-[9px] px-1.5 py-0.5 rounded-full min-w-[16px] inline-flex items-center justify-center font-black transition-all ${
-                                            taskTab === "overdue"
-                                                ? "bg-white/20 text-theme-inv-text"
-                                                : "bg-red-600/90 text-white shadow-sm"
-                                        }`}
-                                    >
-                                        {stats.overdueCount}
-                                    </span>
-                                )}
-                            </button>
-                            <button
-                                onClick={() => setTaskTab("completed")}
-                                className={`px-3 md:px-4 py-1.5 md:py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-2 ${
-                                    taskTab === "completed"
-                                        ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"
-                                        : "text-theme-text-40 hover:text-theme-text hover:bg-theme-bg-white-10"
-                                }`}
-                            >
-                                Completed
-                                {completedTasks.length > 0 && (
-                                    <span
-                                        className={`text-[9px] px-1.5 py-0.5 rounded-full min-w-[16px] inline-flex items-center justify-center font-black transition-all ${
-                                            taskTab === "completed"
-                                                ? "bg-white/20 text-white"
-                                                : "bg-blue-600/90 text-white shadow-sm"
-                                        }`}
-                                    >
-                                        {completedTasks.length}
-                                    </span>
-                                )}
-                            </button>
-                            <button
-                                onClick={() => setTaskTab("daily")}
-                                className={`px-3 md:px-4 py-1.5 md:py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-shrink-0 ${
-                                    taskTab === "daily"
-                                        ? "bg-purple-500 text-white shadow-lg shadow-purple-500/20"
-                                        : "text-theme-text-40 hover:text-theme-text hover:bg-theme-bg-white-10"
-                                }`}
-                            >
-                                Daily Tasks
-                            </button>
-                        </div>
-                    )}
+                    <div className="flex flex-wrap gap-1.5 md:gap-2 mb-2 p-1.5 bg-white/40 dark:bg-zinc-800/40 rounded-2xl border border-white/50 dark:border-zinc-700/50 w-full md:w-fit overflow-x-auto scrollbar-hide shadow-inner">
+                        <button
+                            onClick={() => setTaskTab("active")}
+                            className={`px-3 md:px-4 py-1.5 md:py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-shrink-0 ${
+                                taskTab === "active"
+                                    ? "bg-theme-bg-white text-theme-inv-text shadow-lg"
+                                    : "text-theme-text-40 hover:text-theme-text hover:bg-theme-bg-white-10"
+                            }`}
+                        >
+                            Active
+                        </button>
+                        <button
+                            onClick={() => setTaskTab("blocked")}
+                            className={`px-3 md:px-4 py-1.5 md:py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-shrink-0 ${
+                                taskTab === "blocked"
+                                    ? "bg-red-500 text-theme-text shadow-lg shadow-red-500/20"
+                                    : "text-theme-text-40 hover:text-theme-text hover:bg-theme-bg-white-10"
+                            }`}
+                        >
+                            Urgent
+                        </button>
+                        <button
+                            onClick={() => setTaskTab("overdue")}
+                            className={`px-3 md:px-4 py-1.5 md:py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-2 ${
+                                taskTab === "overdue"
+                                    ? "bg-amber-500 text-theme-inv-text shadow-lg shadow-amber-500/20"
+                                    : "text-theme-text-40 hover:text-theme-text hover:bg-theme-bg-white-10"
+                            }`}
+                        >
+                            Overdue
+                            {deptOverdueCount > 0 && (
+                                <span
+                                    className={`text-[9px] px-1.5 py-0.5 rounded-full min-w-[16px] inline-flex items-center justify-center font-black transition-all ${
+                                        taskTab === "overdue"
+                                            ? "bg-white/20 text-theme-inv-text"
+                                            : "bg-red-600/90 text-white shadow-sm"
+                                    }`}
+                                >
+                                    {deptOverdueCount}
+                                </span>
+                            )}
+                        </button>
+                        <button
+                            onClick={() => setTaskTab("completed")}
+                            className={`px-3 md:px-4 py-1.5 md:py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-2 ${
+                                taskTab === "completed"
+                                    ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"
+                                    : "text-theme-text-40 hover:text-theme-text hover:bg-theme-bg-white-10"
+                            }`}
+                        >
+                            Completed
+                            {deptCompletedCount > 0 && (
+                                <span
+                                    className={`text-[9px] px-1.5 py-0.5 rounded-full min-w-[16px] inline-flex items-center justify-center font-black transition-all ${
+                                        taskTab === "completed"
+                                            ? "bg-white/20 text-white"
+                                            : "bg-blue-600/90 text-white shadow-sm"
+                                    }`}
+                                >
+                                    {deptCompletedCount}
+                                </span>
+                            )}
+                        </button>
+                        <button
+                            onClick={() => setTaskTab("daily")}
+                            className={`px-3 md:px-4 py-1.5 md:py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-shrink-0 ${
+                                taskTab === "daily"
+                                    ? "bg-purple-500 text-white shadow-lg shadow-purple-500/20"
+                                    : "text-theme-text-40 hover:text-theme-text hover:bg-theme-bg-white-10"
+                            }`}
+                        >
+                            Daily Tasks
+                        </button>
+                    </div>
 
                     {/* Department Filters */}
                     <div className="flex flex-wrap gap-1.5 md:gap-2 mb-2 p-1.5 bg-white/40 dark:bg-zinc-800/40 rounded-2xl border border-white/50 dark:border-zinc-700/50 w-full md:w-fit overflow-x-auto scrollbar-hide shadow-inner">

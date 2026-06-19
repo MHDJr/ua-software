@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
         const { user_id, title, message, type } = body;
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
         const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;
 
         if (!supabaseUrl || !supabaseServiceRoleKey) {
-            console.error("[SendMessageAPI] Missing Supabase backend credentials (SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY).");
+            console.error("[SendMessageAPI] Server configuration error: Missing database credentials.");
             return NextResponse.json(
                 { error: "Server Configuration Error: Missing database credentials." },
                 { status: 500 }
@@ -33,43 +33,51 @@ export async function POST(req: Request) {
         });
 
         // Backend security validation: staff can only message CEO, Admins, or Department Managers
-        const match = message.match(/^\[sender_id:([\w-]+)\]/);
+        // Sender identity is encoded in the message body as [sender_id:UUID]
+        const match = typeof message === "string" ? message.match(/^\[sender_id:([\w-]+)\]/) : null;
         const senderId = match ? match[1] : null;
 
-        if (senderId) {
-            const [{ data: senderProfile }, { data: recipientProfile }] = await Promise.all([
-                supabaseAdmin.from("profiles").select("*").eq("id", senderId).single(),
-                supabaseAdmin.from("profiles").select("*").eq("id", user_id).single()
-            ]);
+        if (senderId && senderId !== "all") {
+            try {
+                // Validate profiles in parallel to ensure sender has permission to message recipient
+                const [{ data: senderProfile }, { data: recipientProfile }] = await Promise.all([
+                    supabaseAdmin.from("profiles").select("*").eq("id", senderId).single(),
+                    supabaseAdmin.from("profiles").select("*").eq("id", user_id).single()
+                ]);
 
-            if (senderProfile && recipientProfile) {
-                const senderRole = senderProfile.role?.toLowerCase();
-                const senderDept = senderProfile.department?.toLowerCase();
-                const isSenderCeoOrManager = senderRole === "ceo" || senderProfile.is_manager || senderRole === "manager";
-                const isSenderAdmin = senderRole === "admin" || senderRole === "administrator" || ((senderDept === "administration" || senderDept === "admin") && (senderProfile.is_manager || senderRole === "manager"));
+                if (senderProfile && recipientProfile) {
+                    const senderRole = senderProfile.role?.toLowerCase();
+                    const senderDept = senderProfile.department?.toLowerCase();
+                    
+                    // CEO and Managers (or Admins) can message anyone
+                    const isSenderCeoOrManager = senderRole === "ceo" || senderProfile.is_manager || senderRole === "manager";
+                    const isSenderAdmin = senderRole === "admin" || senderRole === "administrator" || 
+                        ((senderDept === "administration" || senderDept === "admin") && (senderProfile.is_manager || senderRole === "manager"));
 
-                // Regular Staff validation
-                if (!isSenderCeoOrManager && !isSenderAdmin) {
-                    const recRole = recipientProfile.role?.toLowerCase();
-                    const recDept = recipientProfile.department?.toLowerCase();
+                    // If sender is regular staff, restrict recipient options
+                    if (!isSenderCeoOrManager && !isSenderAdmin) {
+                        const recRole = recipientProfile.role?.toLowerCase();
+                        const recDept = recipientProfile.department?.toLowerCase();
 
-                    const isRecCeo = recRole === "ceo";
-                    const isRecAdmin = recRole === "admin" || recRole === "administrator" || ((recDept === "administration" || recDept === "admin") && (recipientProfile.is_manager || recRole === "manager"));
-                    const isRecMyManager = (recipientProfile.is_manager === true || recRole === "manager") && recipientProfile.department === senderProfile.department;
+                        const isRecCeo = recRole === "ceo";
+                        const isRecAdmin = recRole === "admin" || recRole === "administrator" || 
+                            ((recDept === "administration" || recDept === "admin") && (recipientProfile.is_manager || recRole === "manager"));
+                        const isRecMyManager = (recipientProfile.is_manager === true || recRole === "manager") && recipientProfile.department === senderProfile.department;
 
-                    if (!isRecCeo && !isRecAdmin && !isRecMyManager) {
-                        return NextResponse.json(
-                            { error: "Forbidden: Staff members can only communicate with the CEO, Administrators, or their Department Managers." },
-                            { status: 403 }
-                        );
+                        if (!isRecCeo && !isRecAdmin && !isRecMyManager) {
+                            return NextResponse.json(
+                                { error: "Forbidden: Staff members can only communicate with the CEO, Administrators, or their Department Managers." },
+                                { status: 403 }
+                            );
+                        }
                     }
                 }
+            } catch (err) {
+                console.warn("[SendMessageAPI] Security validation skipped due to lookup error:", err);
             }
         }
 
-        // Insert notification using the service role key (auth check removed —
-        // sender identity is enforced via the [sender_id:UUID] prefix in message body,
-        // and RLS policies handle privacy at the database level).
+        // Insert notification into the database
         const { data, error } = await supabaseAdmin
             .from("notifications")
             .insert({
@@ -90,30 +98,14 @@ export async function POST(req: Request) {
             );
         }
 
-        // Fire-and-forget fallback purge of read messages older than 1 hour
-        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-        (async () => {
-            try {
-                const { error: purgeError } = await supabaseAdmin
-                    .from("notifications")
-                    .delete()
-                    .eq("read", true)
-                    .not("read_at", "is", null)
-                    .lt("read_at", oneHourAgo);
-                if (purgeError) {
-                    console.error("[SendMessageAPI] Background auto-purge warning:", purgeError.message);
-                }
-            } catch (err) {
-                console.error("[SendMessageAPI] Background auto-purge exception:", err);
-            }
-        })();
-
         return NextResponse.json({ success: true, data });
     } catch (err: any) {
-        console.error("[SendMessageAPI] Exception:", err);
+        console.error("[SendMessageAPI] Global error:", err);
         return NextResponse.json(
             { error: err.message || "Internal server error" },
             { status: 500 }
         );
     }
 }
+
+

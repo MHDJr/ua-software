@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Search, Plus, Star, CheckCircle2, Clock, XCircle, Wifi, Building2, Pencil, Trash2, Loader2, X, Mail, Users, FileText, BarChart3, Calendar } from "lucide-react";
+import { Search, Plus, Star, CheckCircle2, Clock, XCircle, Wifi, Building2, Pencil, Trash2, Loader2, X, Mail, Users, FileText, BarChart3, Calendar, Eye } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -42,6 +42,7 @@ interface StaffMember {
     phone: string;
     username: string;
     fullName: string;
+    rank: number;
 }
 
 // Status badge styles
@@ -166,7 +167,7 @@ export function StaffManagement() {
         return staff ? (staff.department || "General") : "General";
     };
 
-    const downloadMonthlyOperationsReport = async () => {
+    const downloadMonthlyOperationsReport = async (preview = false) => {
         setIsDownloadingOperationsReport(true);
         toast.loading("Compiling Monthly Usthadacademy Operations Report...");
         
@@ -521,10 +522,14 @@ export function StaffManagement() {
             drawDepartmentPage(doc, "Marketing", marketingTasks);
 
             // Save PDF
-            doc.save(`Usthad_Academy_Operations_Report_${reportMonthName.replace(/\s+/g, '_')}.pdf`);
+            if (preview) {
+                window.open(doc.output('bloburl'), '_blank');
+            } else {
+                doc.save(`Usthad_Academy_Operations_Report_${reportMonthName.replace(/\s+/g, '_')}.pdf`);
+            }
             
             toast.dismiss();
-            toast.success("Operations Report generated successfully!");
+            toast.success(preview ? "Operations Report generated successfully!" : "Operations Report downloaded successfully!");
         } catch (e: any) {
             console.error("Operations PDF export fail:", e);
             toast.dismiss();
@@ -534,7 +539,7 @@ export function StaffManagement() {
         }
     };
 
-    const downloadMonthlyLeavesReport = async () => {
+    const downloadMonthlyLeavesReport = async (preview = false) => {
         setIsDownloadingLeavesReport(true);
         toast.loading("Compiling Monthly Leave Requests Report...");
         
@@ -932,10 +937,14 @@ export function StaffManagement() {
             drawFooterConfidential(doc);
 
             // Save PDF
-            doc.save(`Usthad_Academy_Leaves_Report_${reportMonthName.replace(/\s+/g, '_')}.pdf`);
+            if (preview) {
+                window.open(doc.output('bloburl'), '_blank');
+            } else {
+                doc.save(`Usthad_Academy_Leaves_Report_${reportMonthName.replace(/\s+/g, '_')}.pdf`);
+            }
             
             toast.dismiss();
-            toast.success("Leave Requests Report generated successfully!");
+            toast.success(preview ? "Leave Requests Report generated successfully!" : "Leave Requests Report downloaded successfully!");
         } catch (e: any) {
             console.error("Leaves PDF export fail:", e);
             toast.dismiss();
@@ -974,7 +983,7 @@ export function StaffManagement() {
         return { total, completed, rate };
     }, [staffTasks]);
 
-    const downloadPdfReport = async (staff: StaffMember) => {
+    const downloadPdfReport = async (staff: StaffMember, preview = false) => {
         toast.loading(`Compiling PDF performance audit for ${staff.name}...`);
         try {
             // Fetch requests for this staff member directly from Supabase
@@ -1470,9 +1479,13 @@ export function StaffManagement() {
             doc.text(footerMsg, 105 - doc.getTextWidth(footerMsg) / 2, 285);
 
             // Download document
-            doc.save(`Performance_Report_${staff.name.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`);
+            if (preview) {
+                window.open(doc.output('bloburl'), '_blank');
+            } else {
+                doc.save(`Performance_Report_${staff.name.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`);
+            }
             toast.dismiss();
-            toast.success("Performance Audit PDF downloaded successfully!");
+            toast.success(preview ? "Performance Audit PDF generated successfully!" : "Performance Audit PDF downloaded successfully!");
         } catch (err: any) {
             console.error("PDF download failure:", err);
             toast.dismiss();
@@ -1527,7 +1540,7 @@ export function StaffManagement() {
         });
 
         // Sort by performance rank
-        return mappedStaff.sort((a, b) => {
+        const sorted = mappedStaff.sort((a, b) => {
             if (b.tasksCompleted !== a.tasksCompleted) {
                 return b.tasksCompleted - a.tasksCompleted;
             }
@@ -1538,6 +1551,11 @@ export function StaffManagement() {
             }
             return b.rating - a.rating;
         });
+
+        return sorted.map((staff, index) => ({
+            ...staff,
+            rank: index + 1
+        }));
     }, [staffProfiles, activeTasks, completedTasks]);
 
     const employeeOfTheMonth = useMemo(() => {
@@ -1751,7 +1769,19 @@ export function StaffManagement() {
                         {(userRole === 'CEO' || userRole === 'MANAGER' || profile?.role === 'ceo' || profile?.role === 'manager' || profile?.is_manager) && (
                             <>
                                 <button
-                                    onClick={downloadMonthlyOperationsReport}
+                                    onClick={() => downloadMonthlyOperationsReport(true)}
+                                    disabled={isDownloadingOperationsReport}
+                                    className="bg-[#31267D]/10 hover:bg-[#31267D]/20 text-[#31267D] border border-[#31267D]/20 px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shrink-0 h-11 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isDownloadingOperationsReport ? (
+                                        <Loader2 className="w-4 h-4 animate-spin animate-colors" />
+                                    ) : (
+                                        <Eye className="w-4 h-4" />
+                                    )}
+                                    View Operations Report
+                                </button>
+                                <button
+                                    onClick={() => downloadMonthlyOperationsReport(false)}
                                     disabled={isDownloadingOperationsReport}
                                     className="bg-[#31267D] hover:bg-[#251B60] text-white px-4 py-2 rounded-xl text-sm font-bold shadow-[0_4px_20px_rgba(49,38,125,0.15)] hover:shadow-[0_4px_20px_rgba(49,38,125,0.25)] transition-all flex items-center justify-center gap-2 shrink-0 h-11 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
@@ -1763,7 +1793,19 @@ export function StaffManagement() {
                                     Download Operations Report
                                 </button>
                                 <button
-                                    onClick={downloadMonthlyLeavesReport}
+                                    onClick={() => downloadMonthlyLeavesReport(true)}
+                                    disabled={isDownloadingLeavesReport}
+                                    className="bg-[#F14D24]/10 hover:bg-[#F14D24]/20 text-[#F14D24] border border-[#F14D24]/20 px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shrink-0 h-11 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isDownloadingLeavesReport ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                        <Eye className="w-4 h-4" />
+                                    )}
+                                    View Leaves Report
+                                </button>
+                                <button
+                                    onClick={() => downloadMonthlyLeavesReport(false)}
                                     disabled={isDownloadingLeavesReport}
                                     className="bg-[#F14D24] hover:bg-[#d63f19] text-white px-4 py-2 rounded-xl text-sm font-bold shadow-[0_4px_20px_rgba(241,77,36,0.15)] hover:shadow-[0_4px_20px_rgba(241,77,36,0.25)] transition-all flex items-center justify-center gap-2 shrink-0 h-11 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
@@ -1918,7 +1960,7 @@ export function StaffManagement() {
                                                                  : staff.name.split(" ").map(n => n[0]).join("").slice(0,2)}
                                                          </AvatarFallback>
                                                     </Avatar>
-                                                    {index === 0 && (
+                                                    {staff.rank === 1 && (
                                                         <span className="absolute -top-2 -left-2 bg-[#F14D24] text-white text-[7px] font-black uppercase tracking-wider px-1 py-0.5 rounded-md border border-white shadow-sm">
                                                             Best
                                                         </span>
@@ -1926,14 +1968,14 @@ export function StaffManagement() {
                                                 </div>
                                                 <div className="min-w-0">
                                                     <div className="flex items-center gap-1.5">
-                                                        {index === 0 ? (
+                                                        {staff.rank === 1 ? (
                                                             <span className="text-base" title="Best Employee">🥇</span>
-                                                        ) : index === 1 ? (
+                                                        ) : staff.rank === 2 ? (
                                                             <span className="text-base" title="2nd Place">🥈</span>
-                                                        ) : index === 2 ? (
+                                                        ) : staff.rank === 3 ? (
                                                             <span className="text-base" title="3rd Place">🥉</span>
                                                         ) : (
-                                                            <span className="text-[9px] font-black text-gray-400">#{index + 1}</span>
+                                                            <span className="text-[9px] font-black text-gray-400">#{staff.rank}</span>
                                                         )}
                                                         <p className="font-black text-gray-900 text-sm truncate uppercase">{staff.name}</p>
                                                     </div>
@@ -2010,14 +2052,14 @@ export function StaffManagement() {
                                         <tr key={staff.id} className={cn("group transition-all duration-300", isHovered && "bg-[#31267D]/[0.02]")} onMouseEnter={() => setHoveredRow(staff.id)} onMouseLeave={() => setHoveredRow(null)}>
                                             <td className="py-5 px-8">
                                                 <div className="flex items-center">
-                                                    {index === 0 ? (
+                                                    {staff.rank === 1 ? (
                                                         <span className="text-xl" title="Best Employee">🥇</span>
-                                                    ) : index === 1 ? (
+                                                    ) : staff.rank === 2 ? (
                                                         <span className="text-xl" title="2nd Place">🥈</span>
-                                                    ) : index === 2 ? (
+                                                    ) : staff.rank === 3 ? (
                                                         <span className="text-xl" title="3rd Place">🥉</span>
                                                     ) : (
-                                                        <span className="text-xs font-black text-gray-400">#{index + 1}</span>
+                                                        <span className="text-xs font-black text-gray-400">#{staff.rank}</span>
                                                     )}
                                                 </div>
                                             </td>
@@ -2032,7 +2074,7 @@ export function StaffManagement() {
                                                                     : staff.name.split(" ").map(n => n[0]).join("")}
                                                             </AvatarFallback>
                                                         </Avatar>
-                                                        {index === 0 && (
+                                                        {staff.rank === 1 && (
                                                             <span className="absolute -top-2 -left-2 bg-[#F14D24] text-white text-[6px] font-black uppercase tracking-wider px-1 py-0.5 rounded-md border border-white shadow-sm">
                                                                 Best
                                                             </span>
@@ -2302,13 +2344,22 @@ export function StaffManagement() {
                             Close
                         </Button>
                         {selectedStaffForReport && (
-                            <Button 
-                                onClick={() => downloadPdfReport(selectedStaffForReport)}
-                                className="px-6 py-5 rounded-2xl text-white font-black uppercase tracking-wider text-[10px] bg-[#31267D] hover:bg-[#251B60] shadow-lg shadow-indigo-500/10 flex items-center gap-2"
-                            >
-                                <FileText className="w-4 h-4 stroke-[2.5px]" />
-                                Download PDF Report
-                            </Button>
+                            <>
+                                <Button 
+                                    onClick={() => downloadPdfReport(selectedStaffForReport, true)}
+                                    className="px-6 py-5 rounded-2xl text-[#31267D] font-black uppercase tracking-wider text-[10px] bg-[#31267D]/10 hover:bg-[#31267D]/20 border border-[#31267D]/20 flex items-center gap-2"
+                                >
+                                    <Eye className="w-4 h-4" />
+                                    View Report
+                                </Button>
+                                <Button 
+                                    onClick={() => downloadPdfReport(selectedStaffForReport, false)}
+                                    className="px-6 py-5 rounded-2xl text-white font-black uppercase tracking-wider text-[10px] bg-[#31267D] hover:bg-[#251B60] shadow-lg shadow-indigo-500/10 flex items-center gap-2"
+                                >
+                                    <FileText className="w-4 h-4 stroke-[2.5px]" />
+                                    Download PDF Report
+                                </Button>
+                            </>
                         )}
                     </div>
                 </DialogContent>
@@ -2460,7 +2511,19 @@ export function StaffManagement() {
                     {/* Footer Actions */}
                     <div className="bg-zinc-50 px-8 py-5 flex items-center justify-end gap-3 border-t border-zinc-100 rounded-b-[28px] shrink-0">
                         <button
-                            onClick={downloadMonthlyOperationsReport}
+                            onClick={() => downloadMonthlyOperationsReport(true)}
+                            disabled={isDownloadingOperationsReport}
+                            className="px-6 py-3.5 rounded-2xl text-[#31267D] font-black uppercase tracking-wider text-[10px] bg-[#31267D]/10 hover:bg-[#31267D]/20 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isDownloadingOperationsReport ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                                <Eye className="w-4 h-4" />
+                            )}
+                            View Operations PDF
+                        </button>
+                        <button
+                            onClick={() => downloadMonthlyOperationsReport(false)}
                             disabled={isDownloadingOperationsReport}
                             className="px-6 py-3.5 rounded-2xl text-white font-black uppercase tracking-wider text-[10px] bg-[#31267D] hover:bg-[#251B60] shadow-lg shadow-indigo-500/10 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
@@ -2472,7 +2535,19 @@ export function StaffManagement() {
                             Download Operations PDF
                         </button>
                         <button
-                            onClick={downloadMonthlyLeavesReport}
+                            onClick={() => downloadMonthlyLeavesReport(true)}
+                            disabled={isDownloadingLeavesReport}
+                            className="px-6 py-3.5 rounded-2xl text-[#F14D24] font-black uppercase tracking-wider text-[10px] bg-[#F14D24]/10 hover:bg-[#F14D24]/20 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isDownloadingLeavesReport ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                                <Eye className="w-4 h-4" />
+                            )}
+                            View Leaves PDF
+                        </button>
+                        <button
+                            onClick={() => downloadMonthlyLeavesReport(false)}
                             disabled={isDownloadingLeavesReport}
                             className="px-6 py-3.5 rounded-2xl text-white font-black uppercase tracking-wider text-[10px] bg-[#F14D24] hover:bg-[#d63f19] shadow-lg shadow-orange-500/10 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >

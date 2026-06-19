@@ -87,6 +87,10 @@ const formatCurrency = (amount: number) => {
     }).format(amount);
 };
 
+const formatCurrencyPDF = (amount: number) => {
+    return formatCurrency(amount).replace("₹", "Rs. ");
+};
+
 // Generate chart data from real financial entries
 const generateChartData = (entries: any[]): ChartData[] => {
     const data: ChartData[] = [];
@@ -1014,13 +1018,13 @@ export default function CEOFinancialIntelligence() {
             doc.setFont("helvetica", "bold");
             doc.setFontSize(12.5);
             doc.setTextColor(darkGray);
-            doc.text(formatCurrency(usthadTotal), 24, yPos + 15);
+            doc.text(formatCurrencyPDF(usthadTotal), 24, yPos + 15);
             doc.setTextColor(241, 77, 36);
-            doc.text(formatCurrency(uloomxTotal), 114, yPos + 15);
+            doc.text(formatCurrencyPDF(uloomxTotal), 114, yPos + 15);
             doc.setTextColor(239, 68, 68);
-            doc.text(formatCurrency(totalExpense), 24, yPos + 43);
+            doc.text(formatCurrencyPDF(totalExpense), 24, yPos + 43);
             doc.setTextColor(16, 185, 129);
-            doc.text(formatCurrency(balance), 114, yPos + 43);
+            doc.text(formatCurrencyPDF(balance), 114, yPos + 43);
 
             // Targets vs Achievements
             yPos += 64;
@@ -1066,7 +1070,7 @@ export default function CEOFinancialIntelligence() {
                 doc.setFontSize(8);
                 doc.setTextColor(lightGray);
                 doc.text(
-                    `Target: ${formatCurrency(t.val)} | Actual: ${formatCurrency(t.actual)}`,
+                    `Target: ${formatCurrencyPDF(t.val)} | Actual: ${formatCurrencyPDF(t.actual)}`,
                     24,
                     yPos + 9,
                 );
@@ -1185,14 +1189,14 @@ export default function CEOFinancialIntelligence() {
                     doc.text(entryDate, 18, tableYPos + 5);
 
                     // Usthad Academy Revenue
-                    doc.text(formatCurrency(usthadIncVal), 45, tableYPos + 5);
+                    doc.text(formatCurrencyPDF(usthadIncVal), 45, tableYPos + 5);
 
                     // UloomX Revenue
-                    doc.text(formatCurrency(uloomxIncVal), 90, tableYPos + 5);
+                    doc.text(formatCurrencyPDF(uloomxIncVal), 90, tableYPos + 5);
 
                     // Total Expenses
                     doc.setTextColor(239, 68, 68);
-                    doc.text(formatCurrency(expVal), 132, tableYPos + 5);
+                    doc.text(formatCurrencyPDF(expVal), 132, tableYPos + 5);
 
                     // Net Balance
                     doc.setFont("helvetica", "bold");
@@ -1201,7 +1205,7 @@ export default function CEOFinancialIntelligence() {
                     } else {
                         doc.setTextColor(239, 68, 68);
                     }
-                    doc.text(formatCurrency(netVal), 170, tableYPos + 5);
+                    doc.text(formatCurrencyPDF(netVal), 170, tableYPos + 5);
 
                     // Divider line
                     doc.setDrawColor(243, 244, 246);
@@ -1669,7 +1673,7 @@ export default function CEOFinancialIntelligence() {
                             </div>
 
                             {/* Right Side: Home Icon, Status and Time */}
-                            <div className="flex flex-row items-center gap-2 md:gap-4 w-full lg:w-auto justify-between lg:justify-start">
+                            <div className="flex flex-wrap items-center gap-2 md:gap-4 w-full lg:w-auto justify-start lg:justify-end">
                                 {/* Home Icon Button */}
                                 <button
                                     onClick={handleGoHome}
@@ -1715,7 +1719,7 @@ export default function CEOFinancialIntelligence() {
                                 </div>
 
                                 {/* Date/Time Stamp */}
-                                <div className="px-2.5 md:px-4 py-1.5 md:py-2.5 rounded-full bg-slate-100 border border-slate-200 flex-shrink-0 hidden xs:block">
+                                <div className="px-2.5 md:px-4 py-1.5 md:py-2.5 rounded-full bg-slate-100 border border-slate-200 flex-shrink-0 flex items-center">
                                     <span className="text-xs md:text-sm font-medium text-[#64748b] truncate">
                                         {currentDateTime}
                                     </span>

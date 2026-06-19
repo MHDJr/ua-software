@@ -180,7 +180,7 @@ export function CEOInbox() {
             <div className="flex-1 w-full max-w-7xl mx-auto h-[calc(100vh-220px)] flex flex-col">
                 {/* Spark Inbox - Full Width Column */}
                 <div className="flex-1 backdrop-blur-lg bg-white/80 dark:bg-zinc-900/60 border border-slate-100 dark:border-zinc-800/50 rounded-[2.5rem] p-6 md:p-8 shadow-[0_12px_40px_rgba(0,0,0,0.03)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.5)] overflow-y-auto">
-                    <div className="max-w-4xl mx-auto">
+                    <div className="w-full">
                         <div className="flex items-center justify-between mb-4">
                             <h2 className="text-2xl md:text-3xl font-bold" style={{ color: BRAND_COLORS.indigo }}>
                                 The &apos;Spark&apos; Inbox
