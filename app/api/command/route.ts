@@ -224,6 +224,31 @@ Return JSON only. No explanation, no markdown.`
                     read: false,
                     notification_type: "task"
                 });
+
+                // Trigger OneSignal push notification for task deployment
+                try {
+                    await fetch("https://api.onesignal.com/notifications", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": "Key " + (process.env.ONESIGNAL_REST_API_KEY || "")
+                        },
+                        body: JSON.stringify({
+                            app_id: "25c17e4d-dd90-4551-a1bb-1fbf9be673bf",
+                            target_channel: "push",
+                            include_aliases: {
+                                external_id: [assigneeId]
+                            },
+                            headings: { en: "NEW TASK DEPLOYED" },
+                            contents: { en: `CEO assigned task: "${taskPayload.title}". Check dashboard monitor.` },
+                            chrome_web_icon: "https://dashboard.usthadacademy.com/logo.png"
+                        })
+                    }).then(res => res.json()).then(data => {
+                        console.log("📡 OneSignal Task Notification Dispatch:", data);
+                    });
+                } catch (pushErr) {
+                    console.error("Failed to dispatch OneSignal task push notification:", pushErr);
+                }
             }
 
         } else if (target_table === "financial_entries") {

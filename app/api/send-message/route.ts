@@ -98,6 +98,36 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        // Trigger OneSignal push notification for direct messages
+        try {
+            // Clean message text if it has the sender prefix e.g. [sender_id:UUID]
+            const cleanText = typeof message === "string" 
+                ? message.replace(/^\[sender_id:[\w-]+\]/, "").trim() 
+                : message;
+            
+            await fetch("https://api.onesignal.com/notifications", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Key " + (process.env.ONESIGNAL_REST_API_KEY || "")
+                },
+                body: JSON.stringify({
+                    app_id: "25c17e4d-dd90-4551-a1bb-1fbf9be673bf",
+                    target_channel: "push",
+                    include_aliases: {
+                        external_id: [user_id]
+                    },
+                    headings: { en: title || "New Message Received" },
+                    contents: { en: cleanText || "Check your messenger inbox for updates." },
+                    chrome_web_icon: "https://dashboard.usthadacademy.com/logo.png"
+                })
+            }).then(res => res.json()).then(data => {
+                console.log("📡 OneSignal Message Notification Dispatch:", data);
+            });
+        } catch (pushErr) {
+            console.error("Failed to dispatch OneSignal push notification:", pushErr);
+        }
+
         return NextResponse.json({ success: true, data });
     } catch (err: any) {
         console.error("[SendMessageAPI] Global error:", err);

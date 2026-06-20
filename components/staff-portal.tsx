@@ -832,6 +832,19 @@ export default function StaffPortal() {
                 const assignedUser = profiles.find(p => p.id === newTaskAssignee);
                 toast.success(`Task successfully assigned to ${assignedUser?.full_name || 'staff'}`);
                 
+                // Notify assignee of the new task assignment via OneSignal push notification
+                if (newTaskAssignee !== profile.id) {
+                    fetch("/api/messenger/send", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            recipientId: newTaskAssignee,
+                            messageText: `Assigned new task: "${newTaskTitle.trim()}".`,
+                            senderName: "UA Command Link"
+                        })
+                    }).catch(err => console.error("OneSignal push notification dispatch failed:", err));
+                }
+
                 // Reset form
                 setNewTaskTitle("");
                 setNewTaskDesc("");

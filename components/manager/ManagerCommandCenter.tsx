@@ -419,6 +419,20 @@ export function ManagerCommandCenter({
             toast.success(
                 draft ? "DRAFT SAVED" : "✓ Task assigned successfully",
             );
+
+            // Notify assignee of the new task assignment via OneSignal push notification
+            if (!draft && insertPayload.assigned_to && insertPayload.assigned_to !== profile?.id) {
+                fetch("/api/messenger/send", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        recipientId: insertPayload.assigned_to,
+                        messageText: `Assigned new task: "${insertPayload.title}".`,
+                        senderName: "UA Command Link"
+                    })
+                }).catch(err => console.error("OneSignal push notification dispatch failed:", err));
+            }
+
             setIsAssignTaskOpen(false);
             resetTaskForm();
             
