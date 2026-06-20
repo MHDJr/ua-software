@@ -13,7 +13,7 @@ export async function POST(req: Request) {
         }
 
         const oneSignalPayload = {
-            app_id: "25c17e4d-dd90-4551-a1bb-1fbf9be673bf",
+            app_id: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID || "25c17e4d-dd90-4551-a1bb-1fbf9be673bf",
             target_channel: "push",
             include_aliases: {
                 external_id: [recipientId]
@@ -26,8 +26,8 @@ export async function POST(req: Request) {
         const response = await fetch("https://api.onesignal.com/notifications", {
             method: "POST",
             headers: {
-                "Content-Type": "application/json",
-                "Authorization": "Key " + (process.env.ONESIGNAL_REST_API_KEY || "")
+                "Content-Type": "application/json; charset=utf-8",
+                "Authorization": `Key ${process.env.ONESIGNAL_REST_API_KEY}`
             },
             body: JSON.stringify(oneSignalPayload)
         });
