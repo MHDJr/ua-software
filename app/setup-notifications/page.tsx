@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, Suspense } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import OneSignal from "react-onesignal";
 import { ShieldCheck, CheckCircle2, AlertTriangle, Bell, Loader2 } from "lucide-react";
@@ -12,6 +12,17 @@ function SetupNotificationContent() {
     const [status, setStatus] = useState<"idle" | "requesting" | "success" | "error">("idle");
     const [errorMessage, setErrorMessage] = useState("");
 
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            OneSignal.init({
+                appId: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID || '25c17e4d-dd90-4551-a1bb-1fbf9be673bf',
+                allowLocalhostAsSecureOrigin: true // Crucial local network bypass override rule
+            }).catch(err => {
+                console.warn("OneSignal initialization warning:", err);
+            });
+        }
+    }, []);
+
     const handleActivate = async () => {
         if (!userId) {
             setStatus("error");
@@ -21,11 +32,6 @@ function SetupNotificationContent() {
 
         setStatus("requesting");
         try {
-            await OneSignal.init({
-                appId: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID || "25c17e4d-dd90-4551-a1bb-1fbf9be673bf",
-                allowLocalhostAsSecureOrigin: true,
-            });
-
             // Fire native mobile overlay request window
             await OneSignal.Notifications.requestPermission();
 

@@ -6,7 +6,7 @@ import { User, ShieldCheck, ArrowLeft, Phone, Mail, Award, Landmark, RefreshCw }
 import { useAuth } from "@/lib/auth-context";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
-import { QRCodeSVG } from "qrcode.react";
+import { MobileSyncCard } from "@/components/MobileSyncCard";
 
 export default function ProfilePage() {
     const router = useRouter();
@@ -152,48 +152,8 @@ export default function ProfilePage() {
                     </div>
 
                     {/* Right: Premium Frosted Sync Card */}
-                    <div className="lg:col-span-5">
-                        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 md:p-8 shadow-2xl relative overflow-hidden flex flex-col items-center text-center">
-                            {/* Abstract Ambient Glow */}
-                            <div className="absolute -top-24 -left-24 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-                            <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-orange-500/10 rounded-full blur-3xl pointer-events-none" />
-
-                            <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-4">
-                                <ShieldCheck className="w-6 h-6 animate-pulse" />
-                            </div>
-
-                            <h2 className="text-lg font-black uppercase tracking-widest text-white mb-2">
-                                Mobile Push Sync
-                            </h2>
-                            <p className="text-xs text-slate-400 leading-relaxed max-w-sm mb-6">
-                                Establish an executive link between your desktop terminal and your mobile device. Your phone acts as an instant background alert pager.
-                            </p>
-
-                            {/* Perfect-square Vector QR Code Wrapper */}
-                            <div className="p-4 bg-white rounded-2xl shadow-xl mb-6 relative group transition-transform duration-350 hover:scale-102">
-                                {userId ? (
-                                    <QRCodeSVG
-                                        value={syncUrl}
-                                        size={180}
-                                        level="H"
-                                        includeMargin={false}
-                                        className="w-full h-full"
-                                    />
-                                ) : (
-                                    <div className="w-[180px] h-[180px] flex items-center justify-center text-slate-400 font-mono text-xs">
-                                        Generating QR...
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Secure routing description container */}
-                            <div className="w-full p-4 rounded-2xl bg-white/[0.02] border border-white/5 text-left text-[11px] leading-relaxed text-slate-400">
-                                <span className="font-bold text-white block mb-1">
-                                    🔒 SECURE ROUTING PIPELINE
-                                </span>
-                                Operational tasks, direct CEO messages, and critical alerts are routed via OneSignal secure channels directly to your linked device token. Scanning embeds your personnel credentials safely.
-                            </div>
-                        </div>
+                    <div className="lg:col-span-5 flex items-center justify-center">
+                        <MobileSyncCard userId={userId} size={180} />
                     </div>
                 </div>
             </div>
