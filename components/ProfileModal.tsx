@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useState } from "react";
-import { User, X, Plus } from "lucide-react";
+import { User, X, Plus, ShieldCheck } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 import { compressImage } from "@/lib/image-utils";
 import { uploadPublicFile, deleteFile } from "@/lib/storage";
 import { motion, AnimatePresence } from "framer-motion";
+import { QRCodeSVG } from "qrcode.react";
 
 interface ProfileModalProps {
     isOpen: boolean;
@@ -227,6 +228,32 @@ export function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
                                         onChange={(e) => handlePhoneChange(e.target.value)}
                                         className="w-full bg-transparent border-none focus:outline-none focus:ring-0 p-0 text-xs font-bold text-slate-900 dark:text-zinc-100 placeholder-slate-350"
                                     />
+                                </div>
+
+                                {/* Mobile Synchronization Card */}
+                                <div className="p-5 rounded-xl bg-gradient-to-br from-indigo-950/90 via-slate-900/90 to-zinc-950/95 dark:from-zinc-900/70 dark:via-zinc-950/80 dark:to-black/90 border border-slate-200 dark:border-zinc-800 shadow-lg flex flex-col items-center text-center">
+                                    <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-500 dark:text-indigo-400 mb-3">
+                                        <ShieldCheck className="w-5 h-5" />
+                                    </div>
+                                    <span className="text-[10px] font-black text-white uppercase tracking-widest block mb-1">
+                                        Mobile Sync Route
+                                    </span>
+                                    <p className="text-[10px] text-slate-400 dark:text-zinc-400 leading-relaxed max-w-[280px] mb-4">
+                                        Scan this QR code with your phone camera to set up OneSignal alerts for operational updates and CEO directives.
+                                    </p>
+                                    <div className="p-3 bg-white rounded-xl shadow-md mb-4">
+                                        <QRCodeSVG
+                                            value={`https://dashboard.usthadacademy.com/setup-notifications?uid=${profile?.id || user?.id || ""}`}
+                                            size={130}
+                                            level="H"
+                                        />
+                                    </div>
+                                    <div className="w-full text-left text-[9px] leading-relaxed text-slate-400 dark:text-zinc-500 border-t border-slate-100/10 pt-3">
+                                        <span className="font-bold text-slate-300 dark:text-zinc-400 block mb-0.5">
+                                            🔒 SECURE MOBILE PIPELINE
+                                        </span>
+                                        Links your Supabase security context to your mobile background alert receiver.
+                                    </div>
                                 </div>
                             </div>
                         </div>
