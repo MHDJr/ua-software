@@ -81,19 +81,7 @@ function CEOPageContent() {
         return () => window.removeEventListener("open-hq-messenger", handleOpen);
     }, []);
 
-    // Toast alert on incoming unread messages
-    const prevCountRef = useRef(0);
-    useEffect(() => {
-        if (unreadCommsCount > prevCountRef.current) {
-            toast.info("New message received in Communications Terminal", {
-                action: {
-                    label: "Open",
-                    onClick: () => setIsCommsOpen(true)
-                }
-            });
-        }
-        prevCountRef.current = unreadCommsCount;
-    }, [unreadCommsCount]);
+
 
     // Permission Guard: Only allow authorized roles
     const isAuthorized = useMemo(() => {

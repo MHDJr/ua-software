@@ -108,8 +108,16 @@ export function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
                                                     const file = e.target.files?.[0];
                                                     if (!file) return;
 
-                                                    if (file.size > 3 * 1024 * 1024) {
-                                                        toast.error("Photo size must be under 3MB");
+                                                    // Validate file format (type verification)
+                                                    const validTypes = ["image/jpeg", "image/png", "image/webp"];
+                                                    if (!validTypes.includes(file.type)) {
+                                                        toast.error("Invalid image format. Only JPEG, PNG, and WEBP are accepted.");
+                                                        return;
+                                                    }
+
+                                                    // Validate file size (under 2MB)
+                                                    if (file.size > 2 * 1024 * 1024) {
+                                                        toast.error("Max file size exceeded. Image must be under 2MB.");
                                                         return;
                                                     }
 
