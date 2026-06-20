@@ -71,6 +71,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { format, differenceInMinutes } from "date-fns";
 import { RequestModal } from "@/components/RequestModal";
 import { LeaveRequestModal } from "@/components/LeaveRequestModal";
+import { MobileSyncCard } from "@/components/MobileSyncCard";
 import {
     Dialog,
     DialogContent,
@@ -3452,6 +3453,11 @@ export default function StaffPortal() {
                                     }}
                                     className="w-full bg-transparent border-none focus:outline-none focus:ring-0 p-0 text-xs font-bold text-slate-900 dark:text-zinc-100 placeholder-slate-350"
                                 />
+                            </div>
+
+                            {/* Mobile Synchronization Card */}
+                            <div className="pt-2 w-full">
+                                <MobileSyncCard userId={profile?.id || ""} size={130} />
                             </div>
                         </div>
                     </div>
