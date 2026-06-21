@@ -240,6 +240,7 @@ export function ManagerCommandCenter({
                 .from("notifications")
                 .select("*")
                 .eq("user_id", profile.id)
+                .eq("type", "direct")
                 .order("created_at", { ascending: false });
             if (notifs) setNotifications(notifs);
         } catch (err) {
@@ -251,7 +252,14 @@ export function ManagerCommandCenter({
         if (profile?.id) {
             fetchNotifications();
             const interval = setInterval(fetchNotifications, 30000);
-            return () => clearInterval(interval);
+            
+            // Listen for immediate messenger updates
+            window.addEventListener("hq-messenger-updated", fetchNotifications);
+            
+            return () => {
+                clearInterval(interval);
+                window.removeEventListener("hq-messenger-updated", fetchNotifications);
+            };
         }
     }, [profile?.id, fetchNotifications]);
 
@@ -841,7 +849,7 @@ export function ManagerCommandCenter({
 
                             {/* UA Messenger Bell Button */}
                             {(() => {
-                                const unreadCount = notifications.filter(n => !n.read).length;
+                                const unreadCount = notifications.filter(n => n.type === "direct" && !n.read).length;
                                 return (
                                     <>
                                         <style>{`

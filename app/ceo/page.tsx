@@ -42,6 +42,7 @@ function CEOPageContent() {
                 .from("notifications")
                 .select("*", { count: "exact", head: true })
                 .eq("user_id", profile.id)
+                .eq("type", "direct")
                 .eq("read", false);
             if (!error && count !== null) {
                 setUnreadCommsCount(count);
@@ -57,7 +58,14 @@ function CEOPageContent() {
             
             // Poll for unread count every 30 seconds
             const interval = setInterval(fetchUnreadCommsCount, 30000);
-            return () => clearInterval(interval);
+            
+            // Listen for immediate messenger updates
+            window.addEventListener("hq-messenger-updated", fetchUnreadCommsCount);
+            
+            return () => {
+                clearInterval(interval);
+                window.removeEventListener("hq-messenger-updated", fetchUnreadCommsCount);
+            };
         }
     }, [profile?.id, fetchUnreadCommsCount]);
 

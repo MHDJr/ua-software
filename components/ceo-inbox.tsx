@@ -33,7 +33,6 @@ export function CEOInbox() {
     const [ideas, setIdeas] = useState<Idea[]>([]);
     const [loading, setLoading] = useState(true);
     const [clearingAll, setClearingAll] = useState(false);
-    const [inboxFilter, setInboxFilter] = useState<'all' | 'directives' | 'alerts'>('all');
 
     // Tab Resiliency Engine Integration
     useTabResiliency(
@@ -148,13 +147,7 @@ export function CEOInbox() {
         }
     };
 
-    // Filter ideas locally based on category
-    const filteredIdeas = ideas.filter(idea => {
-        if (inboxFilter === 'all') return true;
-        if (inboxFilter === 'directives') return idea.category?.toLowerCase() === 'directive';
-        if (inboxFilter === 'alerts') return idea.category?.toLowerCase() === 'alert' || idea.category?.toLowerCase() === 'system';
-        return true;
-    });
+
 
     return (
         <div className="min-h-screen relative overflow-hidden font-sans p-6 flex flex-col gap-6 bg-[#F4F7FE] text-slate-900 dark:bg-transparent dark:text-white">
@@ -185,7 +178,7 @@ export function CEOInbox() {
                             <h2 className="text-2xl md:text-3xl font-bold" style={{ color: BRAND_COLORS.indigo }}>
                                 The &apos;Spark&apos; Inbox
                             </h2>
-                            {filteredIdeas.length > 0 && (
+                            {ideas.length > 0 && (
                                 <Button
                                     onClick={clearAllIdeas}
                                     disabled={clearingAll}
@@ -208,39 +201,6 @@ export function CEOInbox() {
                         </div>
                         <p className="text-gray-500 dark:text-zinc-400 mb-6 text-sm">Innovation sparks from your team</p>
 
-                        <div className="flex items-center gap-2 mb-6 bg-gray-100/50 dark:bg-zinc-800/50 p-1 rounded-xl w-fit">
-                            <button
-                                onClick={() => setInboxFilter('all')}
-                                className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                                    inboxFilter === 'all'
-                                        ? 'bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                                        : 'text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-300'
-                                }`}
-                            >
-                                All Sparks
-                            </button>
-                            <button
-                                onClick={() => setInboxFilter('directives')}
-                                className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                                    inboxFilter === 'directives'
-                                        ? 'bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                                        : 'text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-300'
-                                }`}
-                            >
-                                Directives
-                            </button>
-                            <button
-                                onClick={() => setInboxFilter('alerts')}
-                                className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                                    inboxFilter === 'alerts'
-                                        ? 'bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                                        : 'text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-300'
-                                }`}
-                            >
-                                System Alerts
-                            </button>
-                        </div>
-
                         <div className="space-y-3">
                             {loading ? (
                                 <div className="flex items-center justify-center py-8">
@@ -249,14 +209,14 @@ export function CEOInbox() {
                                         <span className="text-gray-500 text-sm">Loading ideas...</span>
                                     </div>
                                 </div>
-                            ) : filteredIdeas.length === 0 ? (
+                            ) : ideas.length === 0 ? (
                                 <div className="text-center py-12">
                                     <Lightbulb className="w-12 h-12 text-gray-300 dark:text-zinc-700 mx-auto mb-3 animate-pulse" />
                                     <p className="text-gray-500 dark:text-zinc-400 text-sm font-bold uppercase tracking-wider">No ideas yet</p>
                                     <p className="text-gray-400 dark:text-zinc-500 text-xs mt-1">Innovation sparks submitted by staff will appear here</p>
                                 </div>
                             ) : (
-                                filteredIdeas.map((idea) => (
+                                ideas.map((idea) => (
                                     <div
                                         key={idea.id}
                                         className="group bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl p-5 hover:shadow-md hover:translate-x-1 transition-all duration-200 hover:border-gray-200 dark:hover:border-zinc-700 cursor-pointer shadow-sm relative overflow-hidden"

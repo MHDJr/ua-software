@@ -31,20 +31,20 @@ export function useBadgeCounts() {
 
       if (user?.id) {
         queries.push(
-          supabase.from("notifications").select("id", { count: "exact" }).eq("user_id", user.id).eq("read", false)
+          supabase.from("ideas").select("id", { count: "exact" }).eq("status", "active")
         );
       }
 
       const results = await Promise.all(queries);
       const pendingRes = results[0];
       const victoriesRes = results[1];
-      const notificationsRes = user?.id ? results[2] : { count: 0 };
+      const ideasRes = user?.id ? results[2] : { count: 0 };
 
       if (isMounted) {
         setBadgeCounts({
           pendingRequests: pendingRes.count || 0,
           victories: victoriesRes.count || 0,
-          unreadNotifications: notificationsRes?.count || 0,
+          unreadNotifications: ideasRes?.count || 0,
         });
       }
     } catch (error) {
@@ -99,12 +99,12 @@ export function useBadgeCounts() {
         .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, debouncedFetch)
         .subscribe();
         
-      const notificationsSub = supabase
-        .channel(`badge-notifications-changes-${instanceId}`)
-        .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, debouncedFetch)
+      const ideasSub = supabase
+        .channel(`badge-ideas-changes-${instanceId}`)
+        .on("postgres_changes", { event: "*", schema: "public", table: "ideas" }, debouncedFetch)
         .subscribe();
         
-      subscriptionsRef.current = [requestsSub, tasksSub, notificationsSub];
+      subscriptionsRef.current = [requestsSub, tasksSub, ideasSub];
     };
 
     fetchBadgeCounts(isMounted);

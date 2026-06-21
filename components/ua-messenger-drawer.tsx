@@ -18,6 +18,7 @@ interface UAMessengerDrawerProps {
         avatar_url?: string;
         department?: string;
         is_manager?: boolean;
+        designation?: string;
     } | null;
 }
  
@@ -67,7 +68,7 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
             // Fetch all profiles
             const { data: profs } = await supabase
                 .from("profiles")
-                .select("id, full_name, role, avatar_url, department, is_manager");
+                .select("id, full_name, role, avatar_url, department, is_manager, designation");
             if (profs) setProfilesList(profs);
  
             // Fetch received notifications
@@ -89,6 +90,7 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
             console.error("Error fetching comms data:", err);
         } finally {
             setLoading(false);
+            window.dispatchEvent(new CustomEvent("hq-messenger-updated"));
         }
     };
  
@@ -105,30 +107,19 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
         }
     }, [isOpen, profile?.id]);
  
-    // Keyboard shortcut to open messenger and toggle quick composer (Ctrl+M / Cmd+M)
+    // Keyboard shortcut to toggle messenger drawer open/close or toggle thread directory (Ctrl+M / Cmd+M)
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'm') {
                 e.preventDefault();
-                if (!isOpen) {
-                    window.dispatchEvent(new CustomEvent("toggle-hq-messenger"));
-                }
-                if (activeThreadPartnerId) {
-                    threadInputRef.current?.focus();
-                } else {
-                    setIsComposerOpen(prev => {
-                        const next = !prev;
-                        if (next) {
-                            setTimeout(() => composerInputRef.current?.focus(), 150);
-                        }
-                        return next;
-                    });
-                }
+                // Toggle the messenger drawer open/close or toggle the new thread directory state view
+                // DO NOT invoke inputElement.focus() or alter layout layers that slide over the quick prompt chips area
+                window.dispatchEvent(new CustomEvent("toggle-hq-messenger"));
             }
         };
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [isOpen, activeThreadPartnerId]);
+    }, []);
  
     // Automatically mark active thread's messages as read
     useEffect(() => {
@@ -138,15 +129,17 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
             if (thread) {
                 const unread = thread.messages.filter(m => !m.isSent && !m.read);
                 if (unread.length > 0) {
+                    const nowStr = new Date().toISOString();
                     supabase
                         .from("notifications")
-                        .update({ read: true, read_at: new Date().toISOString() })
+                        .update({ read: true, read_at: nowStr })
                         .in("id", unread.map(m => m.id))
                         .then(({ error }) => {
                             if (!error) {
                                 setReceivedMessages(prev => prev.map(m => 
-                                    unread.some(um => um.id === m.id) ? { ...m, read: true, read_at: new Date().toISOString() } : m
+                                    unread.some(um => um.id === m.id) ? { ...m, read: true, read_at: nowStr } : m
                                 ));
+                                window.dispatchEvent(new CustomEvent("hq-messenger-updated"));
                             }
                         });
                 }
@@ -231,6 +224,17 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
         };
     }, [profile?.id, profilesList, isOpen, activeThreadPartnerId]);
  
+    const isMessageExpired = (msg: any) => {
+        const seenAt = msg.seen_at || msg.read_at;
+        if (seenAt) {
+            const tSeen = new Date(seenAt).getTime();
+            const tCurrent = new Date().getTime();
+            const diffHours = (tCurrent - tSeen) / (1000 * 60 * 60);
+            return diffHours >= 12;
+        }
+        return false;
+    };
+
     // Thread formatting logic
     const getThreads = (): Thread[] => {
         if (!profile?.id) return [];
@@ -238,6 +242,7 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
  
         // Process received messages
         receivedMessages.forEach(msg => {
+            if (isMessageExpired(msg)) return;
             const { senderId } = parseMessagePayload(msg.message);
             if (senderId && senderId !== profile.id) {
                 if (!threadMap.has(senderId)) {
@@ -249,6 +254,7 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
  
         // Process sent messages
         sentMessages.forEach(msg => {
+            if (isMessageExpired(msg)) return;
             const recipientId = msg.user_id;
             if (recipientId && recipientId !== profile.id) {
                 if (!threadMap.has(recipientId)) {
@@ -257,13 +263,34 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
                 threadMap.get(recipientId)!.push({ ...msg, isSent: true });
             }
         });
+
+        // Identify mustShowPartners: CEOs, Administrators, and active user's Department Manager
+        const mustShowPartners = profilesList.filter(p => {
+            if (p.id === profile.id) return false;
+            
+            const pRoleLower = p.role?.toLowerCase();
+            const pDesignationLower = p.designation?.toLowerCase();
+            
+            const isPCeo = pRoleLower === "ceo" || pDesignationLower === "ceo";
+            const isPAdmin = pRoleLower === "admin" || pRoleLower === "administrator" || pDesignationLower === "admin" || pDesignationLower === "administrator";
+            const isPMyManager = p.department === profile.department && (p.is_manager === true || pRoleLower === "manager" || pDesignationLower === "manager");
+            
+            return isPCeo || isPAdmin || isPMyManager;
+        });
+
+        // Ensure mustShowPartners are always in the threadMap even if no messages sent
+        mustShowPartners.forEach(p => {
+            if (!threadMap.has(p.id)) {
+                threadMap.set(p.id, []);
+            }
+        });
  
         const threads: Thread[] = [];
         threadMap.forEach((msgs, partnerId) => {
             const partner = profilesList.find(p => p.id === partnerId);
             if (!partner) return;
             const sortedMsgs = msgs.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-            const latestMessage = sortedMsgs[sortedMsgs.length - 1];
+            const latestMessage = sortedMsgs.length > 0 ? sortedMsgs[sortedMsgs.length - 1] : undefined;
             const unreadCount = msgs.filter(m => !m.isSent && !m.read).length;
  
             threads.push({
@@ -274,7 +301,11 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
             });
         });
  
-        return threads.sort((a, b) => new Date(b.latestMessage.created_at).getTime() - new Date(a.latestMessage.created_at).getTime());
+        return threads.sort((a, b) => {
+            const timeA = a.latestMessage ? new Date(a.latestMessage.created_at).getTime() : 0;
+            const timeB = b.latestMessage ? new Date(b.latestMessage.created_at).getTime() : 0;
+            return timeB - timeA;
+        });
     };
  
     const findRepliedToMessage = (msg: any, allMsgs: any[]) => {
@@ -307,6 +338,7 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
                 if (replyingToMessage?.id === msgId) {
                     setReplyingToMessage(null);
                 }
+                window.dispatchEvent(new CustomEvent("hq-messenger-updated"));
             }
         } catch (err: any) {
             toast.error("Error: " + err.message);
@@ -325,18 +357,67 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
  
     const getRecipientOptions = () => {
         if (!profile) return [];
-        const isCeoOrManager = profile.role === "ceo" || profile.role?.toUpperCase() === "CEO" || profile.is_manager || profile.role === "manager";
         
+        const roleLower = profile.role?.toLowerCase();
+        const designationLower = profile.designation?.toLowerCase();
+        const isCeo = roleLower === "ceo" || designationLower === "ceo";
+        const isAdmin = roleLower === "admin" || roleLower === "administrator" || designationLower === "admin" || designationLower === "administrator";
+        
+        if (isCeo || isAdmin) {
+            // CEO or Administrators get global organisation access
+            return profilesList.filter(p => p.id !== profile.id);
+        }
+        
+        // Active User is 'STAFF' (strict boundary routing)
         return profilesList.filter(p => {
             if (p.id === profile.id) return false;
-            if (isCeoOrManager) return true;
             
-            const isCeo = p.role === "ceo" || p.role?.toUpperCase() === "CEO";
-            const isAdmin = p.role === "admin" || p.role === "administrator" || ((p.department?.toLowerCase() === "administration" || p.department?.toLowerCase() === "admin") && (p.is_manager === true || p.role === "manager"));
-            const isMyManager = (p.is_manager === true || p.role === "manager") && p.department === profile.department;
+            const targetRoleLower = p.role?.toLowerCase();
+            const targetDesignationLower = p.designation?.toLowerCase();
+            const isTargetCeo = targetRoleLower === "ceo" || targetDesignationLower === "ceo";
+            const isTargetAdmin = targetRoleLower === "admin" || targetRoleLower === "administrator" || targetDesignationLower === "admin" || targetDesignationLower === "administrator";
             
-            return isCeo || isAdmin || isMyManager;
+            // Matches user's department and has manager flag/role/designation
+            const isMyManager = p.department === profile.department && (p.is_manager === true || targetRoleLower === "manager" || targetDesignationLower === "manager");
+            
+            return isTargetCeo || isTargetAdmin || isMyManager;
         });
+    };
+ 
+    // Resolve personnel from registry for dynamic context-aware operation chips
+    const getPersonnelManagers = () => {
+        const salesManager = profilesList.find(p => p.department?.toLowerCase() === "sales" && (p.is_manager === true || p.role?.toLowerCase() === "manager" || p.designation?.toLowerCase() === "manager"))
+            || profilesList.find(p => p.department?.toLowerCase() === "sales");
+        
+        const financeManager = profilesList.find(p => (p.department?.toLowerCase() === "finance" || p.department?.toLowerCase() === "accounts") && (p.is_manager === true || p.role?.toLowerCase() === "manager" || p.designation?.toLowerCase() === "manager"))
+            || profilesList.find(p => p.department?.toLowerCase() === "finance" || p.department?.toLowerCase() === "accounts");
+            
+        const operationsManager = profilesList.find(p => (p.department?.toLowerCase() === "marketing" || p.department?.toLowerCase() === "operations" || p.department?.toLowerCase() === "marketing/operations") && (p.is_manager === true || p.role?.toLowerCase() === "manager" || p.designation?.toLowerCase() === "manager"))
+            || profilesList.find(p => p.department?.toLowerCase() === "marketing" || p.department?.toLowerCase() === "operations");
+            
+        const administrators = profilesList.filter(p => 
+            (p.role?.toLowerCase() === "admin" || p.role?.toLowerCase() === "administrator" ||
+             p.designation?.toLowerCase() === "admin" || p.designation?.toLowerCase() === "administrator") && 
+            p.id !== profile?.id
+        );
+
+        const ceoUser = profilesList.find(p => p.role?.toLowerCase() === "ceo" || p.designation?.toLowerCase() === "ceo");
+        
+        return {
+            sales: salesManager,
+            finance: financeManager,
+            operations: operationsManager,
+            admins: administrators,
+            ceo: ceoUser
+        };
+    };
+ 
+    const handleChipClick = (userId?: string, roleLabel?: string) => {
+        if (userId) {
+            setActiveThreadPartnerId(userId);
+        } else {
+            toast.error(`${roleLabel || "Manager"} is not registered in the system directory.`);
+        }
     };
  
     const getRoleBadge = (partner: any) => {
@@ -513,13 +594,19 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
     const partnerAvatar = partnerProfile?.avatar_url;
  
     const unreadCountTotal = activeThreads.reduce((acc, t) => acc + t.unreadCount, 0);
+    const roleLowerVal = profile?.role?.toLowerCase();
+    const designationLowerVal = profile?.designation?.toLowerCase();
+    const isActiveCeo = roleLowerVal === "ceo" || designationLowerVal === "ceo";
+    const isActiveAdmin = roleLowerVal === "admin" || roleLowerVal === "administrator" || designationLowerVal === "admin" || designationLowerVal === "administrator";
+    const isCeoOrAdmin = isActiveCeo || isActiveAdmin;
+    const managers = getPersonnelManagers();
  
     return (
         <>
             {/* Backdrop */}
             {isOpen && (
                 <div 
-                    className="fixed inset-0 bg-black/40 backdrop-blur-[2px] z-[90] transition-opacity duration-300"
+                    className="fixed inset-0 bg-black/45 dark:bg-black/60 backdrop-blur-[2px] z-[90] transition-opacity duration-300"
                     onClick={onClose}
                 />
             )}
@@ -534,17 +621,17 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
                         className="fixed right-4 top-4 bottom-4 w-80 md:w-[430px] flex flex-col z-[95] text-left font-sans"
                         style={{ filter: "drop-shadow(0 25px 60px rgba(0,0,0,0.18))" }}
                     >
-                        {/* Solid Premium White Panel */}
-                        <div className="flex flex-col flex-1 rounded-3xl border border-slate-100 bg-white overflow-hidden shadow-2xl relative">
+                        {/* Frosted Glassmorphic Premium Panel */}
+                        <div className="flex flex-col flex-1 rounded-3xl border border-slate-200/50 dark:border-slate-800/50 bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl overflow-hidden shadow-2xl relative transition-all duration-300">
                             
                             {/* Subtle Gradient Top Bar */}
                             <div className="h-1 w-full bg-gradient-to-r from-[#31267D] via-[#F14D24] to-[#31267D] opacity-80" />
  
                             {/* Header */}
-                            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 flex-shrink-0 bg-white min-h-[70px]">
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-900/60 flex-shrink-0 bg-transparent min-h-[70px]">
                                 {activeThreadPartnerId === null ? (
                                     <div className="flex items-center gap-2.5">
-                                        <div className="relative flex items-center justify-center w-8 h-8 rounded-xl bg-white shadow-sm border border-slate-100">
+                                        <div className="relative flex items-center justify-center w-8 h-8 rounded-xl bg-white dark:bg-slate-900 shadow-sm border border-slate-100 dark:border-slate-800/80">
                                             {/* eslint-disable-next-line @next/next/no-img-element */}
                                             <img 
                                                 src="/images/usthadacademylogo2.svg" 
@@ -558,8 +645,8 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
                                             )}
                                         </div>
                                         <div>
-                                            <h2 className="text-sm font-black tracking-tight text-slate-900">UA Messenger</h2>
-                                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Command Link</p>
+                                            <h2 className="text-sm font-black tracking-tight text-slate-900 dark:text-white">UA Messenger</h2>
+                                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Command Link</p>
                                         </div>
                                     </div>
                                 ) : (
@@ -569,7 +656,7 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
                                                 setActiveThreadPartnerId(null);
                                                 setReplyingToMessage(null);
                                             }}
-                                            className="py-1 px-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 rounded-xl text-slate-500 hover:text-slate-700 transition-all flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider active:scale-95"
+                                            className="py-1 px-2.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-800 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-350 transition-all flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider active:scale-95"
                                         >
                                             <ArrowLeft className="w-3.5 h-3.5" /> Back
                                         </button>
@@ -577,10 +664,10 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
                                             <img 
                                                 src={isValidAvatarUrl(partnerAvatar) ? partnerAvatar : `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(partnerName)}`}
                                                 alt={partnerName}
-                                                className="w-8 h-8 rounded-full object-cover border border-slate-100 shadow-sm flex-shrink-0"
+                                                className="w-8 h-8 rounded-full object-cover border border-slate-100 dark:border-slate-800 shadow-sm flex-shrink-0"
                                             />
                                             <div className="min-w-0">
-                                                <h3 className="text-xs font-black text-slate-900 truncate max-w-[150px]">{partnerName}</h3>
+                                                <h3 className="text-xs font-black text-slate-900 dark:text-white truncate max-w-[150px]">{partnerName}</h3>
                                                 <div className="flex items-center gap-1.5 mt-0.5">
                                                     {getRoleBadge(partnerProfile)}
                                                 </div>
@@ -593,14 +680,14 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
                                     <button
                                         onClick={fetchData}
                                         disabled={loading}
-                                        className="p-2 bg-slate-100 hover:bg-slate-200 border border-slate-200/80 rounded-xl text-slate-500 transition-colors disabled:opacity-50"
+                                        className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-800 rounded-xl text-slate-500 dark:text-slate-400 transition-colors disabled:opacity-50"
                                         title="Refresh"
                                     >
                                         <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
                                     </button>
                                     <button 
                                         onClick={onClose}
-                                        className="p-2 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded-xl transition-all border border-transparent hover:border-slate-200"
+                                        className="p-2 hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 rounded-xl transition-all border border-transparent hover:border-slate-200 dark:hover:border-slate-800"
                                     >
                                         <X className="w-4 h-4" />
                                     </button>
@@ -608,30 +695,30 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
                             </div>
  
                             {/* Scrollable Dashboard / Conversation Section */}
-                            <div className="flex-grow overflow-y-auto px-6 pb-28 pt-4 space-y-4 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+                            <div className="flex-grow overflow-y-auto px-6 pb-36 pt-4 space-y-4 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-800 scrollbar-track-transparent">
                                 {loading && activeThreads.length === 0 ? (
                                     <div className="flex flex-col items-center justify-center py-20 gap-3">
                                         <Loader2 className="w-6 h-6 animate-spin text-[#31267D]" />
-                                        <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Syncing communications...</span>
+                                        <span className="text-slate-400 dark:text-slate-500 text-[10px] uppercase font-bold tracking-wider">Syncing communications...</span>
                                     </div>
                                 ) : activeThreadPartnerId === null ? (
                                     // Thread List Dashboard view
                                     activeThreads.length === 0 ? (
                                         <div className="text-center py-16 flex flex-col items-center justify-center gap-3">
-                                            <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center animate-pulse">
-                                                <Mail className="w-7 h-7 text-slate-300" />
+                                            <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-900 flex items-center justify-center animate-pulse">
+                                                <Mail className="w-7 h-7 text-slate-300 dark:text-slate-650" />
                                             </div>
                                             <div>
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Inbox Clear</p>
-                                                <p className="text-[9px] text-slate-350 mt-1 max-w-[200px] mx-auto leading-relaxed">Choose New Message to start a conversation thread.</p>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Inbox Clear</p>
+                                                <p className="text-[9px] text-slate-350 dark:text-slate-600 mt-1 max-w-[200px] mx-auto leading-relaxed">Choose New Message to start a conversation thread.</p>
                                             </div>
                                         </div>
                                     ) : (
                                         <div className="flex flex-col gap-3.5 mt-1">
                                             {activeThreads.map((thread) => {
                                                 const { partner, messages, latestMessage, unreadCount } = thread;
-                                                const { cleanText } = parseMessagePayload(latestMessage.message);
-                                                const formattedTime = format(new Date(latestMessage.created_at), 'h:mm a');
+                                                const { cleanText } = latestMessage ? parseMessagePayload(latestMessage.message) : { cleanText: "No messages yet." };
+                                                const formattedTime = latestMessage ? format(new Date(latestMessage.created_at), 'h:mm a') : "";
                                                 const avatar = partner.avatar_url;
                                                 const name = partner.full_name || "Staff Member";
  
@@ -639,35 +726,37 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
                                                     <button
                                                         key={partner.id}
                                                         onClick={() => setActiveThreadPartnerId(partner.id)}
-                                                        className="w-full flex items-center gap-3.5 p-3 rounded-2xl border border-slate-100 hover:border-[#31267D]/10 bg-white hover:bg-slate-50/50 hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 text-left font-sans cursor-pointer group relative"
+                                                        className="w-full flex items-center gap-3.5 p-3 rounded-2xl border border-slate-100 dark:border-slate-900/50 hover:border-[#31267D]/10 dark:hover:border-[#4f3fbf]/30 bg-white/50 dark:bg-slate-950/40 hover:bg-slate-50/50 dark:hover:bg-slate-900/40 hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 text-left font-sans cursor-pointer group relative"
                                                     >
                                                         <div className="relative shrink-0">
                                                             <img 
                                                                 src={isValidAvatarUrl(avatar) ? avatar : `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`}
                                                                 alt={name}
-                                                                className="w-11 h-11 rounded-full object-cover border border-slate-100 shadow-sm animate-fade-in"
+                                                                className="w-11 h-11 rounded-full object-cover border border-slate-100 dark:border-slate-800 shadow-sm animate-fade-in"
                                                             />
                                                             {unreadCount > 0 && (
-                                                                <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-[#F14D24] border-2 border-white animate-pulse" />
+                                                                <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-[#F14D24] border-2 border-white dark:border-slate-950 animate-pulse" />
                                                             )}
                                                         </div>
                                                         
                                                         <div className="flex-grow min-w-0">
                                                             <div className="flex items-center justify-between gap-2">
                                                                 <div className="flex items-center gap-1.5 min-w-0">
-                                                                    <span className="text-xs font-black text-slate-800 truncate group-hover:text-slate-900 transition-colors">
+                                                                    <span className="text-xs font-black text-slate-800 dark:text-slate-200 truncate group-hover:text-slate-900 dark:group-hover:text-white transition-colors">
                                                                         {name}
                                                                     </span>
                                                                     {getRoleBadge(partner)}
                                                                 </div>
-                                                                <span className="text-[9px] font-bold text-slate-400 whitespace-nowrap shrink-0">
-                                                                    {formattedTime}
-                                                                </span>
+                                                                {formattedTime && (
+                                                                    <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0">
+                                                                        {formattedTime}
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                             
                                                             <div className="flex items-center justify-between gap-2 mt-1">
-                                                                <p className="text-[11px] font-medium text-slate-400 truncate max-w-[210px] md:max-w-[280px]">
-                                                                    {latestMessage.isSent ? "You: " : ""}{cleanText}
+                                                                <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500 truncate max-w-[210px] md:max-w-[280px]">
+                                                                    {latestMessage ? (latestMessage.isSent ? "You: " : "") : ""}{cleanText}
                                                                 </p>
                                                                 {unreadCount > 0 && (
                                                                     <span className="bg-[#F14D24] text-white text-[9px] font-black h-5 min-w-[20px] px-1.5 rounded-full flex items-center justify-center shadow-lg shadow-[#F14D24]/30 animate-pulse shrink-0">
@@ -684,114 +773,183 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
                                 ) : (
                                     // Conversation Deep-view
                                     <div className="flex flex-col gap-1 mt-1 pb-16">
-                                        {activeThread?.messages.map((msg, index) => {
-                                            const { cleanText } = parseMessagePayload(msg.message);
-                                            const formattedTime = format(new Date(msg.created_at), 'h:mm a');
-                                            const replyText = findRepliedToMessage(msg, activeThread.messages);
+                                        {/* Ephemeral Warning Notice Banner */}
+                                        <div className="text-[11px] font-medium tracking-wide py-2 px-3 text-center rounded-xl border border-slate-200/50 bg-slate-100/80 text-slate-600 dark:bg-slate-900/50 dark:text-slate-400 dark:border-slate-800/50 mb-4 transition-all duration-300">
+                                            ⏳ Messages automatically disappear 12 hours after they are seen.
+                                        </div>
+
+                                        {(activeThread?.messages || [])
+                                            .filter(msg => !isMessageExpired(msg))
+                                            .map((msg, index) => {
+                                                const { cleanText } = parseMessagePayload(msg.message);
+                                                const formattedTime = format(new Date(msg.created_at), 'h:mm a');
+                                                const replyText = findRepliedToMessage(msg, activeThread?.messages || []);
  
-                                            return (
-                                                <div
-                                                    key={msg.id}
-                                                    className={cn(
-                                                        "flex w-full mb-3.5",
-                                                        msg.isSent ? "justify-end" : "justify-start"
-                                                    )}
-                                                >
-                                                    <div 
+                                                return (
+                                                    <div
+                                                        key={msg.id}
                                                         className={cn(
-                                                            "max-w-[85%] rounded-2xl px-4 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] relative group font-sans border",
-                                                            msg.isSent 
-                                                                ? "rounded-tr-sm bg-white border-slate-100 text-slate-800" 
-                                                                : "rounded-tl-sm bg-slate-100 border-slate-200/40 text-slate-800"
+                                                            "flex w-full mb-3.5",
+                                                            msg.isSent ? "justify-end" : "justify-start"
                                                         )}
                                                     >
-                                                        {/* Reply quote preview */}
-                                                        {replyText && (
-                                                            <div className={cn(
-                                                                "text-[10px] font-medium italic border-l-2 p-1.5 rounded mb-1.5",
-                                                                msg.isSent 
-                                                                    ? "border-indigo-500 bg-slate-50 text-slate-500"
-                                                                    : "border-[#31267D]/60 bg-slate-200/50 text-slate-600"
-                                                            )}>
-                                                                Replying to: &quot;{replyText}&quot;
-                                                            </div>
-                                                        )}
-                                                        
-                                                        <p className="text-xs font-semibold leading-relaxed break-words">{cleanText}</p>
-                                                        
-                                                        <div className="flex items-center justify-end gap-1 mt-1">
-                                                            <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">{formattedTime}</span>
-                                                            {msg.isSent && (
-                                                                <div className="flex items-center">
-                                                                    {msg.read ? (
-                                                                        <CheckCheck className="w-3 h-3 text-sky-500 stroke-[2.5]" />
-                                                                    ) : (
-                                                                        <Check className="w-3 h-3 text-slate-400 stroke-[2.5]" />
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                        
-                                                        {/* Hover Quick actions overlay */}
                                                         <div 
                                                             className={cn(
-                                                                "absolute top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200",
-                                                                msg.isSent ? "-left-8" : "-right-8"
+                                                                "max-w-[85%] rounded-2xl px-4 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] relative group font-sans border transition-colors",
+                                                                msg.isSent 
+                                                                    ? "rounded-tr-sm bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800/80 text-slate-800 dark:text-slate-100" 
+                                                                    : "rounded-tl-sm bg-slate-100 dark:bg-slate-950 border-slate-200/40 dark:border-slate-800/50 text-slate-800 dark:text-slate-100"
                                                             )}
                                                         >
-                                                            {!msg.isSent && (
-                                                                <button 
-                                                                    onClick={() => setReplyingToMessage({ id: msg.id, text: cleanText, title: msg.title })}
-                                                                    className="p-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200/50 rounded-lg text-slate-500 hover:text-slate-700 transition-colors"
-                                                                    title="Reply"
-                                                                >
-                                                                    <MessageCircle className="w-3.5 h-3.5" />
-                                                                </button>
+                                                            {/* Reply quote preview */}
+                                                            {replyText && (
+                                                                <div className={cn(
+                                                                    "text-[10px] font-medium italic border-l-2 p-1.5 rounded mb-1.5",
+                                                                    msg.isSent 
+                                                                        ? "border-indigo-500 bg-slate-50 dark:bg-slate-950 text-slate-500 dark:text-slate-400"
+                                                                        : "border-[#31267D]/60 bg-slate-200/50 dark:bg-slate-900/50 text-slate-600 dark:text-slate-400"
+                                                                )}>
+                                                                    Replying to: &quot;{replyText}&quot;
+                                                                </div>
                                                             )}
-                                                            {msg.isSent && (
-                                                                <button 
-                                                                    onClick={() => handleDeleteMessage(msg.id)}
-                                                                    disabled={deletingMessageId === msg.id}
-                                                                    className="p-1.5 bg-red-50 hover:bg-red-100 border border-red-100/50 rounded-lg text-red-400 hover:text-red-500 transition-colors"
-                                                                    title="Delete"
-                                                                >
-                                                                    <Trash2 className="w-3 h-3" />
-                                                                </button>
-                                                            )}
+                                                            
+                                                            <p className="text-xs font-semibold leading-relaxed break-words">{cleanText}</p>
+                                                            
+                                                            <div className="flex items-center justify-end gap-1 mt-1">
+                                                                <span className="text-[8px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">{formattedTime}</span>
+                                                                {msg.isSent && (
+                                                                    <div className="flex items-center">
+                                                                        {msg.read ? (
+                                                                            <CheckCheck className="w-3 h-3 text-sky-500 stroke-[2.5]" />
+                                                                        ) : (
+                                                                            <Check className="w-3 h-3 text-slate-400 dark:text-slate-500 stroke-[2.5]" />
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            
+                                                            {/* Hover Quick actions overlay */}
+                                                            <div 
+                                                                className={cn(
+                                                                    "absolute top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200",
+                                                                    msg.isSent ? "-left-8" : "-right-8"
+                                                                )}
+                                                            >
+                                                                {!msg.isSent && (
+                                                                    <button 
+                                                                        onClick={() => setReplyingToMessage({ id: msg.id, text: cleanText, title: msg.title })}
+                                                                        className="p-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/50 dark:border-slate-700 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors"
+                                                                        title="Reply"
+                                                                    >
+                                                                        <MessageCircle className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                )}
+                                                                {msg.isSent && (
+                                                                    <button 
+                                                                        onClick={() => handleDeleteMessage(msg.id)}
+                                                                        disabled={deletingMessageId === msg.id}
+                                                                        className="p-1.5 bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-900 border border-red-100/50 dark:border-red-900/40 rounded-lg text-red-400 hover:text-red-500 transition-colors"
+                                                                        title="Delete"
+                                                                    >
+                                                                        <Trash2 className="w-3 h-3" />
+                                                                    </button>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            );
-                                        })}
+                                                );
+                                            })}
                                         <div ref={messagesEndRef} />
                                     </div>
                                 )}
                             </div>
  
                             {/* Bottom Messenger Send Bars */}
-                            <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-slate-100 p-4 shrink-0 shadow-[0_-8px_30px_rgba(0,0,0,0.04)] rounded-b-3xl z-40">
+                            <div className="absolute bottom-0 left-0 right-0 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md border-t border-slate-100 dark:border-slate-900 p-4 shrink-0 shadow-[0_-8px_30px_rgba(0,0,0,0.04)] rounded-b-3xl z-40">
                                 {activeThreadPartnerId === null ? (
                                     // Composer bar on Thread List Dashboard view
                                     !isComposerOpen ? (
-                                        <button
-                                            onClick={() => {
-                                                setIsComposerOpen(true);
-                                                setTimeout(() => composerInputRef.current?.focus(), 150);
-                                            }}
-                                            className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-[#31267D] to-[#4f3fbf] hover:from-[#4f3fbf] hover:to-[#5e4dcf] text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all duration-300 shadow-md shadow-[#31267D]/20 hover:shadow-[#31267D]/35 hover:-translate-y-0.5 active:translate-y-0"
-                                        >
-                                            <MessageSquare className="w-4 h-4" />
-                                            New Message (Ctrl+M)
-                                        </button>
+                                        <div className="flex flex-col gap-3">
+                                            {/* Dynamic Management Shortcut prompt capsules */}
+                                            {isCeoOrAdmin && (
+                                                <div className="flex flex-wrap gap-2 w-full mb-4 px-1">
+                                                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-0.5 pl-0.5 w-full">
+                                                        Management Prompts
+                                                    </p>
+                                                    {/* Sales Chip */}
+                                                    <button
+                                                        onClick={() => handleChipClick(managers.sales?.id, "Sales Manager")}
+                                                        className="bg-slate-50/80 dark:bg-slate-900/60 hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-slate-200/65 dark:border-slate-800/60 bg-white/40 dark:bg-slate-950/40 backdrop-blur-md text-xs text-slate-700 dark:text-slate-300 font-medium px-3.5 py-2 rounded-xl cursor-pointer transition-all duration-200 active:scale-[0.98] hover:border-slate-300 dark:hover:border-slate-700 shadow-sm text-left"
+                                                    >
+                                                        <span>Enquire about Sales with {managers.sales?.full_name || "Sales Manager"}? 📈</span>
+                                                    </button>
+                                                    
+                                                    {/* Finance Chip */}
+                                                    <button
+                                                        onClick={() => handleChipClick(managers.finance?.id, "Finance Manager")}
+                                                        className="bg-slate-50/80 dark:bg-slate-900/60 hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-slate-200/65 dark:border-slate-800/60 bg-white/40 dark:bg-slate-950/40 backdrop-blur-md text-xs text-slate-700 dark:text-slate-300 font-medium px-3.5 py-2 rounded-xl cursor-pointer transition-all duration-200 active:scale-[0.98] hover:border-slate-300 dark:hover:border-slate-700 shadow-sm text-left"
+                                                    >
+                                                        <span>Check Finance status with {managers.finance?.full_name || "Finance Manager"}? 📊</span>
+                                                    </button>
+
+                                                    {/* Operations Chip */}
+                                                    <button
+                                                        onClick={() => handleChipClick(managers.operations?.id, "Marketing Head")}
+                                                        className="bg-slate-50/80 dark:bg-slate-900/60 hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-slate-200/65 dark:border-slate-800/60 bg-white/40 dark:bg-slate-950/40 backdrop-blur-md text-xs text-slate-700 dark:text-slate-300 font-medium px-3.5 py-2 rounded-xl cursor-pointer transition-all duration-200 active:scale-[0.98] hover:border-slate-300 dark:hover:border-slate-700 shadow-sm text-left"
+                                                    >
+                                                        <span>Review Operations with {managers.operations?.full_name || "Marketing Head/Operations"}? 🎯</span>
+                                                    </button>
+
+                                                    {/* CEO Chip - for Administrators */}
+                                                    {isActiveAdmin && (
+                                                        <button
+                                                            onClick={() => handleChipClick(managers.ceo?.id, "CEO")}
+                                                            className="bg-slate-50/80 dark:bg-slate-900/60 hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-slate-200/65 dark:border-slate-800/60 bg-white/40 dark:bg-slate-950/40 backdrop-blur-md text-xs text-slate-700 dark:text-slate-350 font-medium px-3.5 py-2 rounded-xl cursor-pointer transition-all duration-200 active:scale-[0.98] hover:border-slate-300 dark:hover:border-slate-700 shadow-sm text-left"
+                                                        >
+                                                            <span>Communicate with CEO {managers.ceo?.full_name || "CEO"}? 👑</span>
+                                                        </button>
+                                                    )}
+
+                                                    {/* Admin Chips (Mapped dynamically) - for CEO only */}
+                                                    {isActiveCeo && managers.admins.map((admin) => (
+                                                        <button
+                                                            key={admin.id}
+                                                            onClick={() => handleChipClick(admin.id, "Administrator")}
+                                                            className="bg-slate-50/80 dark:bg-slate-900/60 hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-slate-200/65 dark:border-slate-800/60 bg-white/40 dark:bg-slate-950/40 backdrop-blur-md text-xs text-slate-700 dark:text-slate-300 font-medium px-3.5 py-2 rounded-xl cursor-pointer transition-all duration-200 active:scale-[0.98] hover:border-slate-300 dark:hover:border-slate-700 shadow-sm text-left"
+                                                        >
+                                                            <span>Communicate with Admin {admin.full_name || "Administrator"}? 🛡️</span>
+                                                        </button>
+                                                    ))}
+                                                    {isActiveCeo && managers.admins.length === 0 && (
+                                                        <button
+                                                            onClick={() => handleChipClick(undefined, "Administrator")}
+                                                            className="bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/65 dark:border-slate-800/60 bg-white/40 dark:bg-slate-950/40 backdrop-blur-md text-xs text-slate-400 dark:text-slate-500 font-medium px-3.5 py-2 rounded-xl cursor-not-allowed opacity-60 transition-all duration-200 flex items-center justify-between"
+                                                        >
+                                                            <span>Communicate with Admin (Unassigned)? 🛡️</span>
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
+                                            <button
+                                                onClick={() => {
+                                                    setIsComposerOpen(true);
+                                                    setTimeout(() => composerInputRef.current?.focus(), 150);
+                                                }}
+                                                className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-[#31267D] to-[#4f3fbf] hover:from-[#4f3fbf] hover:to-[#5e4dcf] text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all duration-300 shadow-md shadow-[#31267D]/20 hover:shadow-[#31267D]/35 hover:-translate-y-0.5 active:translate-y-0"
+                                            >
+                                                <MessageSquare className="w-4 h-4" />
+                                                New Message (Ctrl+M)
+                                            </button>
+                                        </div>
                                     ) : (
-                                        <div className="border border-slate-200 focus-within:border-[#31267D]/60 focus-within:ring-1 focus-within:ring-[#31267D]/60 bg-slate-50 rounded-2xl p-2 transition-all font-sans animate-fade-in">
+                                        <div className="border border-slate-200 dark:border-slate-800 focus-within:border-[#31267D]/60 focus-within:ring-1 focus-within:ring-[#31267D]/60 bg-slate-50 dark:bg-slate-900/50 rounded-2xl p-2 transition-all font-sans animate-fade-in">
                                             {/* Recipient Dropdown selector & close */}
                                             <div className="flex items-center justify-between gap-2 px-1 py-0.5">
-                                                <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 pl-1 shrink-0">To:</span>
+                                                <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 pl-1 shrink-0">To:</span>
                                                 <select
                                                     value={selectedRecipientId}
                                                     onChange={(e) => setSelectedRecipientId(e.target.value)}
-                                                    className="flex-grow bg-transparent border-0 outline-none text-xs text-slate-700 font-bold focus:ring-0 focus:outline-none cursor-pointer py-0.5 min-w-0"
+                                                    className="flex-grow bg-transparent dark:bg-slate-900 border-0 outline-none text-xs text-slate-700 dark:text-slate-350 font-bold focus:ring-0 focus:outline-none cursor-pointer py-0.5 min-w-0"
                                                 >
                                                     <option value="">Select Recipient...</option>
                                                     {(profile?.role === 'ceo' || profile?.role?.toUpperCase() === 'CEO' || profile?.is_manager || profile?.role === 'manager') && (
@@ -809,14 +967,14 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
                                                         setSelectedRecipientId("");
                                                         setComposerMessage("");
                                                     }}
-                                                    className="p-1 hover:bg-slate-200/60 rounded-lg text-slate-400 hover:text-slate-700 transition-colors shrink-0"
+                                                    className="p-1 hover:bg-slate-200/60 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors shrink-0"
                                                     title="Close composer"
                                                 >
                                                     <X className="w-3.5 h-3.5" />
                                                 </button>
                                             </div>
  
-                                            <div className="border-t border-slate-200/60 my-1" />
+                                            <div className="border-t border-slate-200/60 dark:border-slate-800/60 my-1" />
  
                                             {/* New message input area */}
                                             <div className="flex gap-2 items-end">
@@ -825,7 +983,7 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
                                                     value={composerMessage}
                                                     onChange={(e) => setComposerMessage(e.target.value)}
                                                     placeholder="Type message here..."
-                                                    className="flex-grow bg-transparent border-0 outline-none resize-none h-16 text-xs text-slate-800 placeholder-slate-400 font-medium focus:ring-0 focus:outline-none px-1 py-1"
+                                                    className="flex-grow bg-transparent border-0 outline-none resize-none h-16 text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-600 font-medium focus:ring-0 focus:outline-none px-1 py-1"
                                                     onKeyDown={(e) => {
                                                         if (e.key === 'Enter' && !e.shiftKey) {
                                                             e.preventDefault();
@@ -852,14 +1010,14 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
                                     <div className="flex flex-col">
                                         {/* Reply banner overlay if replying */}
                                         {replyingToMessage && (
-                                            <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-t-2xl px-3.5 py-1.5 text-[10px] text-slate-500 font-semibold border-b-0 animate-fade-in">
+                                            <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-t-2xl px-3.5 py-1.5 text-[10px] text-slate-500 dark:text-slate-400 font-semibold border-b-0 animate-fade-in">
                                                 <div className="flex items-center gap-1.5 min-w-0">
-                                                    <span className="text-[9px] font-black uppercase text-[#31267D] shrink-0">Replying:</span>
+                                                    <span className="text-[9px] font-black uppercase text-[#31267D] dark:text-[#4f3fbf] shrink-0">Replying:</span>
                                                     <span className="truncate italic font-medium">&quot;{replyingToMessage.text}&quot;</span>
                                                 </div>
                                                 <button 
                                                     onClick={() => setReplyingToMessage(null)}
-                                                    className="p-1 hover:bg-slate-200 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
+                                                    className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full text-slate-400 hover:text-slate-650 transition-colors"
                                                 >
                                                     <X className="w-3 h-3" />
                                                 </button>
@@ -867,7 +1025,7 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
                                         )}
                                         
                                         <div className={cn(
-                                            "border border-slate-200 bg-slate-50 rounded-2xl p-2 transition-all font-sans focus-within:border-[#31267D]/60 focus-within:ring-1 focus-within:ring-[#31267D]/60",
+                                            "border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 rounded-2xl p-2 transition-all font-sans focus-within:border-[#31267D]/60 focus-within:ring-1 focus-within:ring-[#31267D]/60",
                                             replyingToMessage && "rounded-t-none border-t-0"
                                         )}>
                                             <div className="flex gap-2 items-end">
@@ -876,7 +1034,7 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
                                                     value={composerMessage}
                                                     onChange={(e) => setComposerMessage(e.target.value)}
                                                     placeholder={`Message ${partnerName}...`}
-                                                    className="flex-grow bg-transparent border-0 outline-none resize-none h-16 text-xs text-slate-800 placeholder-slate-400 font-medium focus:ring-0 focus:outline-none px-1 py-1"
+                                                    className="flex-grow bg-transparent border-0 outline-none resize-none h-16 text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-600 font-medium focus:ring-0 focus:outline-none px-1 py-1"
                                                     onKeyDown={(e) => {
                                                         if (e.key === 'Enter' && !e.shiftKey) {
                                                             e.preventDefault();

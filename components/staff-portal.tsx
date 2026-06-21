@@ -1227,9 +1227,16 @@ export default function StaffPortal() {
             )
             .subscribe();
 
+        const handleHqUpdated = () => {
+            console.log("HQ Messenger Update Detected!");
+            fetchData();
+        };
+        window.addEventListener("hq-messenger-updated", handleHqUpdated);
+
         return () => {
             clearInterval(interval);
             supabase.removeChannel(channel);
+            window.removeEventListener("hq-messenger-updated", handleHqUpdated);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [profile?.id, fetchData]);
@@ -1982,12 +1989,7 @@ export default function StaffPortal() {
                     {/* Header Bell Icon / UA Messenger Toggle */}
                     <div className="relative">
                         {(() => {
-                            const count = notifications.filter(n => {
-                                if (n.read) return false;
-                                const { senderId } = parseMessagePayload(n.message);
-                                const senderProfile = profiles.find(p => p.id === senderId);
-                                return isHigherOfficial(senderProfile || null, n.title);
-                            }).length;
+                            const count = notifications.filter(n => n.type === "direct" && !n.read).length;
 
                             return (
                                 <>

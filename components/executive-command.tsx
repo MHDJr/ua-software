@@ -615,13 +615,21 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                     .from("notifications")
                     .select("*", { count: "exact", head: true })
                     .eq("user_id", profile.id)
+                    .eq("type", "direct")
                     .eq("read", false);
                 setHqUnreadCount(count ?? 0);
             } catch {}
         };
         fetchCount();
+        
+        // Listen for immediate messenger updates
+        window.addEventListener("hq-messenger-updated", fetchCount);
         const interval = setInterval(fetchCount, 30000);
-        return () => clearInterval(interval);
+        
+        return () => {
+            clearInterval(interval);
+            window.removeEventListener("hq-messenger-updated", fetchCount);
+        };
     }, [profile?.id]);
 
     // Sync hqIsOpen state with external toggle events
