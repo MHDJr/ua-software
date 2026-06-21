@@ -368,6 +368,24 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
             return profilesList.filter(p => p.id !== profile.id);
         }
         
+        const isManager = profile.is_manager === true || roleLower === "manager" || designationLower === "manager";
+        
+        if (isManager) {
+            // Managers can see CEO, Administrators, and all staff under their department
+            return profilesList.filter(p => {
+                if (p.id === profile.id) return false;
+                
+                const targetRoleLower = p.role?.toLowerCase();
+                const targetDesignationLower = p.designation?.toLowerCase();
+                const isTargetCeo = targetRoleLower === "ceo" || targetDesignationLower === "ceo";
+                const isTargetAdmin = targetRoleLower === "admin" || targetRoleLower === "administrator" || targetDesignationLower === "admin" || targetDesignationLower === "administrator";
+                
+                const isSameDepartment = p.department === profile.department;
+                
+                return isTargetCeo || isTargetAdmin || isSameDepartment;
+            });
+        }
+        
         // Active User is 'STAFF' (strict boundary routing)
         return profilesList.filter(p => {
             if (p.id === profile.id) return false;
@@ -446,6 +464,15 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
             const payload = `[sender_id:${profile.id}] ${composerMessage.trim()}`;
             
             if (selectedRecipientId === "all") {
+                const roleLower = profile.role?.toLowerCase();
+                const designationLower = profile.designation?.toLowerCase();
+                const isCeo = roleLower === "ceo" || designationLower === "ceo";
+                const isAdmin = roleLower === "admin" || roleLower === "administrator" || designationLower === "admin" || designationLower === "administrator";
+                if (!isCeo && !isAdmin) {
+                    toast.error("Unauthorized: Only CEO and Administrators are permitted to broadcast messages.");
+                    setIsSendingComposer(false);
+                    return;
+                }
                 const staffList = profilesList.filter(p => p.id !== profile.id);
                 if (staffList.length > 0) {
                     await Promise.all(staffList.map(async (staff) => {
@@ -952,9 +979,14 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
                                                     className="flex-grow bg-transparent dark:bg-slate-900 border-0 outline-none text-xs text-slate-700 dark:text-slate-350 font-bold focus:ring-0 focus:outline-none cursor-pointer py-0.5 min-w-0"
                                                 >
                                                     <option value="">Select Recipient...</option>
-                                                    {(profile?.role === 'ceo' || profile?.role?.toUpperCase() === 'CEO' || profile?.is_manager || profile?.role === 'manager') && (
-                                                        <option value="all">All Staff (Broadcast)</option>
-                                                    )}
+                                                    {(profile?.role?.toLowerCase() === 'ceo' || 
+                                                       profile?.designation?.toLowerCase() === 'ceo' ||
+                                                       profile?.role?.toLowerCase() === 'admin' || 
+                                                       profile?.role?.toLowerCase() === 'administrator' ||
+                                                       profile?.designation?.toLowerCase() === 'admin' ||
+                                                       profile?.designation?.toLowerCase() === 'administrator') && (
+                                                         <option value="all">All Staff (Broadcast)</option>
+                                                     )}
                                                     {recipientOptions.map((p) => (
                                                         <option key={p.id} value={p.id}>
                                                             {p.full_name} ({p.role?.toUpperCase() === 'CEO' ? 'CEO' : p.is_manager ? `${p.department} Manager` : p.role?.toUpperCase() || 'STAFF'})
