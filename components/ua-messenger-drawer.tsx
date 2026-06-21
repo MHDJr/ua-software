@@ -350,16 +350,27 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
     const isHigherOfficial = (p: any) => {
         if (!p) return false;
         const role = p.role?.toLowerCase();
+        const designation = p.designation?.toLowerCase() || "";
         const dept = p.department?.toLowerCase();
-        const isAdminDeptManager = (dept === "administration" || dept === "admin") && (p.is_manager === true || role === "manager");
-        return role === "ceo" || p.is_manager === true || role === "manager" || role === "admin" || role === "administrator" || isAdminDeptManager;
+        
+        const isManager = p.is_manager === true || 
+                          role === "manager" || 
+                          designation.includes("manager") || 
+                          designation.includes("head") || 
+                          role === "director" || 
+                          designation.includes("director");
+                          
+        const isAdmin = role === "admin" || role === "administrator" || designation.includes("admin") || designation.includes("administrator");
+        const isAdminDeptManager = (dept === "administration" || dept === "admin") && isManager;
+        
+        return role === "ceo" || designation.includes("ceo") || isManager || isAdmin || isAdminDeptManager;
     };
  
     const getRecipientOptions = () => {
         if (!profile) return [];
         
-        const roleLower = profile.role?.toLowerCase();
-        const designationLower = profile.designation?.toLowerCase();
+        const roleLower = profile.role?.toLowerCase() || "";
+        const designationLower = profile.designation?.toLowerCase() || "";
         const isCeo = roleLower === "ceo" || designationLower === "ceo";
         const isAdmin = roleLower === "admin" || roleLower === "administrator" || designationLower === "admin" || designationLower === "administrator";
         
@@ -368,21 +379,56 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
             return profilesList.filter(p => p.id !== profile.id);
         }
         
-        const isManager = profile.is_manager === true || roleLower === "manager" || designationLower === "manager";
+        const isManager = profile.is_manager === true || 
+                          roleLower === "manager" || 
+                          designationLower === "manager" || 
+                          designationLower.includes("manager") || 
+                          designationLower.includes("head") ||
+                          roleLower === "director" ||
+                          designationLower.includes("director");
         
         if (isManager) {
-            // Managers can see CEO, Administrators, and all staff under their department
+            // Get manager's department (case-insensitive)
+            const managerDept = (profile.department || "").trim();
+            const managerDeptLower = managerDept.toLowerCase();
+            
+            // Build the allowed departments array
+            const allowedDepts = [managerDept];
+            
+            // Let's also include accounts/finance expansion just in case
+            if (managerDeptLower === "finance" || managerDeptLower === "accounts" || managerDeptLower === "finance/accounts") {
+                if (!allowedDepts.some(d => d.toLowerCase() === "finance")) allowedDepts.push("Finance");
+                if (!allowedDepts.some(d => d.toLowerCase() === "accounts")) allowedDepts.push("Accounts");
+                if (!allowedDepts.some(d => d.toLowerCase() === "finance/accounts")) allowedDepts.push("Finance/Accounts");
+            }
+            
             return profilesList.filter(p => {
                 if (p.id === profile.id) return false;
                 
-                const targetRoleLower = p.role?.toLowerCase();
-                const targetDesignationLower = p.designation?.toLowerCase();
+                const targetRoleLower = p.role?.toLowerCase() || "";
+                const targetDesignationLower = p.designation?.toLowerCase() || "";
                 const isTargetCeo = targetRoleLower === "ceo" || targetDesignationLower === "ceo";
                 const isTargetAdmin = targetRoleLower === "admin" || targetRoleLower === "administrator" || targetDesignationLower === "admin" || targetDesignationLower === "administrator";
                 
-                const isSameDepartment = p.department === profile.department;
+                // CEO and Administrators are always visible to managers
+                if (isTargetCeo || isTargetAdmin) return true;
                 
-                return isTargetCeo || isTargetAdmin || isSameDepartment;
+                // Determine target staff department, defaulting to "Administration" just like in ManagerCommandCenter.tsx
+                const staffDept = (p.department || "Administration").trim();
+                const staffDeptLower = staffDept.toLowerCase();
+                
+                // 1. Marketing Manager can access and message ALL staff members in the system
+                if (managerDeptLower === "marketing") {
+                    return true;
+                }
+                
+                // 2. Finance/Accounts managers can access Finance, Accounts, and Finance/Accounts staff
+                if (managerDeptLower === "finance" || managerDeptLower === "accounts" || managerDeptLower === "finance/accounts") {
+                    return staffDeptLower === "finance" || staffDeptLower === "accounts" || staffDeptLower === "finance/accounts";
+                }
+                
+                // 3. Other managers (Sales, Administration, etc.) match exactly their department
+                return staffDeptLower === managerDeptLower;
             });
         }
         
@@ -390,13 +436,31 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
         return profilesList.filter(p => {
             if (p.id === profile.id) return false;
             
-            const targetRoleLower = p.role?.toLowerCase();
-            const targetDesignationLower = p.designation?.toLowerCase();
+            const targetRoleLower = p.role?.toLowerCase() || "";
+            const targetDesignationLower = p.designation?.toLowerCase() || "";
             const isTargetCeo = targetRoleLower === "ceo" || targetDesignationLower === "ceo";
             const isTargetAdmin = targetRoleLower === "admin" || targetRoleLower === "administrator" || targetDesignationLower === "admin" || targetDesignationLower === "administrator";
             
-            // Matches user's department and has manager flag/role/designation
-            const isMyManager = p.department === profile.department && (p.is_manager === true || targetRoleLower === "manager" || targetDesignationLower === "manager");
+            // Determine target's department and current user's department, defaulting to "Administration"
+            const targetDeptLower = (p.department || "Administration").toLowerCase();
+            const myDeptLower = (profile.department || "Administration").toLowerCase();
+            
+            let isMyDepartmentManager = targetDeptLower === myDeptLower;
+            if (targetDeptLower === "marketing") {
+                isMyDepartmentManager = myDeptLower === "marketing" || myDeptLower === "sales";
+            } else if (targetDeptLower === "finance" || targetDeptLower === "accounts" || targetDeptLower === "finance/accounts") {
+                isMyDepartmentManager = myDeptLower === "finance" || myDeptLower === "accounts" || myDeptLower === "finance/accounts";
+            }
+                 
+            const isTargetManager = p.is_manager === true || 
+                                    targetRoleLower === "manager" || 
+                                    targetDesignationLower === "manager" ||
+                                    targetDesignationLower.includes("manager") ||
+                                    targetDesignationLower.includes("head") ||
+                                    targetRoleLower === "director" ||
+                                    targetDesignationLower.includes("director");
+            
+            const isMyManager = isMyDepartmentManager && isTargetManager;
             
             return isTargetCeo || isTargetAdmin || isMyManager;
         });

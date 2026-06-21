@@ -25,10 +25,23 @@ export function useTasks(options: any = {}) {
         queryFn: async () => {
             const { data, error } = await supabase
                 .from("tasks")
-                .select("id, title, description, assigned_to, priority, status, progress, due_date, created_by, created_at, updated_at, repeat_daily, is_daily_task, assigned_to_user:profiles!assigned_to(full_name, department), creator:profiles!created_by(role, is_manager)")
+                .select("id, title, description, assigned_to, priority, status, progress, due_date, created_by, created_at, updated_at, repeat_daily, is_daily_task, is_staff_seen, staff_seen_at, assigned_to_user:profiles!assigned_to(full_name, department), creator:profiles!created_by(role, is_manager)")
                 .not("status", "in", '("completed","deleted","COMPLETED")')
                 .order("updated_at", { ascending: false });
-            if (error) throw error;
+            
+            if (error) {
+                // Self-healing fallback if database columns are not yet created
+                if (error.code === "42703") {
+                    const fallback = await supabase
+                        .from("tasks")
+                        .select("id, title, description, assigned_to, priority, status, progress, due_date, created_by, created_at, updated_at, repeat_daily, is_daily_task, assigned_to_user:profiles!assigned_to(full_name, department), creator:profiles!created_by(role, is_manager)")
+                        .not("status", "in", '("completed","deleted","COMPLETED")')
+                        .order("updated_at", { ascending: false });
+                    if (fallback.error) throw fallback.error;
+                    return fallback.data;
+                }
+                throw error;
+            }
             return data;
         },
         ...DASHBOARD_QUERY_CONFIG,
@@ -41,12 +54,27 @@ export function useTasks(options: any = {}) {
         queryFn: async () => {
             const { data, error } = await supabase
                 .from("tasks")
-                .select("id, title, description, assigned_to, priority, status, progress, due_date, created_by, created_at, updated_at, repeat_daily, is_daily_task, assigned_to_user:profiles!assigned_to(full_name, department), creator:profiles!created_by(role, is_manager)")
+                .select("id, title, description, assigned_to, priority, status, progress, due_date, created_by, created_at, updated_at, repeat_daily, is_daily_task, is_staff_seen, staff_seen_at, assigned_to_user:profiles!assigned_to(full_name, department), creator:profiles!created_by(role, is_manager)")
                 .in("status", ["completed", "COMPLETED"])
                 .is("reviewed_at", null)
                 .order("updated_at", { ascending: false })
                 .limit(50);
-            if (error) throw error;
+            
+            if (error) {
+                // Self-healing fallback if database columns are not yet created
+                if (error.code === "42703") {
+                    const fallback = await supabase
+                        .from("tasks")
+                        .select("id, title, description, assigned_to, priority, status, progress, due_date, created_by, created_at, updated_at, repeat_daily, is_daily_task, assigned_to_user:profiles!assigned_to(full_name, department), creator:profiles!created_by(role, is_manager)")
+                        .in("status", ["completed", "COMPLETED"])
+                        .is("reviewed_at", null)
+                        .order("updated_at", { ascending: false })
+                        .limit(50);
+                    if (fallback.error) throw fallback.error;
+                    return fallback.data;
+                }
+                throw error;
+            }
             return data;
         },
         ...DASHBOARD_QUERY_CONFIG,

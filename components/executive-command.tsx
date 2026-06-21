@@ -85,6 +85,7 @@ import {
     Crown,
     Megaphone,
     Send,
+    Eye,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Link from "next/link";
@@ -3211,33 +3212,41 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                                                                       )}
                                                                   </Badge>
                                                               )}
-                                                              {isV2Enabled && t.assigned_to !== profile?.id && (t.created_by === profile?.id || (t as any).assigned_by === profile?.id) && (
-                                                                  <div className="flex items-center gap-0.5 text-slate-400 dark:text-zinc-500 select-none ml-1 shrink-0">
-                                                                      {(() => {
-                                                                          const status = t.status === "completed" || t.status === "reviewed" ? "read" : (t.delivery_status || "sent");
-                                                                          if (status === "sent") {
-                                                                              return <Check className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />;
-                                                                          }
-                                                                          if (status === "delivered") {
-                                                                              return (
-                                                                                  <div className="flex -space-x-1.5">
-                                                                                      <Check className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />
-                                                                                      <Check className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />
-                                                                                  </div>
-                                                                              );
-                                                                          }
-                                                                          if (status === "read") {
-                                                                              return (
-                                                                                  <div className="flex -space-x-1.5">
-                                                                                      <Check className="w-3.5 h-3.5 text-emerald-400" />
-                                                                                      <Check className="w-3.5 h-3.5 text-emerald-400" />
-                                                                                  </div>
-                                                                              );
-                                                                          }
-                                                                          return null;
-                                                                      })()}
-                                                                  </div>
-                                                              )}
+                                                              {t.assigned_to !== profile?.id && (t.created_by === profile?.id || (t as any).assigned_by === profile?.id) && (
+                                                                   <div className="flex items-center gap-1 text-slate-400 dark:text-zinc-500 select-none ml-1 shrink-0">
+                                                                       {t.is_staff_seen && (
+                                                                           <span 
+                                                                               title={`Seen by staff at ${t.staff_seen_at ? new Date(t.staff_seen_at).toLocaleTimeString() : 'unknown time'}`}
+                                                                               className="flex items-center text-indigo-500 dark:text-indigo-400"
+                                                                           >
+                                                                               <Eye className="w-3.5 h-3.5" />
+                                                                           </span>
+                                                                       )}
+                                                                       {isV2Enabled && (() => {
+                                                                           const status = t.status === "completed" || t.status === "reviewed" ? "read" : (t.delivery_status || "sent");
+                                                                           if (status === "sent") {
+                                                                               return <Check className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />;
+                                                                           }
+                                                                           if (status === "delivered") {
+                                                                               return (
+                                                                                   <div className="flex -space-x-1.5">
+                                                                                       <Check className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />
+                                                                                       <Check className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />
+                                                                                   </div>
+                                                                               );
+                                                                           }
+                                                                           if (status === "read") {
+                                                                               return (
+                                                                                   <div className="flex -space-x-1.5">
+                                                                                       <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                                                                       <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                                                                   </div>
+                                                                               );
+                                                                           }
+                                                                           return null;
+                                                                       })()}
+                                                                   </div>
+                                                               )}
                                                           </div>
                                                           <p className="text-[10px] text-slate-400 dark:text-zinc-400 font-medium tracking-wide line-clamp-2 leading-relaxed mt-1">
                                                               {t.description ||

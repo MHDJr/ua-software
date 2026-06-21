@@ -57,6 +57,8 @@ export type Task = {
     overdue_notified?: boolean;
     is_new?: boolean;
     task_tags?: string[];
+    is_staff_seen?: boolean;
+    staff_seen_at?: string;
     task_description?: string;
     subtasks?: any;
     attachment_url?: string;
