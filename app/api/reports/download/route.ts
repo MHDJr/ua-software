@@ -15,7 +15,65 @@ function buildPDF(type: string, year: number, month: number, data: any[]): Promi
             doc.on("end", () => resolve(Buffer.concat(chunks)));
             doc.on("error", err => reject(err));
             
-            // 1. Header Banner
+            // 1. Calculate values for summary cards
+            let card1Title = "", card1Value = "";
+            let card2Title = "", card2Value = "";
+            let card3Title = "", card3Value = "";
+
+            if (type === "finance") {
+                let totalUloomx = 0, totalUsthad = 0, totalExp = 0, totalNet = 0;
+                data.forEach(item => {
+                    const uloomx = parseFloat(item.uloomx_income) || 0;
+                    const usthad = parseFloat(item.usthad_income) || 0;
+                    const exp = parseFloat(item.total_expenses) || 0;
+                    totalUloomx += uloomx;
+                    totalUsthad += usthad;
+                    totalExp += exp;
+                    totalNet += parseFloat(item.revenue) || (uloomx + usthad - exp);
+                });
+                card1Title = "Total Net Revenue";
+                card1Value = `$${totalNet.toFixed(2)}`;
+                card2Title = "Total Income";
+                card2Value = `$${(totalUloomx + totalUsthad).toFixed(2)}`;
+                card3Title = "Total Expenses";
+                card3Value = `$${totalExp.toFixed(2)}`;
+            } else if (type === "sales") {
+                let totalLeads = 0, totalConversions = 0, sumQuality = 0;
+                data.forEach(item => {
+                    totalLeads += parseInt(item.total_leads) || 0;
+                    totalConversions += parseInt(item.conversions) || 0;
+                    sumQuality += parseInt(item.lead_quality_rating) || 0;
+                });
+                const avgQ = data.length > 0 ? (sumQuality / data.length).toFixed(1) : "0";
+                card1Title = "Total Sales Leads";
+                card1Value = String(totalLeads);
+                card2Title = "Conversions";
+                card2Value = String(totalConversions);
+                card3Title = "Avg Lead Quality";
+                card3Value = `${avgQ}/10`;
+            } else if (type === "leave") {
+                const total = data.length;
+                const approved = data.filter(item => item.status === "approved" || item.status === "APPROVED").length;
+                const pending = data.filter(item => item.status === "pending" || item.status === "PENDING").length;
+                card1Title = "Total Leave Requests";
+                card1Value = String(total);
+                card2Title = "Approved Leaves";
+                card2Value = String(approved);
+                card3Title = "Pending Leaves";
+                card3Value = String(pending);
+            } else if (type === "tasks") {
+                const total = data.length;
+                const completed = data.filter(item => item.status === "completed" || item.status === "COMPLETED").length;
+                const pending = total - completed;
+                card1Title = "Total Tasks";
+                card1Value = String(total);
+                card2Title = "Completed Tasks";
+                card2Value = String(completed);
+                card3Title = "Pending Tasks";
+                card3Value = String(pending);
+            }
+
+            // 2. Header Banner
             doc.rect(0, 0, 595, 90).fill("#31267D");
             doc.fillColor("#FFFFFF")
                .fontSize(20)
@@ -27,22 +85,50 @@ function buildPDF(type: string, year: number, month: number, data: any[]): Promi
                .fillColor("#C7D2FE")
                .text(`${type.toUpperCase()} OPERATIONS LEDGER SUMMARY - ${String(month).padStart(2, "0")}/${year}`, 40, 52);
 
-            // 2. Metadata
+            // 3. Metadata Header Info
             const generatedAt = new Date().toLocaleString("en-US", { timeZone: "UTC" }) + " UTC";
             doc.fillColor("#94A3B8")
                .fontSize(8)
-               .text(`Generated: ${generatedAt}  |  Total Records: ${data.length}`, 40, 105, { align: "right" });
+               .text(`Generated: ${generatedAt}  |  Total Records: ${data.length}`, 40, 102, { align: "right" });
 
-            // 3. Title
+            // 4. Title
             doc.fillColor("#0F172A")
-               .fontSize(14)
+               .fontSize(13)
                .font("Helvetica-Bold")
-               .text(`Monthly ${type.charAt(0).toUpperCase() + type.slice(1)} Operational Briefing`, 40, 120);
+               .text(`Monthly ${type.charAt(0).toUpperCase() + type.slice(1)} Operational Briefing`, 40, 115);
 
-            doc.moveTo(40, 140).lineTo(555, 140).strokeColor("#E2E8F0").lineWidth(1).stroke();
+            doc.moveTo(40, 132).lineTo(555, 132).strokeColor("#E2E8F0").lineWidth(1).stroke();
 
-            let yPos = 160;
+            // 5. Render Summary Cards
+            const drawCard = (x: number, y: number, w: number, h: number, title: string, value: string, color: string) => {
+                // Background Card
+                doc.rect(x, y, w, h).fillAndStroke("#F8FAFC", "#E2E8F0");
+                // Left border colored strip
+                doc.rect(x, y, 4, h).fill(color);
+                
+                doc.fillColor("#64748B")
+                   .fontSize(7.5)
+                   .font("Helvetica-Bold")
+                   .text(title.toUpperCase(), x + 12, y + 12);
+                
+                doc.fillColor("#0F172A")
+                   .fontSize(14)
+                   .font("Helvetica-Bold")
+                   .text(value, x + 12, y + 24);
+            };
 
+            const cardWidth = 158;
+            const cardHeight = 45;
+            const startX = 40;
+            const gap = 20;
+
+            drawCard(startX, 145, cardWidth, cardHeight, card1Title, card1Value, "#31267D");
+            drawCard(startX + cardWidth + gap, 145, cardWidth, cardHeight, card2Title, card2Value, "#10B981");
+            drawCard(startX + (cardWidth + gap) * 2, 145, cardWidth, cardHeight, card3Title, card3Value, "#E86123");
+
+            let yPos = 210;
+
+            // 6. Draw Table Grid
             if (data.length === 0) {
                 doc.fillColor("#64748B")
                    .fontSize(11)
@@ -203,8 +289,8 @@ function buildPDF(type: string, year: number, month: number, data: any[]): Promi
                         doc.text(String(days), 370, yPos, { width: 40, align: "center" });
                         doc.text(purpose, 420, yPos, { width: 70, ellipsis: true });
 
-                        if (status === "approved") doc.fillColor("#10B981");
-                        else if (status === "rejected") doc.fillColor("#EF4444");
+                        if (status === "approved" || status === "APPROVED") doc.fillColor("#10B981");
+                        else if (status === "rejected" || status === "REJECTED") doc.fillColor("#EF4444");
                         else doc.fillColor("#F59E0B");
 
                         doc.text(status, 500, yPos, { width: 55, align: "right" });
@@ -245,7 +331,7 @@ function buildPDF(type: string, year: number, month: number, data: any[]): Promi
 
                         doc.text(priority, 400, yPos, { width: 70, align: "center" });
 
-                        if (status === "completed") doc.fillColor("#10B981");
+                        if (status === "completed" || status === "COMPLETED") doc.fillColor("#10B981");
                         else doc.fillColor("#F59E0B");
 
                         doc.text(status, 480, yPos, { width: 75, align: "right" });
@@ -256,7 +342,7 @@ function buildPDF(type: string, year: number, month: number, data: any[]): Promi
                 }
             }
 
-            // 4. Footer
+            // 7. Footer
             doc.fontSize(8)
                .fillColor("#94A3B8")
                .text("CONFIDENTIAL - FOR INTERNAL EXECUTIVE REVIEW ONLY  |  USTHAD ACADEMY OPS ENGINE", 40, 800, { align: "center" });
