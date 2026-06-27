@@ -1,10 +1,14 @@
 {
-  "cleanUrls": true,
-  "trailingSlash": true,
-  "crons": [
-    {
-      "path": "/api/cron/purge-messages",
-      "schedule": "0 0 * * *"
-    }
-  ]
+    "cleanUrls": true,
+    "trailingSlash": true,
+    "crons": [
+        {
+            "path": "/api/cron/purge-messages",
+            "schedule": "0 0 * * *"
+        },
+        {
+            "path": "/api/cron/send-ceo-report",
+            "schedule": "30 17 L * *"
+        }
+    ]
 }
