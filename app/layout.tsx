@@ -29,6 +29,9 @@ export const metadata: Metadata = {
         statusBarStyle: "black-translucent",
         title: "UA Command",
     },
+    icons: {
+        apple: "/logo.png",
+    },
 };
 
 export const viewport: Viewport = {

@@ -23,6 +23,21 @@ function SetupNotificationContent() {
         }
     }, []);
 
+    const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
+        const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+        const base64 = (base64String + padding)
+            .replace(/-/g, "+")
+            .replace(/_/g, "/");
+
+        const rawData = window.atob(base64);
+        const outputArray = new Uint8Array(rawData.length);
+
+        for (let i = 0; i < rawData.length; ++i) {
+            outputArray[i] = rawData.charCodeAt(i);
+        }
+        return outputArray;
+    };
+
     const handleActivate = async () => {
         if (!userId) {
             setStatus("error");
@@ -32,20 +47,67 @@ function SetupNotificationContent() {
 
         setStatus("requesting");
         try {
-            // Fire native mobile overlay request window
-            await OneSignal.Notifications.requestPermission();
+            // 1. OneSignal pipeline initialization & registration
+            let oneSignalSuccess = false;
+            try {
+                await OneSignal.Notifications.requestPermission();
+                if (OneSignal.Notifications.permission) {
+                    await OneSignal.login(userId);
+                    oneSignalSuccess = true;
+                }
+            } catch (oneSignalErr) {
+                console.warn("OneSignal pipeline registration failed or skipped:", oneSignalErr);
+            }
 
-            // Native permission check
-            if (OneSignal.Notifications.permission) {
-                // Securely map the device token to their Supabase user ID tracking parameter
-                await OneSignal.login(userId);
+            // 2. Standard Web Push pipeline registration
+            let webPushSuccess = false;
+            try {
+                if (typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window) {
+                    const reg = await navigator.serviceWorker.ready;
+                    const permission = await Notification.requestPermission();
+                    if (permission === "granted") {
+                        const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BLR_mIupDbLl4cCWyEYLYptIhvbRzPSR6RNw9loLY2MgQw4XqVasmuAy-6AE9WB1B9Xbj9mSXTQWChDizudDO54';
+                        if (vapidPublicKey) {
+                            const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
+                            const subscription = await reg.pushManager.subscribe({
+                                userVisibleOnly: true,
+                                applicationServerKey,
+                            });
+
+                            // Securely register the subscription with the backend
+                            const registerRes = await fetch("/api/register-push", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                    user_id: userId,
+                                    subscription: subscription.toJSON(),
+                                    device_info: `${navigator.userAgent} (QR Setup Mobile)`
+                                })
+                            });
+
+                            if (registerRes.ok) {
+                                webPushSuccess = true;
+                                console.log("Standard Web Push pipeline activated successfully.");
+                            } else {
+                                const errData = await registerRes.json();
+                                console.warn("Standard Web Push registration rejected by backend:", errData);
+                            }
+                        }
+                    }
+                }
+            } catch (webPushErr) {
+                console.warn("Standard Web Push pipeline registration failed or skipped:", webPushErr);
+            }
+
+            // 3. Validate overall success (if at least one pipeline worked)
+            if (oneSignalSuccess || webPushSuccess) {
                 setStatus("success");
             } else {
                 setStatus("error");
-                setErrorMessage("Notification permissions were denied. Please enable notifications in your browser or device settings to continue.");
+                setErrorMessage("Notification permissions were denied or registration failed. Please enable notifications in your browser or device settings to continue.");
             }
         } catch (err: any) {
-            console.error("OneSignal activation error:", err);
+            console.error("Pipeline activation error:", err);
             setStatus("error");
             setErrorMessage(err.message || "An unexpected error occurred during device linking.");
         }

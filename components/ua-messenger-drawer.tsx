@@ -230,7 +230,7 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
             const tSeen = new Date(seenAt).getTime();
             const tCurrent = new Date().getTime();
             const diffHours = (tCurrent - tSeen) / (1000 * 60 * 60);
-            return diffHours >= 12;
+            return diffHours >= 168; // 7 days = 168 hours
         }
         return false;
     };
@@ -866,7 +866,7 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
                                     <div className="flex flex-col gap-1 mt-1 pb-16">
                                         {/* Ephemeral Warning Notice Banner */}
                                         <div className="text-[11px] font-medium tracking-wide py-2 px-3 text-center rounded-xl border border-slate-200/50 bg-slate-100/80 text-slate-600 dark:bg-slate-900/50 dark:text-slate-400 dark:border-slate-800/50 mb-4 transition-all duration-300">
-                                            ⏳ Messages automatically disappear 12 hours after they are seen.
+                                            ⏳ Messages automatically disappear 7 days after they are seen.
                                         </div>
 
                                         {(activeThread?.messages || [])

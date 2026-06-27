@@ -10,9 +10,8 @@ interface MobileSyncCardProps {
 }
 
 export function MobileSyncCard({ userId, size = 130 }: MobileSyncCardProps) {
-    const syncUrl = typeof window !== 'undefined'
-        ? `${window.location.origin}/setup-notifications?uid=${userId}`
-        : '';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+    const syncUrl = baseUrl ? `${baseUrl}/setup-notifications?uid=${userId}` : '';
 
     return (
         <div className="p-5 rounded-xl bg-gradient-to-br from-indigo-950/90 via-slate-900/90 to-zinc-950/95 dark:from-zinc-900/70 dark:via-zinc-950/80 dark:to-black/90 border border-slate-200 dark:border-zinc-800 shadow-lg flex flex-col items-center text-center w-full">

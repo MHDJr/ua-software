@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { sendPushNotification } from "@/lib/notifications";
 
 export async function POST(req: Request) {
     try {
@@ -225,29 +226,15 @@ Return JSON only. No explanation, no markdown.`
                     notification_type: "task"
                 });
 
-                // Trigger OneSignal push notification for task deployment
+                // Trigger push notification using the unified notification engine
                 try {
-                    await fetch("https://api.onesignal.com/notifications", {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json; charset=utf-8",
-                            "Authorization": `Key ${process.env.ONESIGNAL_REST_API_KEY}`
-                        },
-                        body: JSON.stringify({
-                            app_id: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID || "25c17e4d-dd90-4551-a1bb-1fbf9be673bf",
-                            target_channel: "push",
-                            include_aliases: {
-                                external_id: [assigneeId]
-                            },
-                            headings: { en: "NEW TASK DEPLOYED" },
-                            contents: { en: `CEO assigned task: "${taskPayload.title}". Check dashboard monitor.` },
-                            chrome_web_icon: "https://dashboard.usthadacademy.com/logo.png"
-                        })
-                    }).then(res => res.json()).then(data => {
-                        console.log("📡 OneSignal Task Notification Dispatch:", data);
-                    });
+                    await sendPushNotification(
+                        assigneeId,
+                        "NEW TASK DEPLOYED",
+                        `CEO assigned task: "${taskPayload.title}". Check dashboard monitor.`
+                    );
                 } catch (pushErr) {
-                    console.error("Failed to dispatch OneSignal task push notification:", pushErr);
+                    console.error("Failed to dispatch task push notification:", pushErr);
                 }
             }
 

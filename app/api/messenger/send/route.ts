@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sendPushNotification } from "@/lib/notifications";
 
 export async function POST(req: Request) {
     try {
@@ -12,39 +13,14 @@ export async function POST(req: Request) {
             );
         }
 
-        const oneSignalPayload = {
-            app_id: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID || "25c17e4d-dd90-4551-a1bb-1fbf9be673bf",
-            target_channel: "push",
-            include_aliases: {
-                external_id: [recipientId]
-            },
-            headings: { "en": "UA Command Link" },
-            contents: { "en": "Assigned new task by CEO. Check dashboard monitor." },
-            chrome_web_icon: "https://dashboard.usthadacademy.com/logo.png"
-        };
+        // Dispatch push notifications using the unified engine (dynamic title and body)
+        await sendPushNotification(
+            recipientId,
+            senderName || "UA Command Link",
+            messageText || "Assigned new task. Check dashboard monitor."
+        );
 
-        const response = await fetch("https://api.onesignal.com/notifications", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json; charset=utf-8",
-                "Authorization": `Key ${process.env.ONESIGNAL_REST_API_KEY}`
-            },
-            body: JSON.stringify(oneSignalPayload)
-        });
-
-        const responseData = await response.json();
-
-        // Terminal Verification Logging
-        console.log("📡 OneSignal Payload Dispatch Log:", responseData);
-
-        if (!response.ok) {
-            return NextResponse.json(
-                { error: "OneSignal API error", details: responseData },
-                { status: response.status }
-            );
-        }
-
-        return NextResponse.json({ success: true, data: responseData });
+        return NextResponse.json({ success: true });
     } catch (error: any) {
         console.error("❌ Exception inside messenger send api endpoint:", error);
         return NextResponse.json(

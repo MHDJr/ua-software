@@ -22,14 +22,14 @@ export async function GET() {
             },
         });
 
-        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
         const { data, error } = await supabaseAdmin
             .from("notifications")
             .delete()
             .eq("read", true)
             .not("read_at", "is", null)
-            .lt("read_at", oneHourAgo);
+            .lt("read_at", sevenDaysAgo);
 
         if (error) {
             console.error("[PurgeMessagesCron] Database delete error:", error.message);
@@ -39,7 +39,7 @@ export async function GET() {
             );
         }
 
-        return NextResponse.json({ success: true, message: "Read notifications older than 1 hour deleted successfully." });
+        return NextResponse.json({ success: true, message: "Read notifications older than 7 days deleted successfully." });
     } catch (err: any) {
         console.error("[PurgeMessagesCron] Exception:", err);
         return NextResponse.json(

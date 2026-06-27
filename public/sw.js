@@ -5,8 +5,8 @@ self.addEventListener('push', function(event) {
     const isEscalated = data.title === 'Critical Operational Delay' || (data.body && data.body.includes('escalated'));
     const options = {
       body: data.body,
-      icon: '/images/alert-icon.png', // Ensure this icon exists or use a placeholder
-      badge: '/images/badge-icon.png',
+      icon: '/logo.png',
+      badge: '/logo.png',
       vibrate: [200, 100, 200, 100, 200, 100, 200], // Distinctive vibration pattern
       data: {
         dateOfArrival: Date.now(),
@@ -14,8 +14,8 @@ self.addEventListener('push', function(event) {
         isEscalated: isEscalated
       },
       actions: [
-        {action: 'explore', title: 'View Details', icon: '/images/checkmark.png'},
-        {action: 'close', title: 'Close', icon: '/images/xmark.png'},
+        {action: 'explore', title: 'View Details'},
+        {action: 'close', title: 'Close'},
       ],
       requireInteraction: true // Keeps notification until user interacts
     };
