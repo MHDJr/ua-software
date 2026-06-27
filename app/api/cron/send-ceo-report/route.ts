@@ -373,7 +373,7 @@ export async function GET(request: NextRequest) {
 
         // 7. Send Email using Resend with PDF attachments
         const emailResponse = await resend.emails.send({
-            from: EMAIL_CONFIG.from.reports,
+            from: "Usthad Academy Reports <reports@mail.usthadacademy.com>",
             to: "ceo@usthadacademy.com",
             subject: `[Usthad Academy] Monthly Operations Report & Executive Briefs - ${monthNameString}`,
             html: htmlContent,
