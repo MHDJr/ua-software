@@ -2,8 +2,89 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { resend } from "@/lib/resend";
 import { fetchReportData, buildPDF } from "@/lib/pdf-generator";
+import puppeteer from "puppeteer-core";
+import chromium from "@sparticuz/chromium";
 
 export const dynamic = "force-dynamic";
+
+// Helper to launch browser instance depending on Vercel vs local macOS environment
+async function getBrowserInstance() {
+    if (process.env.CHROMIUM_CONNECT_URL) {
+        return await puppeteer.connect({
+            browserWSEndpoint: process.env.CHROMIUM_CONNECT_URL,
+        });
+    }
+    
+    const executablePath = await (chromium as any).executablePath();
+    const rawArgs = await (chromium as any).args;
+    const args = Array.isArray(rawArgs) ? rawArgs : [];
+    const headless = await (chromium as any).headless;
+    const isLocal = !process.env.AWS_EXECUTION_ENV && !process.env.VERCEL;
+    
+    return await puppeteer.launch({
+        args: (isLocal ? puppeteer.defaultArgs() : args) as any,
+        defaultViewport: { width: 1200, height: 800 },
+        executablePath: isLocal 
+            ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+            : executablePath,
+        headless: isLocal ? true : (headless !== undefined ? headless : true),
+        ignoreHTTPSErrors: true,
+    } as any);
+}
+
+// Helper to visit pages sequentially and print A4 layouts to PDF buffers
+async function captureDashboardPDFs(
+    baseUrl: string,
+    storageKey: string,
+    authPayload: string,
+    targetYear: number,
+    queryMonth: number
+): Promise<{ finance: Buffer; sales: Buffer; leave: Buffer; tasks: Buffer }> {
+    const browser = await getBrowserInstance();
+    try {
+        const page = await browser.newPage();
+        
+        // 1. Establish origin context
+        await page.goto(baseUrl, { waitUntil: "networkidle2", timeout: 20000 });
+        
+        // 2. Inject Supabase Auth Token into localStorage
+        await page.evaluate((key, val) => {
+            localStorage.setItem(key, val);
+        }, storageKey, authPayload);
+
+        // 3. Define target URLs with month/year params
+        const financeUrl = `${baseUrl}/ceo/financial-intelligence?year=${targetYear}&month=${queryMonth}`;
+        const salesUrl = `${baseUrl}/ceo/sales?year=${targetYear}&month=${queryMonth}`;
+        const leaveUrl = `${baseUrl}/ceo?view=staff-management&year=${targetYear}&month=${queryMonth}`;
+        const tasksUrl = `${baseUrl}/ceo?view=command-center&year=${targetYear}&month=${queryMonth}`;
+
+        const printOptions = {
+            format: "A4" as any,
+            printBackground: true,
+            margin: { top: "30px", bottom: "30px", left: "30px", right: "30px" },
+        };
+
+        // Render Finance PDF
+        await page.goto(financeUrl, { waitUntil: "networkidle0", timeout: 30000 });
+        const finance = Buffer.from(await page.pdf(printOptions));
+
+        // Render Sales PDF
+        await page.goto(salesUrl, { waitUntil: "networkidle0", timeout: 30000 });
+        const sales = Buffer.from(await page.pdf(printOptions));
+
+        // Render Leave PDF
+        await page.goto(leaveUrl, { waitUntil: "networkidle0", timeout: 30000 });
+        const leave = Buffer.from(await page.pdf(printOptions));
+
+        // Render Tasks PDF
+        await page.goto(tasksUrl, { waitUntil: "networkidle0", timeout: 30000 });
+        const tasks = Buffer.from(await page.pdf(printOptions));
+
+        return { finance, sales, leave, tasks };
+    } finally {
+        await browser.close();
+    }
+}
 
 export async function GET(request: NextRequest) {
     try {
@@ -56,24 +137,82 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        // 5. Gather/generate the 4 specific operational report PDFs locally from the database
         const queryMonth = targetMonth + 1;
 
-        const [financeData, salesReportData, leaveData, tasksData] = await Promise.all([
-            fetchReportData(supabaseAdmin, "finance", targetYear, queryMonth),
-            fetchReportData(supabaseAdmin, "sales", targetYear, queryMonth),
-            fetchReportData(supabaseAdmin, "leave", targetYear, queryMonth),
-            fetchReportData(supabaseAdmin, "tasks", targetYear, queryMonth),
-        ]);
+        // 5. Gather PDF reports - Try Puppeteer Headless Browser, fallback to local PDFKit rendering
+        let financeBuffer: Buffer;
+        let salesBuffer: Buffer;
+        let leaveBuffer: Buffer;
+        let tasksBuffer: Buffer;
+        let renderedViaHeadless = false;
 
-        const [financeBuffer, salesBuffer, leaveBuffer, tasksBuffer] = await Promise.all([
-            buildPDF("finance", targetYear, queryMonth, financeData),
-            buildPDF("sales", targetYear, queryMonth, salesReportData),
-            buildPDF("leave", targetYear, queryMonth, leaveData),
-            buildPDF("tasks", targetYear, queryMonth, tasksData),
-        ]);
+        try {
+            const systemEmail = process.env.SYSTEM_USER_EMAIL || "ceo@usthadacademy.com";
+            const systemPassword = process.env.SYSTEM_USER_PASSWORD;
 
-        // Aggregate statistics for summary display in the email
+            if (!systemPassword) {
+                throw new Error("SYSTEM_USER_PASSWORD environment variable is not configured.");
+            }
+
+            // Authenticate system user to generate Supabase session token
+            const { data: authData, error: authError } = await supabaseAdmin.auth.signInWithPassword({
+                email: systemEmail,
+                password: systemPassword,
+            });
+
+            if (authError || !authData.session) {
+                throw new Error(`Supabase signInWithPassword failed: ${authError?.message}`);
+            }
+
+            const session = authData.session;
+            const authPayload = JSON.stringify({
+                currentSession: session,
+                expiresAt: Math.floor(Date.now() / 1000) + session.expires_in,
+            });
+
+            // Extract project reference from URL to resolve correct auth storage key
+            const match = supabaseUrl.match(/https:\/\/(.*?)\.supabase\.co/);
+            const projectRef = match ? match[1] : "";
+            const storageKey = `sb-${projectRef}-auth-token`;
+
+            const requestUrl = request.url;
+            const baseUrl = new URL(requestUrl).origin;
+
+            // Visit dashboard routes headlessly and print PDFs
+            const pdfs = await captureDashboardPDFs(baseUrl, storageKey, authPayload, targetYear, queryMonth);
+            financeBuffer = pdfs.finance;
+            salesBuffer = pdfs.sales;
+            leaveBuffer = pdfs.leave;
+            tasksBuffer = pdfs.tasks;
+            renderedViaHeadless = true;
+            console.log("[SendCeoReport] Headless browser PDF generation completed successfully.");
+
+        } catch (headlessErr: any) {
+            console.warn("[SendCeoReport] Headless browser rendering failed, using PDFKit fallback:", headlessErr.message);
+
+            // Fallback: Query database and render layout manually via PDFKit
+            const [financeData, salesReportData, leaveData, tasksData] = await Promise.all([
+                fetchReportData(supabaseAdmin, "finance", targetYear, queryMonth),
+                fetchReportData(supabaseAdmin, "sales", targetYear, queryMonth),
+                fetchReportData(supabaseAdmin, "leave", targetYear, queryMonth),
+                fetchReportData(supabaseAdmin, "tasks", targetYear, queryMonth),
+            ]);
+
+            const [fBuf, sBuf, lBuf, tBuf] = await Promise.all([
+                buildPDF("finance", targetYear, queryMonth, financeData),
+                buildPDF("sales", targetYear, queryMonth, salesReportData),
+                buildPDF("leave", targetYear, queryMonth, leaveData),
+                buildPDF("tasks", targetYear, queryMonth, tasksData),
+            ]);
+
+            financeBuffer = fBuf;
+            salesBuffer = sBuf;
+            leaveBuffer = lBuf;
+            tasksBuffer = tBuf;
+        }
+
+        // 6. Query statistics for the email overview body
+        const salesReportData = await fetchReportData(supabaseAdmin, "sales", targetYear, queryMonth);
         const totalRecords = salesReportData ? salesReportData.length : 0;
         let sumLeads = 0;
         let sumConversions = 0;
@@ -94,7 +233,7 @@ export async function GET(request: NextRequest) {
         const avgQuality = totalRecords > 0 ? (sumQuality / totalRecords).toFixed(1) : "N/A";
         const overallConversionRate = sumLeads > 0 ? ((sumConversions / sumLeads) * 100).toFixed(1) + "%" : "0.0%";
 
-        // 6. Build clean, professional HTML content
+        // 7. Build clean, professional HTML content
         const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -235,7 +374,7 @@ export async function GET(request: NextRequest) {
 </html>
         `;
 
-        // 7. Send Email using Resend with PDF attachments to multiple recipients simultaneously
+        // 8. Send Email using Resend with PDF attachments to multiple recipients simultaneously
         const recipients = ["ceo@usthadacademy.com", "saleemsaquafi@gmail.com"];
         const emailResponse = await resend.emails.send({
             from: "Usthad Academy Reports <reports@mail.usthadacademy.com>",
@@ -258,7 +397,7 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        // 8. Lifecycle Soft-Archive: Mark the concluded month's temporary daily sales tracking draft records as archived ONLY after email acceptance
+        // 9. Lifecycle Soft-Archive: Mark the concluded month's temporary daily sales tracking draft records as archived ONLY after email acceptance
         const { error: purgeError } = await supabaseAdmin
             .from("daily_sales_tracking")
             .update({ is_archived: true })
@@ -271,7 +410,8 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json({
             success: true,
-            message: `Monthly report and attachments for ${monthNameString} sent to CEO & Operations successfully. Concluded month draft metrics archived.`,
+            message: `Monthly report and attachments for ${monthNameString} sent successfully.`,
+            rendered_via_headless: renderedViaHeadless,
             records_compiled: totalRecords,
             email_id: emailResponse.data?.id,
             purged: !purgeError,
