@@ -1,4 +1,5 @@
 import PDFDocument from "pdfkit";
+import path from "path";
 
 // Helper to query report data directly using the Supabase Admin client
 export async function fetchReportData(
@@ -110,6 +111,19 @@ export function buildPDF(type: string, year: number, month: number, data: any[])
             doc.on("end", () => resolve(Buffer.concat(chunks)));
             doc.on("error", err => reject(err));
             
+            // Register standard fonts explicitly to prevent ENOENT Helvetica.afm errors on serverless deploys (like Vercel)
+            try {
+                const regularFontPath = path.join(process.cwd(), "public", "fonts", "Roboto-Regular.ttf");
+                const boldFontPath = path.join(process.cwd(), "public", "fonts", "Roboto-Bold.ttf");
+                const italicFontPath = path.join(process.cwd(), "public", "fonts", "Roboto-Italic.ttf");
+
+                doc.registerFont("Helvetica", regularFontPath);
+                doc.registerFont("Helvetica-Bold", boldFontPath);
+                doc.registerFont("Helvetica-Oblique", italicFontPath);
+            } catch (fontErr) {
+                console.error("[PDFGenerator] Failed to register custom TTF fonts:", fontErr);
+            }
+
             // 1. Calculate values for summary cards
             let card1Title = "", card1Value = "";
             let card2Title = "", card2Value = "";
