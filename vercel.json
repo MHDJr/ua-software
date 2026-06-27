@@ -8,7 +8,7 @@
         },
         {
             "path": "/api/cron/send-ceo-report",
-            "schedule": "30 17 L * *"
+            "schedule": "30 0 1 * *"
         }
     ]
 }
