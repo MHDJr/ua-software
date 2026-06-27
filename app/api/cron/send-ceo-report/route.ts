@@ -1,70 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { resend, EMAIL_CONFIG } from "@/lib/resend";
+import { resend } from "@/lib/resend";
+import { fetchReportData, buildPDF } from "@/lib/pdf-generator";
 
 export const dynamic = "force-dynamic";
-
-// Helper to generate a minimal valid placeholder PDF buffer containing text.
-function generatePlaceholderPDF(reportName: string): Buffer {
-    const content = `%PDF-1.4
-1 0 obj
-<< /Type /Catalog /Pages 2 0 R >>
-endobj
-2 0 obj
-<< /Type /Pages /Kids [3 0 R] /Count 1 >>
-endobj
-3 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << >> >>
-endobj
-4 0 obj
-<< /Length 80 >>
-stream
-BT
-/F1 12 Tf
-72 712 Td
-(Placeholder for ${reportName}) Tj
-ET
-endstream
-endobj
-xref
-0 5
-0000000000 65535 f 
-0000000009 00000 n 
-0000000056 00000 n 
-0000000111 00000 n 
-0000000212 00000 n 
-trailer
-<< /Size 5 /Root 1 0 R >>
-startxref
-341
-%%EOF`;
-    return Buffer.from(content, "utf-8");
-}
-
-// Helper to fetch report PDF from internal endpoint if available, falling back to local placeholder.
-async function fetchReportPDF(
-    reportType: string, 
-    defaultName: string, 
-    requestUrl: string,
-    year: number,
-    month: number
-): Promise<Buffer> {
-    try {
-        const baseUrl = new URL(requestUrl).origin;
-        const response = await fetch(`${baseUrl}/api/reports/download?type=${reportType}&year=${year}&month=${month}`, {
-            headers: {
-                "Authorization": `Bearer ${process.env.CRON_SECRET || ""}`
-            }
-        });
-        if (response.ok) {
-            const arrayBuffer = await response.arrayBuffer();
-            return Buffer.from(arrayBuffer);
-        }
-    } catch (e) {
-        console.warn(`[SendCeoReport] Failed to fetch live PDF for ${reportType}, using generated placeholder:`, e);
-    }
-    return generatePlaceholderPDF(defaultName);
-}
 
 export async function GET(request: NextRequest) {
     try {
@@ -100,7 +39,6 @@ export async function GET(request: NextRequest) {
 
         // 3. Dynamic Previous Month Date Matching
         const now = new Date();
-        // Landing safely on the last day of the previous month by providing '0' as the day argument
         const targetDate = new Date(now.getFullYear(), now.getMonth(), 0);
         const targetYear = targetDate.getFullYear();
         const targetMonth = targetDate.getMonth(); // 0-indexed representation of the concluded month
@@ -109,36 +47,7 @@ export async function GET(request: NextRequest) {
         const lastDayOfMonth = new Date(targetYear, targetMonth + 1, 0).toISOString().split("T")[0];
         const monthNameString = targetDate.toLocaleString("default", { month: "long", year: "numeric" });
 
-        // 4. Data Fetching: Fetch rows from the daily_sales_tracking table matching the target month range
-        const { data: salesData, error: fetchError } = await supabaseAdmin
-            .from("daily_sales_tracking")
-            .select(`
-                profile_id,
-                tracking_date,
-                total_leads,
-                conversions,
-                evaluations_taken,
-                lost_leads,
-                lead_quality_rating,
-                updated_at,
-                profile:profiles!profile_id (
-                    full_name,
-                    email,
-                    role
-                )
-            `)
-            .gte("tracking_date", firstDayOfMonth)
-            .lte("tracking_date", lastDayOfMonth);
-
-        if (fetchError) {
-            console.error("[SendCeoReport] Database fetch error:", fetchError.message);
-            return NextResponse.json(
-                { error: `Database query failed: ${fetchError.message}` },
-                { status: 500 }
-            );
-        }
-
-        // 5. Resend Integration verification
+        // 4. Resend Integration verification
         if (!resend) {
             console.error("[SendCeoReport] Resend client not initialized (check RESEND_API_KEY)");
             return NextResponse.json(
@@ -147,27 +56,33 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        // Gather/generate the 4 specific operational report PDFs for the concluded month
-        const requestUrl = request.url;
-        // month + 1 to convert from 0-indexed representation to 1-indexed for the API parameter
+        // 5. Gather/generate the 4 specific operational report PDFs locally from the database
         const queryMonth = targetMonth + 1;
+
+        const [financeData, salesReportData, leaveData, tasksData] = await Promise.all([
+            fetchReportData(supabaseAdmin, "finance", targetYear, queryMonth),
+            fetchReportData(supabaseAdmin, "sales", targetYear, queryMonth),
+            fetchReportData(supabaseAdmin, "leave", targetYear, queryMonth),
+            fetchReportData(supabaseAdmin, "tasks", targetYear, queryMonth),
+        ]);
+
         const [financeBuffer, salesBuffer, leaveBuffer, tasksBuffer] = await Promise.all([
-            fetchReportPDF("finance", "Finance Monthly Report", requestUrl, targetYear, queryMonth),
-            fetchReportPDF("sales", "Sales Monthly Report", requestUrl, targetYear, queryMonth),
-            fetchReportPDF("leave", "Leave Monthly Report", requestUrl, targetYear, queryMonth),
-            fetchReportPDF("tasks", "Tasks Monthly Report", requestUrl, targetYear, queryMonth),
+            buildPDF("finance", targetYear, queryMonth, financeData),
+            buildPDF("sales", targetYear, queryMonth, salesReportData),
+            buildPDF("leave", targetYear, queryMonth, leaveData),
+            buildPDF("tasks", targetYear, queryMonth, tasksData),
         ]);
 
         // Aggregate statistics for summary display in the email
-        const totalRecords = salesData ? salesData.length : 0;
+        const totalRecords = salesReportData ? salesReportData.length : 0;
         let sumLeads = 0;
         let sumConversions = 0;
         let sumEvaluations = 0;
         let sumLostLeads = 0;
         let sumQuality = 0;
 
-        if (salesData && salesData.length > 0) {
-            salesData.forEach(row => {
+        if (salesReportData && salesReportData.length > 0) {
+            salesReportData.forEach(row => {
                 sumLeads += row.total_leads || 0;
                 sumConversions += row.conversions || 0;
                 sumEvaluations += row.evaluations_taken || 0;
