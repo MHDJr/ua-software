@@ -104,7 +104,16 @@ export async function fetchReportData(
 export function buildPDF(type: string, year: number, month: number, data: any[]): Promise<Buffer> {
     return new Promise((resolve, reject) => {
         try {
-            const doc = new PDFDocument({ margin: 40, size: "A4" });
+            const regularFontPath = path.join(process.cwd(), "public", "fonts", "Roboto-Regular.ttf");
+            const boldFontPath = path.join(process.cwd(), "public", "fonts", "Roboto-Bold.ttf");
+            const italicFontPath = path.join(process.cwd(), "public", "fonts", "Roboto-Italic.ttf");
+
+            // Pass a custom default font file to prevent PDFKit constructor from searching for Helvetica.afm
+            const doc = new PDFDocument({ 
+                margin: 40, 
+                size: "A4",
+                font: regularFontPath
+            });
             const chunks: any[] = [];
             
             doc.on("data", chunk => chunks.push(chunk));
@@ -113,10 +122,6 @@ export function buildPDF(type: string, year: number, month: number, data: any[])
             
             // Register standard fonts explicitly to prevent ENOENT Helvetica.afm errors on serverless deploys (like Vercel)
             try {
-                const regularFontPath = path.join(process.cwd(), "public", "fonts", "Roboto-Regular.ttf");
-                const boldFontPath = path.join(process.cwd(), "public", "fonts", "Roboto-Bold.ttf");
-                const italicFontPath = path.join(process.cwd(), "public", "fonts", "Roboto-Italic.ttf");
-
                 doc.registerFont("Helvetica", regularFontPath);
                 doc.registerFont("Helvetica-Bold", boldFontPath);
                 doc.registerFont("Helvetica-Oblique", italicFontPath);
