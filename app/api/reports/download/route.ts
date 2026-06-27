@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
         const year = yearStr ? parseInt(yearStr) : currentDate.getFullYear();
         const month = monthStr ? parseInt(monthStr) : currentDate.getMonth() + 1;
 
-        if (!["finance", "sales", "leave", "tasks"].includes(type)) {
+        if (!["finance", "sales", "leave", "tasks", "operations"].includes(type)) {
             return NextResponse.json(
                 { error: "Invalid report type requested." },
                 { status: 400 }

@@ -53,7 +53,7 @@ export async function fetchReportData(
             dbData = data || [];
         }
     } 
-    else if (type === "leave") {
+    else if (type === "leave" || type === "operations") {
         try {
             const { data, error } = await supabaseAdmin
                 .from("requests")
@@ -149,7 +149,7 @@ export function buildPDF(type: string, year: number, month: number, data: any[])
                 card2Value = String(totalConversions);
                 card3Title = "Avg Lead Quality";
                 card3Value = `${avgQ}/10`;
-            } else if (type === "leave") {
+            } else if (type === "leave" || type === "operations") {
                 const total = data.length;
                 const approved = data.filter(item => item.status === "approved" || item.status === "APPROVED").length;
                 const pending = data.filter(item => item.status === "pending" || item.status === "PENDING").length;
