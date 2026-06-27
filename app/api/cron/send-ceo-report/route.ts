@@ -274,7 +274,7 @@ export async function GET(request: NextRequest) {
                     <tr>
                         <td bgcolor="#31267D" style="padding:32px 40px; text-align:left;">
                             <span style="font-size:11px; font-weight:800; text-transform:uppercase; color:#a5b4fc; letter-spacing:2px; display:block; margin-bottom:4px;">Executive Briefing</span>
-                            <h1 style="margin:0; font-size:26px; font-weight:800; color:#ffffff; letter-spacing:-0.5px;">Operations Monthly Ledger</h1>
+                            <h1 style="margin:0; font-size:26px; font-weight:800; color:#ffffff; letter-spacing:-0.5px;">Usthad Academy - Monthly Executive Operational Brief</h1>
                             <p style="margin:6px 0 0 0; font-size:14px; color:#c7d2fe;">Billing Period: ${monthNameString}</p>
                         </td>
                     </tr>
@@ -287,116 +287,116 @@ export async function GET(request: NextRequest) {
                                 Dear Executive Board,<br/><br/>
                                 Below is the fully compiled multi-departmental executive ledger for **${monthNameString}**. This report has been compiled directly from live database transactions and compiled in-body to guarantee delivery.
                             </p>
-
-                            <!-- Sales KPI Summary Cards -->
-                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:40px;">
-                                <tr>
-                                    <td width="23%" style="background-color:#f8fafc; border-radius:12px; border:1px solid #e2e8f0; padding:16px; text-align:center;">
-                                        <span style="font-size:10px; font-weight:700; text-transform:uppercase; color:#64748b; display:block; margin-bottom:4px;">Total Leads</span>
-                                        <span style="font-size:20px; font-weight:800; color:#31267D;">${totalLeads}</span>
-                                    </td>
-                                    <td width="2%"></td>
-                                    <td width="23%" style="background-color:#f8fafc; border-radius:12px; border:1px solid #e2e8f0; padding:16px; text-align:center;">
-                                        <span style="font-size:10px; font-weight:700; text-transform:uppercase; color:#64748b; display:block; margin-bottom:4px;">Conversions</span>
-                                        <span style="font-size:20px; font-weight:800; color:#10B981;">${totalConversions}</span>
-                                    </td>
-                                    <td width="2%"></td>
-                                    <td width="23%" style="background-color:#f8fafc; border-radius:12px; border:1px solid #e2e8f0; padding:16px; text-align:center;">
-                                        <span style="font-size:10px; font-weight:700; text-transform:uppercase; color:#64748b; display:block; margin-bottom:4px;">Conv. Rate</span>
-                                        <span style="font-size:20px; font-weight:800; color:#E86123;">${overallConversionRate}</span>
-                                    </td>
-                                    <td width="2%"></td>
-                                    <td width="23%" style="background-color:#f8fafc; border-radius:12px; border:1px solid #e2e8f0; padding:16px; text-align:center;">
-                                        <span style="font-size:10px; font-weight:700; text-transform:uppercase; color:#64748b; display:block; margin-bottom:4px;">Avg Quality</span>
-                                        <span style="font-size:20px; font-weight:800; color:#4F46E5;">${overallAvgQuality}/10</span>
-                                    </td>
-                                </tr>
-                            </table>
-
-                            <!-- Section 1: Financial Intelligence Ledger -->
-                            <h3 style="margin:0 0 12px 0; font-size:16px; font-weight:700; color:#31267D;">1. Financial Intelligence Briefing</h3>
-                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:40px; border-collapse:collapse; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
-                                <tr style="background-color:#31267D; color:#ffffff;">
-                                    <th style="padding:10px; text-align:left; font-size:12px; font-weight:bold;">Date</th>
-                                    <th style="padding:10px; text-align:right; font-size:12px; font-weight:bold;">UloomX Rev</th>
-                                    <th style="padding:10px; text-align:right; font-size:12px; font-weight:bold;">Usthad Rev</th>
-                                    <th style="padding:10px; text-align:right; font-size:12px; font-weight:bold;">Expenses</th>
-                                    <th style="padding:10px; text-align:right; font-size:12px; font-weight:bold;">Net Rev</th>
-                                    <th style="padding:10px; text-align:center; font-size:12px; font-weight:bold;">Status</th>
-                                </tr>
-                                ${financeRowsHTML}
-                            </table>
-
-                            <!-- Section 2: Sales Metrics Briefing -->
-                            <h3 style="margin:0 0 12px 0; font-size:16px; font-weight:700; color:#31267D;">2. Daily Sales Tracking Summary</h3>
-                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:40px; border-collapse:collapse; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
-                                <tr style="background-color:#31267D; color:#ffffff;">
-                                    <th style="padding:10px; text-align:left; font-size:12px; font-weight:bold;">Date</th>
-                                    <th style="padding:10px; text-align:left; font-size:12px; font-weight:bold;">Sales Rep</th>
-                                    <th style="padding:10px; text-align:center; font-size:12px; font-weight:bold;">Leads</th>
-                                    <th style="padding:10px; text-align:center; font-size:12px; font-weight:bold;">Conversions</th>
-                                    <th style="padding:10px; text-align:center; font-size:12px; font-weight:bold;">Lost</th>
-                                    <th style="padding:10px; text-align:center; font-size:12px; font-weight:bold;">Quality</th>
-                                </tr>
-                                ${salesRowsHTML}
-                            </table>
-
-                            <!-- Section 3: HR Leaves Request Briefing -->
-                            <h3 style="margin:0 0 12px 0; font-size:16px; font-weight:700; color:#31267D;">3. Leave & HR Authorizations</h3>
-                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:40px; border-collapse:collapse; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
-                                <tr style="background-color:#31267D; color:#ffffff;">
-                                    <th style="padding:10px; text-align:left; font-size:12px; font-weight:bold;">Date</th>
-                                    <th style="padding:10px; text-align:left; font-size:12px; font-weight:bold;">Staff</th>
-                                    <th style="padding:10px; text-align:left; font-size:12px; font-weight:bold;">Leave Dates</th>
-                                    <th style="padding:10px; text-align:center; font-size:12px; font-weight:bold;">Days</th>
-                                    <th style="padding:10px; text-align:left; font-size:12px; font-weight:bold;">Purpose</th>
-                                    <th style="padding:10px; text-align:center; font-size:12px; font-weight:bold;">Status</th>
-                                </tr>
-                                ${leaveRowsHTML}
-                            </table>
-
-                            <!-- Section 4: Tasks Executive Briefing -->
-                            <h3 style="margin:0 0 12px 0; font-size:16px; font-weight:700; color:#31267D;">4. Tasks Execution Summary</h3>
-                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
-                                <tr style="background-color:#31267D; color:#ffffff;">
-                                    <th style="padding:10px; text-align:left; font-size:12px; font-weight:bold;">Created</th>
-                                    <th style="padding:10px; text-align:left; font-size:12px; font-weight:bold;">Assigned To</th>
-                                    <th style="padding:10px; text-align:left; font-size:12px; font-weight:bold;">Title</th>
-                                    <th style="padding:10px; text-align:center; font-size:12px; font-weight:bold;">Priority</th>
-                                    <th style="padding:10px; text-align:center; font-size:12px; font-weight:bold;">Status</th>
-                                </tr>
-                                ${tasksRowsHTML}
-                            </table>
-
-                            <p style="margin:30px 0 0 0; font-size:14px; line-height:1.6; color:#475569;">
-                                Please check the live Usthad Academy Dashboard portal for detailed filters, analytics history, and graphs.
-                            </p>
-                        </td>
-                    </tr>
-                    
-                    <!-- Footer -->
-                    <tr>
-                        <td bgcolor="#f8fafc" style="padding:24px 40px; border-top:1px solid #e2e8f0; text-align:center;">
-                            <p style="margin:0 0 4px 0; font-size:12px; color:#64748b; font-weight:600;">Usthad Academy Ops Engine</p>
-                            <p style="margin:0; font-size:11px; color:#94a3b8;">This is an automated system report. Please do not reply directly to this message.</p>
-                        </td>
-                    </tr>
-                </table>
-            </td>
-        </tr>
-    </table>
-</body>
-</html>
-        `;
-
-        // 8. Send Email using Resend with direct HTML table body content
-        const recipients = ["ceo@usthadacademy.com", "saleemsaquafi@gmail.com"];
-        const emailResponse = await resend.emails.send({
-            from: "Usthad Academy Reports <reports@mail.usthadacademy.com>",
-            to: recipients,
-            subject: `[Usthad Academy] Operations Monthly Report Ledger - ${monthNameString}`,
-            html: htmlContent,
-        });
+ 
+                             <!-- Sales KPI Summary Cards -->
+                             <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:40px;">
+                                 <tr>
+                                     <td width="23%" style="background-color:#f8fafc; border-radius:12px; border:1px solid #e2e8f0; padding:16px; text-align:center;">
+                                         <span style="font-size:10px; font-weight:700; text-transform:uppercase; color:#64748b; display:block; margin-bottom:4px;">Total Leads</span>
+                                         <span style="font-size:20px; font-weight:800; color:#31267D;">${totalLeads}</span>
+                                     </td>
+                                     <td width="2%"></td>
+                                     <td width="23%" style="background-color:#f8fafc; border-radius:12px; border:1px solid #e2e8f0; padding:16px; text-align:center;">
+                                         <span style="font-size:10px; font-weight:700; text-transform:uppercase; color:#64748b; display:block; margin-bottom:4px;">Conversions</span>
+                                         <span style="font-size:20px; font-weight:800; color:#10B981;">${totalConversions}</span>
+                                     </td>
+                                     <td width="2%"></td>
+                                     <td width="23%" style="background-color:#f8fafc; border-radius:12px; border:1px solid #e2e8f0; padding:16px; text-align:center;">
+                                         <span style="font-size:10px; font-weight:700; text-transform:uppercase; color:#64748b; display:block; margin-bottom:4px;">Conv. Rate</span>
+                                         <span style="font-size:20px; font-weight:800; color:#E86123;">${overallConversionRate}</span>
+                                     </td>
+                                     <td width="2%"></td>
+                                     <td width="23%" style="background-color:#f8fafc; border-radius:12px; border:1px solid #e2e8f0; padding:16px; text-align:center;">
+                                         <span style="font-size:10px; font-weight:700; text-transform:uppercase; color:#64748b; display:block; margin-bottom:4px;">Avg Quality</span>
+                                         <span style="font-size:20px; font-weight:800; color:#4F46E5;">${overallAvgQuality}/10</span>
+                                     </td>
+                                 </tr>
+                             </table>
+ 
+                             <!-- Section 1: Financial Intelligence Ledger -->
+                             <h3 style="margin:0 0 12px 0; font-size:16px; font-weight:700; color:#31267D;">1. Financial Intelligence Briefing</h3>
+                             <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:40px; border-collapse:collapse; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
+                                 <tr style="background-color:#31267D; color:#ffffff;">
+                                     <th style="padding:10px; text-align:left; font-size:12px; font-weight:bold;">Date</th>
+                                     <th style="padding:10px; text-align:right; font-size:12px; font-weight:bold;">UloomX Rev</th>
+                                     <th style="padding:10px; text-align:right; font-size:12px; font-weight:bold;">Usthad Rev</th>
+                                     <th style="padding:10px; text-align:right; font-size:12px; font-weight:bold;">Expenses</th>
+                                     <th style="padding:10px; text-align:right; font-size:12px; font-weight:bold;">Net Rev</th>
+                                     <th style="padding:10px; text-align:center; font-size:12px; font-weight:bold;">Status</th>
+                                 </tr>
+                                 ${financeRowsHTML}
+                             </table>
+ 
+                             <!-- Section 2: Sales Metrics Briefing -->
+                             <h3 style="margin:0 0 12px 0; font-size:16px; font-weight:700; color:#31267D;">2. Daily Sales Tracking Summary</h3>
+                             <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:40px; border-collapse:collapse; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
+                                 <tr style="background-color:#31267D; color:#ffffff;">
+                                     <th style="padding:10px; text-align:left; font-size:12px; font-weight:bold;">Date</th>
+                                     <th style="padding:10px; text-align:left; font-size:12px; font-weight:bold;">Sales Rep</th>
+                                     <th style="padding:10px; text-align:center; font-size:12px; font-weight:bold;">Leads</th>
+                                     <th style="padding:10px; text-align:center; font-size:12px; font-weight:bold;">Conversions</th>
+                                     <th style="padding:10px; text-align:center; font-size:12px; font-weight:bold;">Lost</th>
+                                     <th style="padding:10px; text-align:center; font-size:12px; font-weight:bold;">Quality</th>
+                                 </tr>
+                                 ${salesRowsHTML}
+                             </table>
+ 
+                             <!-- Section 3: HR Leaves Request Briefing -->
+                             <h3 style="margin:0 0 12px 0; font-size:16px; font-weight:700; color:#31267D;">3. Leave & HR Authorizations</h3>
+                             <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:40px; border-collapse:collapse; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
+                                 <tr style="background-color:#31267D; color:#ffffff;">
+                                     <th style="padding:10px; text-align:left; font-size:12px; font-weight:bold;">Date</th>
+                                     <th style="padding:10px; text-align:left; font-size:12px; font-weight:bold;">Staff</th>
+                                     <th style="padding:10px; text-align:left; font-size:12px; font-weight:bold;">Leave Dates</th>
+                                     <th style="padding:10px; text-align:center; font-size:12px; font-weight:bold;">Days</th>
+                                     <th style="padding:10px; text-align:left; font-size:12px; font-weight:bold;">Purpose</th>
+                                     <th style="padding:10px; text-align:center; font-size:12px; font-weight:bold;">Status</th>
+                                 </tr>
+                                 ${leaveRowsHTML}
+                             </table>
+ 
+                             <!-- Section 4: Tasks Executive Briefing -->
+                             <h3 style="margin:0 0 12px 0; font-size:16px; font-weight:700; color:#31267D;">4. Tasks Execution Summary</h3>
+                             <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
+                                 <tr style="background-color:#31267D; color:#ffffff;">
+                                     <th style="padding:10px; text-align:left; font-size:12px; font-weight:bold;">Created</th>
+                                     <th style="padding:10px; text-align:left; font-size:12px; font-weight:bold;">Assigned To</th>
+                                     <th style="padding:10px; text-align:left; font-size:12px; font-weight:bold;">Title</th>
+                                     <th style="padding:10px; text-align:center; font-size:12px; font-weight:bold;">Priority</th>
+                                     <th style="padding:10px; text-align:center; font-size:12px; font-weight:bold;">Status</th>
+                                 </tr>
+                                 ${tasksRowsHTML}
+                             </table>
+ 
+                             <p style="margin:30px 0 0 0; font-size:14px; line-height:1.6; color:#475569;">
+                                 Please check the live Usthad Academy Dashboard portal for detailed filters, analytics history, and graphs.
+                             </p>
+                         </td>
+                     </tr>
+                     
+                     <!-- Footer -->
+                     <tr>
+                         <td bgcolor="#f8fafc" style="padding:24px 40px; border-top:1px solid #e2e8f0; text-align:center;">
+                             <p style="margin:0 0 4px 0; font-size:12px; color:#64748b; font-weight:600;">Usthad Academy Ops Engine</p>
+                             <p style="margin:0; font-size:11px; color:#94a3b8;">This is an automated system report. Please do not reply directly to this message.</p>
+                         </td>
+                     </tr>
+                 </table>
+             </td>
+         </tr>
+     </table>
+ </body>
+ </html>
+         `;
+ 
+         // 8. Send Email using Resend with direct HTML table body content
+         const recipients = ["ceo@usthadacademy.com", "saleemsaquafi@gmail.com"];
+         const emailResponse = await resend.emails.send({
+             from: "Usthad Academy Reports <reports@mail.usthadacademy.com>",
+             to: recipients,
+             subject: `[Usthad Academy] Monthly Executive Operational Brief - ${monthNameString}`,
+             html: htmlContent,
+         });
 
         if (emailResponse.error) {
             console.error("[SendCeoReport] Resend send error:", emailResponse.error);
