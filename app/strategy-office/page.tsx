@@ -1202,21 +1202,6 @@ export default function StrategyOfficePage() {
                                 </div>
 
                                 {(() => {
-                                    const now = new Date();
-                                    const currentYear = now.getFullYear();
-                                    const currentMonth = now.getMonth() + 1;
-                                    const isFutureMonth = currentPlannerYear > currentYear || (currentPlannerYear === currentYear && currentPlannerMonth > currentMonth);
-
-                                    if (isFutureMonth) {
-                                        return (
-                                            <div className="flex flex-col items-center justify-center py-16 text-center text-slate-400">
-                                                <AlertTriangle className="w-8 h-8 text-amber-500 mb-2 animate-pulse" />
-                                                <h4 className="text-sm font-black uppercase text-slate-800 font-Outfit">Future Planner Locked</h4>
-                                                <p className="text-xs text-slate-500 mt-1 max-w-[280px]">You can only plan months up to the current active month ({getMonthName(currentMonth)} {currentYear}).</p>
-                                            </div>
-                                        );
-                                    }
-
                                     if (!monthlyPlan) {
                                         return <div className="text-xs text-slate-400 text-center py-10 uppercase">Loading Month Details...</div>;
                                     }
@@ -1235,7 +1220,7 @@ export default function StrategyOfficePage() {
                                                     )}
                                                     <span className="text-[10px] text-slate-400">
                                                         {isLocked 
-                                                            ? "Editable only for completion progress and audit comments." 
+                                                            ? "Editable only for audit comments." 
                                                             : "Fill out planning details below and lock to begin execution tracking."}
                                                     </span>
                                                 </div>
@@ -1363,24 +1348,6 @@ export default function StrategyOfficePage() {
                                                     )}
                                                 </div>
 
-                                                {/* Completion slider (Visible ONLY when locked) */}
-                                                {isLocked && (
-                                                    <div className="flex flex-col gap-1.5 md:col-span-2 animate-fadeIn">
-                                                        <div className="flex justify-between items-center mb-1">
-                                                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Completion Target</label>
-                                                            <span className="text-xs font-black text-[#E86123]">{monthlyPlan.completion}%</span>
-                                                        </div>
-                                                        <input
-                                                            type="range"
-                                                            min="0"
-                                                            max="100"
-                                                            value={monthlyPlan.completion || 0}
-                                                            onChange={(e) => saveMonthlyPlanField("completion", parseInt(e.target.value))}
-                                                            className="w-full accent-[#E86123]"
-                                                        />
-                                                    </div>
-                                                )}
-
                                                 {/* Performance Audit (Visible ONLY when locked) */}
                                                 {isLocked && (
                                                     <div className="md:col-span-2 border-t border-slate-100 pt-6 flex flex-col gap-3 animate-fadeIn">
@@ -1422,13 +1389,6 @@ export default function StrategyOfficePage() {
                                         onChange={(e) => setAnnualVision(e.target.value)}
                                         className="text-xs font-bold text-slate-800 bg-transparent border-none focus:outline-none py-1 resize-none"
                                     />
-                                    <div className="border-t border-slate-200 pt-3 mt-1 flex justify-between items-center">
-                                        <span className="text-[9px] font-bold text-slate-400 uppercase">Annual Completion Rate</span>
-                                        <span className="text-xs font-black text-indigo-900">{annualCompletionRate}%</span>
-                                    </div>
-                                    <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                                        <div className="bg-[#E86123] h-full" style={{ width: `${annualCompletionRate}%` }}></div>
-                                    </div>
                                 </div>
 
                                 {/* 12 Months Navigation Timeline */}
@@ -1436,7 +1396,6 @@ export default function StrategyOfficePage() {
                                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Timeline Index</span>
                                     {Array.from({ length: 12 }, (_, index) => {
                                         const mIndex = index + 1;
-                                        const mPlan = allYearPlans.find(p => p.month === mIndex);
                                         const isSelected = currentPlannerMonth === mIndex;
                                         return (
                                             <div 
@@ -1445,19 +1404,13 @@ export default function StrategyOfficePage() {
                                                     setCurrentPlannerMonth(mIndex);
                                                     fetchMonthlyPlan(profile?.id || "", mIndex, currentPlannerYear);
                                                 }}
-                                                className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
+                                                className={`flex items-center justify-start p-3 rounded-xl border cursor-pointer transition-all ${
                                                     isSelected 
                                                         ? "border-[#E86123] bg-[#E86123]/5" 
                                                         : "border-slate-100 hover:border-slate-200 hover:bg-slate-50"
                                                 }`}
                                             >
                                                 <span className={`text-xs font-black uppercase ${isSelected ? "text-[#E86123]" : "text-slate-700"}`}>{getMonthName(mIndex)}</span>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-[10px] font-bold text-slate-400">{mPlan?.completion || 0}%</span>
-                                                    <div className="w-12 bg-slate-100 h-1 rounded-full overflow-hidden">
-                                                        <div className="bg-[#E86123]/60 h-full" style={{ width: `${mPlan?.completion || 0}%` }}></div>
-                                                    </div>
-                                                </div>
                                             </div>
                                         );
                                     })}

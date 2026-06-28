@@ -15,7 +15,6 @@ import {
     Plus,
     Calendar,
     MessageSquare,
-    FileText,
     Compass,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -77,11 +76,6 @@ const middleNavItems: NavItem[] = [
         label: "Executive Inbox",
         icon: Mail,
     },
-    {
-        id: "monthly-reports",
-        label: "Monthly Reports",
-        icon: FileText,
-    },
 ];
 
 interface CEOSidebarProps {
@@ -120,8 +114,6 @@ export function CEOSidebar({
             router.push("/ceo/financial-intelligence");
         } else if (id === "sales-intelligence") {
             router.push("/ceo/sales");
-        } else if (id === "monthly-reports") {
-            router.push("/ceo/monthly-reports");
         } else if (id === "strategy-office") {
             router.push("/strategy-office");
         } else if (id === "command-center") {

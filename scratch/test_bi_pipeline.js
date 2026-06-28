@@ -128,9 +128,7 @@ async function runTests() {
                 console.error("❌ Stage 1 Execution failed:", res.message);
             }
         } else {
-            console.log("ℹ️ TS modules not compiled yet. End-to-end pipeline execution is ready to be tested directly on the live Admin Dashboard at:");
-            console.log("   http://localhost:3000/ceo/monthly-reports");
-            console.log("   (Or after pushing to dashboard.usthadacademy.com)\n");
+            console.log("ℹ️ TS modules not compiled yet.\n");
         }
 
         console.log("====================================================");
