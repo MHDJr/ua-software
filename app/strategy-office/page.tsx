@@ -65,6 +65,7 @@ interface MonthlyPlan {
     notes: string;
     completion: number;
     is_locked?: boolean;
+    is_audit_locked?: boolean;
 }
 
 interface StrategicProject {
@@ -300,7 +301,8 @@ export default function StrategyOfficePage() {
                     challenges: "",
                     notes: "",
                     completion: 0,
-                    is_locked: false
+                    is_locked: false,
+                    is_audit_locked: false
                 });
             }
         } catch (e: any) {
@@ -309,7 +311,7 @@ export default function StrategyOfficePage() {
     }, []);
 
     // Save Monthly Plan (Auto-save, debounced)
-    const saveMonthlyPlanField = async (field: keyof MonthlyPlan, value: any) => {
+        const saveMonthlyPlanField = async (field: keyof MonthlyPlan, value: any) => {
         if (!profile?.id || !monthlyPlan) return;
         
         const updated = { ...monthlyPlan, [field]: value };
@@ -329,7 +331,8 @@ export default function StrategyOfficePage() {
                 challenges: updated.challenges,
                 notes: updated.notes,
                 completion: updated.completion,
-                is_locked: updated.is_locked
+                is_locked: updated.is_locked,
+                is_audit_locked: updated.is_audit_locked
             };
 
             await supabase
@@ -1246,7 +1249,7 @@ export default function StrategyOfficePage() {
                                                 <div className="flex flex-col gap-1.5 md:col-span-2">
                                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Main Objective</label>
                                                     {isLocked ? (
-                                                        <div className="bg-slate-50/30 p-3 rounded-xl border border-slate-100 text-xs font-bold text-slate-800">{monthlyPlan.objective || "No objective registered"}</div>
+                                                        <div className="bg-slate-50/30 p-3 rounded-xl border border-slate-100 text-xs font-black text-slate-950">{monthlyPlan.objective || "No objective registered"}</div>
                                                     ) : (
                                                         <textarea
                                                             rows={2}
@@ -1262,7 +1265,7 @@ export default function StrategyOfficePage() {
                                                 <div className="flex flex-col gap-1.5">
                                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Marketing Goals</label>
                                                     {isLocked ? (
-                                                        <div className="bg-slate-50/30 p-3 rounded-xl border border-slate-100 text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">{monthlyPlan.marketing || "Not defined"}</div>
+                                                        <div className="bg-slate-50/30 p-3 rounded-xl border border-slate-100 text-xs font-black text-slate-950 leading-relaxed whitespace-pre-wrap">{monthlyPlan.marketing || "Not defined"}</div>
                                                     ) : (
                                                         <textarea
                                                             rows={3}
@@ -1277,7 +1280,7 @@ export default function StrategyOfficePage() {
                                                 <div className="flex flex-col gap-1.5">
                                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Academic Goals</label>
                                                     {isLocked ? (
-                                                        <div className="bg-slate-50/30 p-3 rounded-xl border border-slate-100 text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">{monthlyPlan.academics || "Not defined"}</div>
+                                                        <div className="bg-slate-50/30 p-3 rounded-xl border border-slate-100 text-xs font-black text-slate-950 leading-relaxed whitespace-pre-wrap">{monthlyPlan.academics || "Not defined"}</div>
                                                     ) : (
                                                         <textarea
                                                             rows={3}
@@ -1292,7 +1295,7 @@ export default function StrategyOfficePage() {
                                                 <div className="flex flex-col gap-1.5">
                                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Operational Goals</label>
                                                     {isLocked ? (
-                                                        <div className="bg-slate-50/30 p-3 rounded-xl border border-slate-100 text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">{monthlyPlan.operations || "Not defined"}</div>
+                                                        <div className="bg-slate-50/30 p-3 rounded-xl border border-slate-100 text-xs font-black text-slate-950 leading-relaxed whitespace-pre-wrap">{monthlyPlan.operations || "Not defined"}</div>
                                                     ) : (
                                                         <textarea
                                                             rows={3}
@@ -1307,7 +1310,7 @@ export default function StrategyOfficePage() {
                                                 <div className="flex flex-col gap-1.5">
                                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Financial Goals</label>
                                                     {isLocked ? (
-                                                        <div className="bg-slate-50/30 p-3 rounded-xl border border-slate-100 text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">{monthlyPlan.finance || "Not defined"}</div>
+                                                        <div className="bg-slate-50/30 p-3 rounded-xl border border-slate-100 text-xs font-black text-slate-950 leading-relaxed whitespace-pre-wrap">{monthlyPlan.finance || "Not defined"}</div>
                                                     ) : (
                                                         <textarea
                                                             rows={3}
@@ -1322,7 +1325,7 @@ export default function StrategyOfficePage() {
                                                 <div className="flex flex-col gap-1.5">
                                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Important Events</label>
                                                     {isLocked ? (
-                                                        <div className="bg-slate-50/30 p-3 rounded-xl border border-slate-100 text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">{monthlyPlan.events || "Not defined"}</div>
+                                                        <div className="bg-slate-50/30 p-3 rounded-xl border border-slate-100 text-xs font-black text-slate-950 leading-relaxed whitespace-pre-wrap">{monthlyPlan.events || "Not defined"}</div>
                                                     ) : (
                                                         <textarea
                                                             rows={2}
@@ -1337,7 +1340,7 @@ export default function StrategyOfficePage() {
                                                 <div className="flex flex-col gap-1.5">
                                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Challenges</label>
                                                     {isLocked ? (
-                                                        <div className="bg-slate-50/30 p-3 rounded-xl border border-slate-100 text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">{monthlyPlan.challenges || "Not defined"}</div>
+                                                        <div className="bg-slate-50/30 p-3 rounded-xl border border-slate-100 text-xs font-black text-slate-950 leading-relaxed whitespace-pre-wrap">{monthlyPlan.challenges || "Not defined"}</div>
                                                     ) : (
                                                         <textarea
                                                             rows={2}
@@ -1351,19 +1354,42 @@ export default function StrategyOfficePage() {
                                                 {/* Performance Audit (Visible ONLY when locked) */}
                                                 {isLocked && (
                                                     <div className="md:col-span-2 border-t border-slate-100 pt-6 flex flex-col gap-3 animate-fadeIn">
-                                                        <div className="flex items-center gap-1.5 text-[#E86123]">
-                                                            <Star className="w-4 h-4 fill-[#E86123]" />
-                                                            <h4 className="text-xs font-black uppercase tracking-wider font-Outfit">Monthly Performance Audit</h4>
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-1.5 text-[#E86123]">
+                                                                <Star className="w-4 h-4 fill-[#E86123]" />
+                                                                <h4 className="text-xs font-black uppercase tracking-wider font-Outfit">Monthly Performance Audit</h4>
+                                                            </div>
+                                                            {monthlyPlan.is_audit_locked ? (
+                                                                <button
+                                                                    onClick={() => saveMonthlyPlanField("is_audit_locked", false)}
+                                                                    className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all"
+                                                                >
+                                                                    <Unlock className="w-3 h-3"/> Edit Audit
+                                                                </button>
+                                                            ) : (
+                                                                <button
+                                                                    onClick={() => saveMonthlyPlanField("is_audit_locked", true)}
+                                                                    className="flex items-center gap-1 px-3 py-1.5 bg-[#E86123] hover:bg-[#d05018] text-white text-[10px] font-black uppercase tracking-wider rounded-xl transition-all shadow-sm"
+                                                                >
+                                                                    <Lock className="w-3 h-3"/> Save Audit
+                                                                </button>
+                                                            )}
                                                         </div>
                                                         <div className="flex flex-col gap-1.5">
                                                             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Achievements, Failures & Lessons</label>
-                                                            <textarea
-                                                                rows={3}
-                                                                value={monthlyPlan.notes || ""}
-                                                                onChange={(e) => saveMonthlyPlanField("notes", e.target.value)}
-                                                                placeholder="Document wins, learnings, failures, and growth ideas discovered..."
-                                                                className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl p-3 focus:outline-none focus:border-[#E86123] transition-all resize-none"
-                                                            />
+                                                            {monthlyPlan.is_audit_locked ? (
+                                                                <div className="bg-slate-50/30 p-3 rounded-xl border border-slate-100 text-xs font-black text-slate-950 leading-relaxed whitespace-pre-wrap">
+                                                                    {monthlyPlan.notes || "No audit comments registered."}
+                                                                </div>
+                                                            ) : (
+                                                                <textarea
+                                                                    rows={3}
+                                                                    value={monthlyPlan.notes || ""}
+                                                                    onChange={(e) => saveMonthlyPlanField("notes", e.target.value)}
+                                                                    placeholder="Document wins, learnings, failures, and growth ideas discovered..."
+                                                                    className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl p-3 focus:outline-none focus:border-[#E86123] transition-all resize-none"
+                                                                />
+                                                            )}
                                                         </div>
                                                     </div>
                                                 )}
