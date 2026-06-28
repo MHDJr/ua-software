@@ -2,7 +2,22 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { LayoutDashboard, Users, Mail, ChevronRight, ChevronLeft, TrendingUp, LogOut, Wallet, Brain, Plus, Calendar, MessageSquare, FileText } from "lucide-react";
+import {
+    LayoutDashboard,
+    Users,
+    Mail,
+    ChevronRight,
+    ChevronLeft,
+    TrendingUp,
+    LogOut,
+    Wallet,
+    Brain,
+    Plus,
+    Calendar,
+    MessageSquare,
+    FileText,
+    Compass,
+} from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn, isValidAvatarUrl } from "@/lib/utils";
 import { useBadgeCounts } from "@/hooks/use-badge-counts";
@@ -44,6 +59,11 @@ const topNavItems: NavItem[] = [
         label: "Sales Intel",
         icon: TrendingUp,
     },
+    {
+        id: "strategy-office",
+        label: "Strategy Office",
+        icon: Compass,
+    },
 ];
 
 const middleNavItems: NavItem[] = [
@@ -72,7 +92,13 @@ interface CEOSidebarProps {
     isCommsOpen?: boolean;
 }
 
-export function CEOSidebar({ activeView, onMinimizedChange, onViewChange, unreadCommsCount, isCommsOpen }: CEOSidebarProps) {
+export function CEOSidebar({
+    activeView,
+    onMinimizedChange,
+    onViewChange,
+    unreadCommsCount,
+    isCommsOpen,
+}: CEOSidebarProps) {
     const [isMinimized, setIsMinimized] = useState(true);
     const [hoveredItem, setHoveredItem] = useState<string | null>(null);
     const { badgeCounts } = useBadgeCounts();
@@ -96,6 +122,8 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange, unread
             router.push("/ceo/sales");
         } else if (id === "monthly-reports") {
             router.push("/ceo/monthly-reports");
+        } else if (id === "strategy-office") {
+            router.push("/strategy-office");
         } else if (id === "command-center") {
             if (onViewChange) {
                 onViewChange(id);
@@ -110,7 +138,6 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange, unread
             }
         }
     };
-
     const handleLogout = async () => {
         try {
             await supabase.auth.signOut();
@@ -125,9 +152,14 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange, unread
         const isHovered = hoveredItem === item.id;
         const Icon = item.icon;
 
-        const badgeCount = (item.id === "staff-management") ? badgeCounts.pendingRequests : 
-                           (item.id === "inbox") ? badgeCounts.unreadNotifications : 
-                           (item.id === "comms") ? (unreadCommsCount ?? 0) : 0;
+        const badgeCount =
+            item.id === "staff-management"
+                ? badgeCounts.pendingRequests
+                : item.id === "inbox"
+                  ? badgeCounts.unreadNotifications
+                  : item.id === "comms"
+                    ? (unreadCommsCount ?? 0)
+                    : 0;
 
         return (
             <li key={item.id}>
@@ -137,32 +169,37 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange, unread
                     onMouseLeave={() => setHoveredItem(null)}
                     className={cn(
                         "w-full flex items-center gap-3 transition-all duration-500 group relative",
-                        isMinimized ? "justify-center px-0 py-4" : "px-4 py-4 rounded-2xl",
-                        isActive 
-                            ? "bg-gradient-to-r from-[#31267D]/15 to-transparent text-[#31267D]" 
-                            : isHovered 
-                                ? "bg-[#31267D]/5 text-[#31267D]" 
-                                : "text-[var(--theme-text-40)] hover:text-[#31267D]"
+                        isMinimized
+                            ? "justify-center px-0 py-4"
+                            : "px-4 py-4 rounded-2xl",
+                        isActive
+                            ? "bg-gradient-to-r from-[#31267D]/15 to-transparent text-[#31267D]"
+                            : isHovered
+                              ? "bg-[#31267D]/5 text-[#31267D]"
+                              : "text-[var(--theme-text-40)] hover:text-[#31267D]",
                     )}
                     title={isMinimized ? item.label : undefined}
                 >
                     <div className="relative flex items-center justify-center">
                         {/* Cinematic Radial Backglow */}
                         {isActive && (
-                            <motion.div 
+                            <motion.div
                                 layoutId="backglow"
                                 className="absolute inset-[-12px] rounded-full opacity-100 z-0"
                                 style={{
-                                    background: 'radial-gradient(circle, rgba(49, 38, 125, 0.12) 0%, transparent 70%)',
-                                    filter: 'blur(4px)'
+                                    background:
+                                        "radial-gradient(circle, rgba(49, 38, 125, 0.12) 0%, transparent 70%)",
+                                    filter: "blur(4px)",
                                 }}
                             />
                         )}
-                        
+
                         <Icon
                             className={cn(
                                 "w-5 h-5 transition-all duration-500 relative z-10",
-                                isActive ? "text-[#31267D] scale-110" : "text-[var(--theme-text-30)] group-hover:text-[#31267D] group-hover:scale-110"
+                                isActive
+                                    ? "text-[#31267D] scale-110"
+                                    : "text-[var(--theme-text-30)] group-hover:text-[#31267D] group-hover:scale-110",
                             )}
                             strokeWidth={isActive ? 2.5 : 2}
                         />
@@ -180,7 +217,9 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange, unread
                         <span
                             className={cn(
                                 "text-[11px] font-black uppercase tracking-[0.15em] flex-1 text-left transition-all duration-500",
-                                isActive ? "text-[#31267D] translate-x-1" : "text-[var(--theme-text-40)] group-hover:text-[#31267D] group-hover:translate-x-1"
+                                isActive
+                                    ? "text-[#31267D] translate-x-1"
+                                    : "text-[var(--theme-text-40)] group-hover:text-[#31267D] group-hover:translate-x-1",
                             )}
                         >
                             {item.label}
@@ -188,9 +227,7 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange, unread
                     )}
 
                     {badgeCount > 0 && !isMinimized && (
-                        <span
-                            className="flex items-center justify-center px-1.5 py-0.5 rounded-full text-[9px] font-black bg-orange-500 text-white shadow-lg shadow-orange-500/20 animate-subtle-slide-up"
-                        >
+                        <span className="flex items-center justify-center px-1.5 py-0.5 rounded-full text-[9px] font-black bg-orange-500 text-white shadow-lg shadow-orange-500/20 animate-subtle-slide-up">
                             {badgeCount > 99 ? "99+" : badgeCount}
                         </span>
                     )}
@@ -204,40 +241,46 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange, unread
             className={cn(
                 "fixed left-0 top-0 h-screen hidden md:flex flex-col z-50",
                 "sidebar-theme-transition",
-                "transition-all duration-700 ease-&lsqb;cubic-bezier(0.23,1,0.32,1)&rsqb;"
+                "transition-all duration-700 ease-&lsqb;cubic-bezier(0.23,1,0.32,1)&rsqb;",
             )}
-            style={{ 
+            style={{
                 width: isMinimized ? 80 : 260,
             }}
         >
             {/* Cinematic Glass Container - Borderless look with faint transparent white border */}
-            <div className={cn(
-                "absolute inset-y-4 left-4 right-0 rounded-l-[2.5rem] border-y border-l",
-                "border-white/50 dark:border-white/10",
-                "bg-white/40 dark:bg-black/10 backdrop-blur-2xl shadow-[40px_0_100px_rgba(0,0,0,0.05)]"
-            )} />
+            <div
+                className={cn(
+                    "absolute inset-y-4 left-4 right-0 rounded-l-[2.5rem] border-y border-l",
+                    "border-white/50 dark:border-white/10",
+                    "bg-white/40 dark:bg-black/10 backdrop-blur-2xl shadow-[40px_0_100px_rgba(0,0,0,0.05)]",
+                )}
+            />
 
             <div className="relative h-full flex flex-col py-10 overflow-hidden">
                 {/* Branding Section */}
-                <div className={cn(
-                    "pl-12 pr-8 mt-8 mb-12 transition-all duration-500",
-                    isMinimized && "px-4 flex justify-center mt-6"
-                )}>
+                <div
+                    className={cn(
+                        "pl-12 pr-8 mt-8 mb-12 transition-all duration-500",
+                        isMinimized && "px-4 flex justify-center mt-6",
+                    )}
+                >
                     <div className="relative group cursor-pointer">
-                        <div
-                            className="w-10 h-10 rounded-[1.25rem] flex items-center justify-center bg-white shadow-[0_10px_30px_rgba(49,38,125,0.15)] group-hover:shadow-[0_15px_40px_rgba(49,38,125,0.25)] transition-all duration-500 border border-indigo-50/50 overflow-hidden ring-4 ring-indigo-500/5"
-                        >
+                        <div className="w-10 h-10 rounded-[1.25rem] flex items-center justify-center bg-white shadow-[0_10px_30px_rgba(49,38,125,0.15)] group-hover:shadow-[0_15px_40px_rgba(49,38,125,0.25)] transition-all duration-500 border border-indigo-50/50 overflow-hidden ring-4 ring-indigo-500/5">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img 
-                                src="/images/usthadacademylogo2.svg" 
-                                alt="UA Logo" 
+                            <img
+                                src="/images/usthadacademylogo2.svg"
+                                alt="UA Logo"
                                 className="w-7 h-7 object-contain drop-shadow-[0_2px_4px_rgba(49,38,125,0.1)]"
                             />
                         </div>
                         {!isMinimized && (
                             <div className="absolute left-14 top-1/2 -translate-y-1/2 whitespace-nowrap">
-                                <h1 className="text-sm font-black uppercase tracking-[0.25em] text-[#31267D]">AcademyOS</h1>
-                                <p className="text-[7px] font-black uppercase tracking-[0.3em] text-[var(--theme-text-20)] mt-0.5">Strategic Command</p>
+                                <h1 className="text-sm font-black uppercase tracking-[0.25em] text-[#31267D]">
+                                    AcademyOS
+                                </h1>
+                                <p className="text-[7px] font-black uppercase tracking-[0.3em] text-[var(--theme-text-20)] mt-0.5">
+                                    Strategic Command
+                                </p>
                             </div>
                         )}
                     </div>
@@ -246,7 +289,17 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange, unread
                 {/* Primary Navigation - Top Group */}
                 <nav className="flex-1 px-8 space-y-2 overflow-y-auto custom-scrollbar">
                     <ul className="space-y-1">
-                        {topNavItems.map(renderNavItem)}
+                        {topNavItems
+                            .filter((item) => {
+                                if (item.id === "strategy-office") {
+                                    return (
+                                        profile?.role === "ceo" ||
+                                        userRole === "CEO"
+                                    );
+                                }
+                                return true;
+                            })
+                            .map(renderNavItem)}
                     </ul>
 
                     {/* Subtle Divider - Minimal Spacing */}
@@ -266,7 +319,9 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange, unread
                         onClick={handleToggleMinimized}
                         className={cn(
                             "w-full flex items-center transition-all duration-500 group",
-                            isMinimized ? "justify-center" : "gap-3 px-4 py-3 rounded-2xl hover:bg-[#31267D]/5"
+                            isMinimized
+                                ? "justify-center"
+                                : "gap-3 px-4 py-3 rounded-2xl hover:bg-[#31267D]/5",
                         )}
                     >
                         <div className="w-8 h-8 rounded-full bg-[#31267D]/5 flex items-center justify-center group-hover:bg-[#31267D]/10 group-hover:scale-110 transition-all duration-500">
@@ -277,13 +332,22 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange, unread
                             )}
                         </div>
                         {!isMinimized && (
-                            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--theme-text-30)] group-hover:text-[#31267D] transition-colors">Minimize Console</span>
+                            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--theme-text-30)] group-hover:text-[#31267D] transition-colors">
+                                Minimize Console
+                            </span>
                         )}
                     </button>
 
-                    {userRole === 'CEO' && (
-                        <div className={cn("px-1", isMinimized && "flex justify-center")}>
-                            <SystemSyncButton variant={isMinimized ? "icon" : "full"} />
+                    {userRole === "CEO" && (
+                        <div
+                            className={cn(
+                                "px-1",
+                                isMinimized && "flex justify-center",
+                            )}
+                        >
+                            <SystemSyncButton
+                                variant={isMinimized ? "icon" : "full"}
+                            />
                         </div>
                     )}
 
@@ -291,15 +355,19 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange, unread
                         <div className="flex flex-col gap-2">
                             {isMinimized ? (
                                 <div className="flex flex-col gap-2 items-center">
-                                    <button 
-                                        onClick={() => setIsLeaveModalOpen(true)}
+                                    <button
+                                        onClick={() =>
+                                            setIsLeaveModalOpen(true)
+                                        }
                                         className="w-8 h-8 rounded-full bg-[#31267D]/10 hover:bg-[#31267D]/20 text-[#31267D] flex items-center justify-center transition-all duration-300 hover:scale-105"
                                         title="Request Leave"
                                     >
                                         <Calendar className="w-4 h-4" />
                                     </button>
-                                    <button 
-                                        onClick={() => setIsRequestModalOpen(true)}
+                                    <button
+                                        onClick={() =>
+                                            setIsRequestModalOpen(true)
+                                        }
                                         className="w-8 h-8 rounded-full bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 flex items-center justify-center transition-all duration-300 hover:scale-105"
                                         title="New Request"
                                     >
@@ -308,15 +376,19 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange, unread
                                 </div>
                             ) : (
                                 <div className="flex flex-col gap-2">
-                                    <button 
-                                        onClick={() => setIsLeaveModalOpen(true)}
+                                    <button
+                                        onClick={() =>
+                                            setIsLeaveModalOpen(true)
+                                        }
                                         className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-[#31267D]/5 hover:bg-[#31267D]/10 text-[#31267D] text-[9px] font-black uppercase tracking-widest transition-all duration-300"
                                     >
                                         <Calendar className="w-3.5 h-3.5" />
                                         Request Leave
                                     </button>
-                                    <button 
-                                        onClick={() => setIsRequestModalOpen(true)}
+                                    <button
+                                        onClick={() =>
+                                            setIsRequestModalOpen(true)
+                                        }
                                         className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white text-[9px] font-black uppercase tracking-widest shadow-lg shadow-orange-500/20 transition-all duration-300"
                                     >
                                         <Plus className="w-3.5 h-3.5" />
@@ -332,47 +404,68 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange, unread
                             onClick={handleLogout}
                             className={cn(
                                 "w-full flex items-center transition-all duration-500 group",
-                                isMinimized ? "justify-center py-3" : "gap-3 px-4 py-3 rounded-2xl hover:bg-red-50"
+                                isMinimized
+                                    ? "justify-center py-3"
+                                    : "gap-3 px-4 py-3 rounded-2xl hover:bg-red-50",
                             )}
                         >
-                            <LogOut className="w-5 h-5 text-red-400 group-hover:text-red-600 transition-all duration-500" strokeWidth={2} />
+                            <LogOut
+                                className="w-5 h-5 text-red-400 group-hover:text-red-600 transition-all duration-500"
+                                strokeWidth={2}
+                            />
                             {!isMinimized && (
-                                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-red-400 group-hover:text-red-600">Terminate</span>
+                                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-red-400 group-hover:text-red-600">
+                                    Terminate
+                                </span>
                             )}
                         </button>
 
-                        <div 
+                        <div
                             onClick={() => setIsProfileModalOpen(true)}
                             className={cn(
                                 "flex items-center transition-all duration-700 cursor-pointer hover:bg-[#31267D]/5 dark:hover:bg-zinc-800/30",
-                                isMinimized ? "justify-center py-4" : "gap-3 p-2 bg-[#31267D]/[0.03] rounded-[1.75rem] border border-[#31267D]/5"
+                                isMinimized
+                                    ? "justify-center py-4"
+                                    : "gap-3 p-2 bg-[#31267D]/[0.03] rounded-[1.75rem] border border-[#31267D]/5",
                             )}
                         >
                             <Avatar className="w-10 h-10 border-2 border-white shadow-xl flex-shrink-0 transition-transform duration-500 hover:scale-105">
-                                <AvatarImage src={
-                                    profile?.avatar_url && isValidAvatarUrl(profile.avatar_url)
-                                        ? profile.avatar_url
-                                        : (!profile?.avatar_url && userRole === 'CEO')
-                                            ? "/images/ceo.jpeg"
-                                            : undefined
-                                } />
+                                <AvatarImage
+                                    src={
+                                        profile?.avatar_url &&
+                                        isValidAvatarUrl(profile.avatar_url)
+                                            ? profile.avatar_url
+                                            : !profile?.avatar_url &&
+                                                userRole === "CEO"
+                                              ? "/images/ceo.jpeg"
+                                              : undefined
+                                    }
+                                />
                                 <AvatarFallback className="bg-[#31267D] text-white font-black text-xs">
-                                    {profile?.avatar_url && !isValidAvatarUrl(profile.avatar_url)
+                                    {profile?.avatar_url &&
+                                    !isValidAvatarUrl(profile.avatar_url)
                                         ? profile.avatar_url
-                                        : (profile?.full_name || 'U').split(' ').map(n => n[0]).join('')}
+                                        : (profile?.full_name || "U")
+                                              .split(" ")
+                                              .map((n) => n[0])
+                                              .join("")}
                                 </AvatarFallback>
                             </Avatar>
                             {!isMinimized && (
                                 <div className="flex-1 min-w-0">
-                                    <p className="text-[10px] font-black text-gray-900 truncate uppercase tracking-tighter">{profile?.full_name || 'Executive'}</p>
-                                    <p className="text-[8px] font-bold text-[#31267D] uppercase tracking-[0.1em] opacity-60">{userRole}</p>
+                                    <p className="text-[10px] font-black text-gray-900 truncate uppercase tracking-tighter">
+                                        {profile?.full_name || "Executive"}
+                                    </p>
+                                    <p className="text-[8px] font-bold text-[#31267D] uppercase tracking-[0.1em] opacity-60">
+                                        {userRole}
+                                    </p>
                                 </div>
                             )}
                         </div>
                     </div>
                 </div>
             </div>
-            
+
             {userRole !== "CEO" && (
                 <>
                     <LeaveRequestModal
@@ -387,7 +480,7 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange, unread
                     />
                 </>
             )}
-            
+
             <ProfileModal
                 isOpen={isProfileModalOpen}
                 onClose={() => setIsProfileModalOpen(false)}
