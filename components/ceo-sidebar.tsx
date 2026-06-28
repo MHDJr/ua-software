@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { LayoutDashboard, Users, Mail, ChevronRight, ChevronLeft, TrendingUp, LogOut, Wallet, Brain, Plus, Calendar, MessageSquare } from "lucide-react";
+import { LayoutDashboard, Users, Mail, ChevronRight, ChevronLeft, TrendingUp, LogOut, Wallet, Brain, Plus, Calendar, MessageSquare, FileText } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn, isValidAvatarUrl } from "@/lib/utils";
 import { useBadgeCounts } from "@/hooks/use-badge-counts";
@@ -57,6 +57,11 @@ const middleNavItems: NavItem[] = [
         label: "Executive Inbox",
         icon: Mail,
     },
+    {
+        id: "monthly-reports",
+        label: "Monthly Reports",
+        icon: FileText,
+    },
 ];
 
 interface CEOSidebarProps {
@@ -89,6 +94,8 @@ export function CEOSidebar({ activeView, onMinimizedChange, onViewChange, unread
             router.push("/ceo/financial-intelligence");
         } else if (id === "sales-intelligence") {
             router.push("/ceo/sales");
+        } else if (id === "monthly-reports") {
+            router.push("/ceo/monthly-reports");
         } else if (id === "command-center") {
             if (onViewChange) {
                 onViewChange(id);
