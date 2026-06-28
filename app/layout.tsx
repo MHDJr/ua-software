@@ -17,6 +17,8 @@ import { TabResiliencyEngine } from "@/components/tab-resiliency-engine";
 import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 import dynamic from "next/dynamic";
 
+import PushNotificationPromptModal from "@/components/PushNotificationPromptModal";
+
 const CommandBar = dynamic(() => import("@/components/command-bar"), {
     ssr: false,
 });
@@ -75,6 +77,7 @@ export default function RootLayout({
                                             {children}
                                             <MobileBottomNav />
                                             {process.env.NEXT_PUBLIC_ENABLE_V2_FEATURES === "true" && <CommandBar />}
+                                            <PushNotificationPromptModal />
                                         </TabResiliencyEngine>
                                         <Toaster
                                             position="top-right"

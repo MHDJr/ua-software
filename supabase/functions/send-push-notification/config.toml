@@ -1,0 +1,3 @@
+# Configuration file for send-push-notification Edge Function
+[functions.send-push-notification]
+verify_jwt = false
