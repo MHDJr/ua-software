@@ -6,7 +6,9 @@ const nextConfig = {
         ignoreDuringBuilds: true,
     },
     transpilePackages: ["@supabase/supabase-js"],
-    serverExternalPackages: ["pdfkit"],
+    experimental: {
+        serverComponentsExternalPackages: ["pdfkit"],
+    },
 };
 
 module.exports = nextConfig;

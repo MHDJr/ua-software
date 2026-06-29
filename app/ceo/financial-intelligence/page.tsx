@@ -789,6 +789,7 @@ export default function CEOFinancialIntelligence() {
     const [isDownloadingFinanceReport, setIsDownloadingFinanceReport] =
         useState(false);
     const [financePeriod, setFinancePeriod] = useState<"current" | "previous">("current");
+    const [isPeriodSelectionOpen, setIsPeriodSelectionOpen] = useState(false);
 
     useEffect(() => {
         if (
@@ -827,16 +828,17 @@ export default function CEOFinancialIntelligence() {
         img.src = "/images/usthadacademylogo2.svg";
     }, []);
 
-    const downloadMonthlyFinanceReport = async () => {
+    const downloadMonthlyFinanceReport = async (overridePeriod?: "current" | "previous") => {
         setIsDownloadingFinanceReport(true);
         toast.loading("Compiling Monthly Financial Audit Report...");
 
         try {
+            const periodToUse = overridePeriod || financePeriod;
             const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
             let targetYear = now.getFullYear();
             let targetMonth = now.getMonth() + 1; // 1-indexed
 
-            if (financePeriod === "previous") {
+            if (periodToUse === "previous") {
                 const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
                 targetYear = prevDate.getFullYear();
                 targetMonth = prevDate.getMonth() + 1;
@@ -1701,19 +1703,9 @@ export default function CEOFinancialIntelligence() {
                                     <Home className="w-4 h-4 md:w-5 md:h-5 text-[#ff4d00] group-hover:text-white transition-colors" />
                                 </button>
 
-                                {/* Report Period Selector */}
-                                <select
-                                    value={financePeriod}
-                                    onChange={(e) => setFinancePeriod(e.target.value as "current" | "previous")}
-                                    className="h-9 md:h-10 px-3 rounded-xl border border-zinc-200 bg-white font-bold text-xs md:text-sm text-zinc-700 outline-none hover:border-zinc-300 transition-all cursor-pointer flex-shrink-0"
-                                >
-                                    <option value="current">Current Month</option>
-                                    <option value="previous">Previous Month</option>
-                                </select>
-
                                 {/* Download Finance Report Button */}
                                 <button
-                                    onClick={downloadMonthlyFinanceReport}
+                                    onClick={() => setIsPeriodSelectionOpen(true)}
                                     disabled={isDownloadingFinanceReport}
                                     className="h-9 md:h-10 px-4 rounded-xl text-white font-bold text-xs md:text-sm flex items-center justify-center gap-2 active:scale-95 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                                     style={{
@@ -2426,6 +2418,77 @@ export default function CEOFinancialIntelligence() {
 
             {/* Mobile FAB */}
             <MobileFAB variant="default" />
+
+            {/* Period Selection Dialog */}
+            <Dialog open={isPeriodSelectionOpen} onOpenChange={setIsPeriodSelectionOpen}>
+                <DialogContent className="max-w-md bg-white border border-zinc-200 rounded-3xl shadow-2xl p-6 text-zinc-900 font-sans">
+                    <DialogHeader className="mb-4">
+                        <DialogTitle className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-2xl bg-[#31267D]/10 flex items-center justify-center">
+                                <FileText className="w-5 h-5 text-[#31267D]" />
+                            </div>
+                            <div>
+                                <h3 className="text-base font-black uppercase tracking-widest text-[#31267D]">Finance Report Period</h3>
+                                <p className="text-[9px] uppercase font-bold text-zinc-400 tracking-widest mt-0.5">Choose target month to compile</p>
+                            </div>
+                        </DialogTitle>
+                    </DialogHeader>
+                    
+                    <div className="space-y-4 my-4">
+                        <p className="text-xs text-zinc-500 font-medium leading-relaxed">
+                            Please select the reporting period for the financial audit PDF dossier compilation:
+                        </p>
+                        
+                        <div className="grid grid-cols-1 gap-3">
+                            <button
+                                onClick={() => {
+                                    setFinancePeriod("current");
+                                    setIsPeriodSelectionOpen(false);
+                                    setTimeout(() => {
+                                        downloadMonthlyFinanceReport("current");
+                                    }, 100);
+                                }}
+                                className="w-full p-4 rounded-2xl border border-zinc-200 hover:border-[#31267D] hover:bg-zinc-50 transition-all text-left flex items-center justify-between group active:scale-98"
+                            >
+                                <div>
+                                    <span className="text-sm font-bold text-zinc-800 group-hover:text-[#31267D] block">Current Month Ledger</span>
+                                    <span className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider block mt-0.5">
+                                        Period: {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                                    </span>
+                                </div>
+                                <div className="w-8 h-8 rounded-full bg-zinc-100 group-hover:bg-[#31267D]/10 flex items-center justify-center transition-all">
+                                    <FileText className="w-4 h-4 text-zinc-400 group-hover:text-[#31267D]" />
+                                </div>
+                            </button>
+
+                            <button
+                                onClick={() => {
+                                    setFinancePeriod("previous");
+                                    setIsPeriodSelectionOpen(false);
+                                    setTimeout(() => {
+                                        downloadMonthlyFinanceReport("previous");
+                                    }, 100);
+                                }}
+                                className="w-full p-4 rounded-2xl border border-zinc-200 hover:border-[#31267D] hover:bg-zinc-50 transition-all text-left flex items-center justify-between group active:scale-98"
+                            >
+                                <div>
+                                    <span className="text-sm font-bold text-zinc-800 group-hover:text-[#31267D] block">Previous Month Ledger</span>
+                                    <span className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider block mt-0.5">
+                                        Period: {(() => {
+                                            const d = new Date();
+                                            d.setMonth(d.getMonth() - 1);
+                                            return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+                                        })()}
+                                    </span>
+                                </div>
+                                <div className="w-8 h-8 rounded-full bg-zinc-100 group-hover:bg-[#31267D]/10 flex items-center justify-center transition-all">
+                                    <FileText className="w-4 h-4 text-zinc-400 group-hover:text-[#31267D]" />
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             {/* Set Academy Targets Modal */}
             <SetAcademyTargetsModal
