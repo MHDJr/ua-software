@@ -675,6 +675,7 @@ export default function FinanceManagerFinancialIntelligence() {
     const router = useRouter();
     const [logoPng, setLogoPng] = useState<string | null>(null);
     const [isDownloadingFinanceReport, setIsDownloadingFinanceReport] = useState(false);
+    const [financePeriod, setFinancePeriod] = useState<"current" | "previous">("current");
 
     useEffect(() => {
         if (!loading && (!user || !profile || (!profile.is_manager && profile.role !== "ceo" && profile.role !== "accounts"))) {
@@ -710,11 +711,26 @@ export default function FinanceManagerFinancialIntelligence() {
         toast.loading("Compiling Monthly Financial Audit Report...");
         
         try {
-            const currentMonthYYYYMM = new Date().toISOString().slice(0, 7); // YYYY-MM
+            const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+            let targetYear = now.getFullYear();
+            let targetMonth = now.getMonth() + 1; // 1-indexed
+
+            if (financePeriod === "previous") {
+                const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                targetYear = prevDate.getFullYear();
+                targetMonth = prevDate.getMonth() + 1;
+            }
+
+            const monthStr = String(targetMonth).padStart(2, "0");
+            const targetYYYYMM = `${targetYear}-${monthStr}`;
+            const startOfMonth = `${targetYYYYMM}-01`;
+            const endOfMonth = `${targetYYYYMM}-${new Date(targetYear, targetMonth, 0).getDate()}`;
+
             const { data: entries, error: fetchError } = await supabase
                 .from("financial_entries")
                 .select("*")
-                .gte("entry_date", `${currentMonthYYYYMM}-01`)
+                .gte("entry_date", startOfMonth)
+                .lte("entry_date", endOfMonth)
                 .order("entry_date", { ascending: false });
 
             if (fetchError) throw fetchError;
@@ -829,7 +845,8 @@ export default function FinanceManagerFinancialIntelligence() {
             doc.setTextColor(darkGray);
             doc.text("MONTHLY FINANCIAL AUDIT BRIEFING", 105, 96, { align: "center" });
 
-            const reportMonthName = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }).toUpperCase();
+            const reportDate = new Date(targetYear, targetMonth - 1, 1);
+            const reportMonthName = reportDate.toLocaleDateString("en-US", { month: "long", year: "numeric" }).toUpperCase();
             doc.setFont("helvetica", "bold");
             doc.setFontSize(11);
             doc.setTextColor(241, 77, 36);
@@ -1439,6 +1456,16 @@ export default function FinanceManagerFinancialIntelligence() {
                                 <span>Update Daily Finance</span>
                             </button>
  
+                             {/* Report Period Selector */}
+                             <select
+                                 value={financePeriod}
+                                 onChange={(e) => setFinancePeriod(e.target.value as "current" | "previous")}
+                                 className="h-9 md:h-10 px-3 rounded-xl border border-zinc-200 bg-white font-bold text-xs md:text-sm text-zinc-700 outline-none hover:border-zinc-300 transition-all cursor-pointer flex-shrink-0"
+                             >
+                                 <option value="current">Current Month</option>
+                                 <option value="previous">Previous Month</option>
+                             </select>
+
                              {/* Download Finance Report Button */}
                             <button
                                 onClick={downloadMonthlyFinanceReport}

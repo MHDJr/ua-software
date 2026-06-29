@@ -66,7 +66,14 @@ async function handleRequest(req: NextRequest) {
                 result = await BIReportService.runStage3(targetYear, targetMonth);
                 break;
             case 4:
-                result = await BIReportService.runStage4(targetYear, targetMonth);
+                // Stage 4: Archive and Cleanup.
+                // We keep data of the previous month intact. We only archive data after 2 months.
+                // So if targetMonth is June (1-indexed, i.e., 1 month ago), we calculate 2 months ago (May).
+                const archiveDate = new Date(nowIST);
+                archiveDate.setMonth(archiveDate.getMonth() - 2);
+                const archiveYear = archiveDate.getFullYear();
+                const archiveMonth = archiveDate.getMonth() + 1;
+                result = await BIReportService.runStage4(archiveYear, archiveMonth);
                 break;
             default:
                 return NextResponse.json({ error: "Invalid stage." }, { status: 400 });

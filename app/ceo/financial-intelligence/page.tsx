@@ -788,6 +788,7 @@ export default function CEOFinancialIntelligence() {
     const [logoPng, setLogoPng] = useState<string | null>(null);
     const [isDownloadingFinanceReport, setIsDownloadingFinanceReport] =
         useState(false);
+    const [financePeriod, setFinancePeriod] = useState<"current" | "previous">("current");
 
     useEffect(() => {
         if (
@@ -831,11 +832,26 @@ export default function CEOFinancialIntelligence() {
         toast.loading("Compiling Monthly Financial Audit Report...");
 
         try {
-            const currentMonthYYYYMM = new Date().toISOString().slice(0, 7); // YYYY-MM
+            const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+            let targetYear = now.getFullYear();
+            let targetMonth = now.getMonth() + 1; // 1-indexed
+
+            if (financePeriod === "previous") {
+                const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                targetYear = prevDate.getFullYear();
+                targetMonth = prevDate.getMonth() + 1;
+            }
+
+            const monthStr = String(targetMonth).padStart(2, "0");
+            const targetYYYYMM = `${targetYear}-${monthStr}`;
+            const startOfMonth = `${targetYYYYMM}-01`;
+            const endOfMonth = `${targetYYYYMM}-${new Date(targetYear, targetMonth, 0).getDate()}`;
+
             const { data: entries, error: fetchError } = await supabase
                 .from("financial_entries")
                 .select("*")
-                .gte("entry_date", `${currentMonthYYYYMM}-01`)
+                .gte("entry_date", startOfMonth)
+                .lte("entry_date", endOfMonth)
                 .order("entry_date", { ascending: false });
 
             if (fetchError) throw fetchError;
@@ -962,7 +978,8 @@ export default function CEOFinancialIntelligence() {
                 align: "center",
             });
 
-            const reportMonthName = new Date()
+            const reportDate = new Date(targetYear, targetMonth - 1, 1);
+            const reportMonthName = reportDate
                 .toLocaleDateString("en-US", { month: "long", year: "numeric" })
                 .toUpperCase();
             doc.setFont("helvetica", "bold");
@@ -1683,6 +1700,16 @@ export default function CEOFinancialIntelligence() {
                                 >
                                     <Home className="w-4 h-4 md:w-5 md:h-5 text-[#ff4d00] group-hover:text-white transition-colors" />
                                 </button>
+
+                                {/* Report Period Selector */}
+                                <select
+                                    value={financePeriod}
+                                    onChange={(e) => setFinancePeriod(e.target.value as "current" | "previous")}
+                                    className="h-9 md:h-10 px-3 rounded-xl border border-zinc-200 bg-white font-bold text-xs md:text-sm text-zinc-700 outline-none hover:border-zinc-300 transition-all cursor-pointer flex-shrink-0"
+                                >
+                                    <option value="current">Current Month</option>
+                                    <option value="previous">Previous Month</option>
+                                </select>
 
                                 {/* Download Finance Report Button */}
                                 <button

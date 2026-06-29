@@ -118,42 +118,308 @@ export function StaffManagement() {
     const [isDownloadingOperationsReport, setIsDownloadingOperationsReport] = useState(false);
     const [isDownloadingLeavesReport, setIsDownloadingLeavesReport] = useState(false);
 
-    const downloadTaskReport = async (period: "weekly" | "monthly", targetStaffId?: string) => {
+    const [selectedPeriod, setSelectedPeriod] = useState<'current' | 'previous'>('current');
+    const [reportTasks, setReportTasks] = useState<any[]>([]);
+    const [reportLeaves, setReportLeaves] = useState<any[]>([]);
+    const [isLoadingReportData, setIsLoadingReportData] = useState(false);
+
+    const getPeriodDates = (period: 'current' | 'previous') => {
+        const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+        if (period === 'current') {
+            const start = new Date(now.getFullYear(), now.getMonth(), 1);
+            const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+            return { start, end, monthName: now.toLocaleDateString("en-US", { month: "long", year: "numeric" }) };
+        } else {
+            const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            const end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+            const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            return { start, end, monthName: prevMonthDate.toLocaleDateString("en-US", { month: "long", year: "numeric" }) };
+        }
+    };
+
+    useEffect(() => {
+        if (!isReportsCenterOpen) return;
+
+        const loadReportData = async () => {
+            setIsLoadingReportData(true);
+            try {
+                const { start, end } = getPeriodDates(selectedPeriod);
+                
+                // Fetch tasks for the period
+                const { data: tasksData, error: tasksError } = await supabase
+                    .from("tasks")
+                    .select("*")
+                    .gte("created_at", start.toISOString())
+                    .lte("created_at", end.toISOString());
+                
+                if (tasksError) throw tasksError;
+
+                // Fetch leaves for the period
+                const { data: leavesData, error: leavesError } = await supabase
+                    .from("requests")
+                    .select("*, submitted_by:profiles!submitted_by(id, full_name, username, role, department)")
+                    .eq("type", "leave")
+                    .gte("created_at", start.toISOString())
+                    .lte("created_at", end.toISOString());
+                
+                if (leavesError) throw leavesError;
+
+                setReportTasks(tasksData || []);
+                setReportLeaves(leavesData || []);
+            } catch (err) {
+                console.error("Error loading reports center data:", err);
+            } finally {
+                setIsLoadingReportData(false);
+            }
+        };
+
+        loadReportData();
+    }, [isReportsCenterOpen, selectedPeriod]);
+
+        const downloadTaskReport = async (period: "weekly" | "monthly", targetStaffId?: string) => {
+        if (targetStaffId) {
+            const staff = staffProfiles.find(s => s.id === targetStaffId);
+            if (staff) {
+                downloadPdfReport(staff, false);
+                return;
+            }
+        }
+
         const idTag = targetStaffId || "general";
         setExporting(idTag);
         toast.loading(`Compiling task logs for ${period} performance report...`);
         
         try {
-            const url = new URL("/api/reports/tasks", window.location.origin);
-            url.searchParams.set("period", period);
-            if (targetStaffId) {
-                url.searchParams.set("staffId", targetStaffId);
+            const { monthName } = getPeriodDates(selectedPeriod);
+            const periodTasks = reportTasks;
+
+            const doc = new jsPDF({
+                orientation: "portrait",
+                unit: "mm",
+                format: "a4"
+            });
+
+            const primaryColor = "#31267D"; // Usthad Navy
+            const secondaryColor = "#F14D24"; // Usthad Orange
+            const darkGray = "#1F2937";
+            const lightGray = "#4B5563";
+
+            // Draw Header
+            const drawHeader = (d: jsPDF, pageNum: number) => {
+                d.setFillColor(49, 38, 125); // #31267D
+                d.rect(0, 0, 210, 35, "F");
+
+                // Logo
+                d.setFillColor(255, 255, 255);
+                d.rect(14, 8, 18, 18, "F");
+                if (logoPng) {
+                    try {
+                        d.addImage(logoPng, 'PNG', 15.5, 9.5, 15, 15);
+                    } catch (e) {
+                        d.setFillColor(241, 77, 36);
+                        d.rect(16, 10, 14, 14, "F");
+                        d.setTextColor(255, 255, 255);
+                        d.setFont("helvetica", "bold");
+                        d.setFontSize(10);
+                        d.text("UA", 19, 19);
+                    }
+                } else {
+                    d.setFillColor(241, 77, 36);
+                    d.rect(16, 10, 14, 14, "F");
+                    d.setTextColor(255, 255, 255);
+                    d.setFont("helvetica", "bold");
+                    d.setFontSize(10);
+                    d.text("UA", 19, 19);
+                }
+
+                d.setTextColor(255, 255, 255);
+                d.setFont("helvetica", "bold");
+                d.setFontSize(15);
+                d.text("USTHAD ACADEMY", 38, 16);
+                d.setFont("helvetica", "normal");
+                d.setFontSize(8);
+                d.text(`COMMAND CENTER OS • ACADEMY PERFORMANCE REPORT (${monthName.toUpperCase()})`, 38, 22);
+
+                const dateStr = new Date().toLocaleDateString("en-IN", {
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric"
+                });
+                d.setFontSize(8);
+                d.setTextColor(200, 200, 200);
+                d.text(`Report Date: ${dateStr}`, 155, 29);
+                
+                if (pageNum > 1) {
+                    d.text(`Page ${pageNum}`, 190, 15);
+                }
+
+                d.setFillColor(241, 77, 36);
+                d.rect(15, 42, 180, 0.5, "F");
+            };
+
+            drawHeader(doc, 1);
+            let yPos = 48;
+
+            // Title
+            doc.setTextColor(primaryColor);
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(12);
+            doc.text("EXECUTIVE PERFORMANCE BRIEFING", 15, yPos);
+            doc.setFillColor(secondaryColor);
+            doc.rect(15, yPos + 2, 45, 1, "F");
+            yPos += 10;
+
+            // Summary Stats Cards
+            const totalAssigned = periodTasks.length;
+            const totalCompleted = periodTasks.filter(t => t.status === "completed" || t.status === "COMPLETED").length;
+            const yieldRate = totalAssigned > 0 ? Math.round((totalCompleted / totalAssigned) * 100) : 100;
+
+            doc.setFillColor(249, 250, 251);
+            doc.roundedRect(15, yPos, 55, 20, 2, 2, "F");
+            doc.roundedRect(77, yPos, 55, 20, 2, 2, "F");
+            doc.roundedRect(140, yPos, 55, 20, 2, 2, "F");
+
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(7);
+            doc.setTextColor(lightGray);
+            doc.text("TOTAL ASSIGNED DIRECTIVES", 18, yPos + 6);
+            doc.text("COMPLETED DIRECTIVES", 80, yPos + 6);
+            doc.text("OPERATIONAL VELOCITY", 143, yPos + 6);
+
+            doc.setFontSize(12);
+            doc.setTextColor(darkGray);
+            doc.text(String(totalAssigned), 18, yPos + 14);
+            doc.setTextColor(16, 185, 129); // emerald
+            doc.text(String(totalCompleted), 80, yPos + 14);
+            doc.setTextColor(primaryColor);
+            doc.text(`${yieldRate}% Yield`, 143, yPos + 14);
+
+            yPos += 28;
+
+            // Employee of the Month Highlight
+            if (employeeOfTheMonth) {
+                doc.setFillColor(31, 41, 55); // Dark Slate
+                doc.roundedRect(15, yPos, 180, 25, 3, 3, "F");
+
+                doc.setTextColor(255, 255, 255);
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(9);
+                doc.text("EMPLOYEE OF THE MONTH HIGHLIGHT", 20, yPos + 7);
+
+                doc.setFontSize(12);
+                doc.text(employeeOfTheMonth.name.toUpperCase(), 20, yPos + 16);
+                
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(8.5);
+                doc.setTextColor(209, 213, 219);
+                doc.text(`${employeeOfTheMonth.role} • ${employeeOfTheMonth.department}`, 20, yPos + 21);
+
+                // Stats block in highlight
+                doc.setFillColor(255, 255, 255, 0.1);
+                doc.roundedRect(135, yPos + 4, 55, 17, 2, 2, "F");
+                doc.setTextColor(255, 255, 255);
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(7.5);
+                doc.text("TASKS COMPLETED", 139, yPos + 9);
+                doc.setFontSize(10.5);
+                const staffYield = employeeOfTheMonth.tasksTotal > 0 ? Math.round((employeeOfTheMonth.tasksCompleted / employeeOfTheMonth.tasksTotal) * 100) : 100;
+                doc.text(`${employeeOfTheMonth.tasksCompleted} / ${employeeOfTheMonth.tasksTotal} (${staffYield}% Yield)`, 139, yPos + 16);
+                
+                yPos += 32;
             }
 
-            const response = await fetch(url.toString());
-            if (!response.ok) {
-                const errData = await response.json().catch(() => ({}));
-                throw new Error(errData.error || "Server responded with an error status.");
-            }
+            // Table of Personnel Yield Audit
+            doc.setTextColor(primaryColor);
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(11);
+            doc.text("PERSONNEL YIELD AUDIT BREAKDOWN", 15, yPos);
+            doc.setFillColor(secondaryColor);
+            doc.rect(15, yPos + 2, 45, 1, "F");
+            yPos += 8;
 
-            const blob = await response.blob();
-            const objectUrl = window.URL.createObjectURL(blob);
-            
-            const a = document.createElement("a");
-            a.href = objectUrl;
-            a.download = `usthad_academy_performance_report_${period}_${new Date().toISOString().slice(0, 10)}.pdf`;
-            document.body.appendChild(a);
-            a.click();
-            
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(objectUrl);
+            // Table Header
+            doc.setFillColor(49, 38, 125);
+            doc.roundedRect(15, yPos, 180, 8, 1, 1, "F");
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(7.5);
+            doc.setTextColor(255, 255, 255);
+            doc.text("RANK", 18, yPos + 5.5);
+            doc.text("PERSONNEL NAME", 32, yPos + 5.5);
+            doc.text("ROLE", 78, yPos + 5.5);
+            doc.text("DEPARTMENT", 115, yPos + 5.5);
+            doc.text("ASSIGNED", 148, yPos + 5.5);
+            doc.text("COMPLETED", 168, yPos + 5.5);
+            doc.text("YIELD RATE", 184, yPos + 5.5);
+
+            yPos += 8;
+
+            staffData.forEach((s, idx) => {
+                if (yPos > 265) {
+                    doc.addPage();
+                    drawHeader(doc, doc.getNumberOfPages());
+                    yPos = 48;
+                    
+                    // Table Header again
+                    doc.setFillColor(49, 38, 125);
+                    doc.roundedRect(15, yPos, 180, 8, 1, 1, "F");
+                    doc.setFont("helvetica", "bold");
+                    doc.setFontSize(7.5);
+                    doc.setTextColor(255, 255, 255);
+                    doc.text("RANK", 18, yPos + 5.5);
+                    doc.text("PERSONNEL NAME", 32, yPos + 5.5);
+                    doc.text("ROLE", 78, yPos + 5.5);
+                    doc.text("DEPARTMENT", 115, yPos + 5.5);
+                    doc.text("ASSIGNED", 148, yPos + 5.5);
+                    doc.text("COMPLETED", 168, yPos + 5.5);
+                    doc.text("YIELD RATE", 184, yPos + 5.5);
+                    yPos += 8;
+                }
+
+                // Zebra striping
+                if (idx % 2 === 1) {
+                    doc.setFillColor(249, 250, 251);
+                    doc.rect(15, yPos, 180, 8, "F");
+                }
+
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(7.5);
+                doc.setTextColor(darkGray);
+                
+                doc.text(String(idx + 1), 18, yPos + 5.5);
+                doc.setFont("helvetica", "bold");
+                doc.text(s.name.toUpperCase(), 32, yPos + 5.5);
+                doc.setFont("helvetica", "normal");
+                doc.text(s.role, 78, yPos + 5.5);
+                doc.text(s.department, 115, yPos + 5.5);
+                doc.text(String(s.tasksTotal), 154, yPos + 5.5, { align: "center" });
+                doc.text(String(s.tasksCompleted), 174, yPos + 5.5, { align: "center" });
+
+                const rate = s.tasksTotal > 0 ? Math.round((s.tasksCompleted / s.tasksTotal) * 100) : 100;
+                doc.setFont("helvetica", "bold");
+                if (rate >= 80) doc.setTextColor(16, 185, 129);
+                else if (rate >= 50) doc.setTextColor(245, 158, 11);
+                else doc.setTextColor(239, 68, 68);
+                doc.text(`${rate}%`, 188, yPos + 5.5);
+
+                yPos += 8;
+            });
+
+            // Confidentiality / computer generated footer message
+            doc.setFont("helvetica", "italic");
+            doc.setFontSize(7.5);
+            doc.setTextColor(156, 163, 175);
+            const footerMsg = "CONFIDENTIAL - USTHAD ACADEMY COMMAND CENTER OS OFFICIAL PERFORMANCE REPORT.";
+            doc.text(footerMsg, 105 - doc.getTextWidth(footerMsg) / 2, 285);
+
+            const filenameMonth = monthName.toLowerCase().replace(" ", "_");
+            doc.save(`usthad_academy_performance_report_${filenameMonth}.pdf`);
             
             toast.dismiss();
             toast.success("Performance Audit Report downloaded successfully!");
         } catch (err: any) {
-            console.error("Report export failed:", err);
+            console.error("Performance report download error:", err);
             toast.dismiss();
-            toast.error(err.message || "Failed to stream performance audit report.");
+            toast.error(err.message || "Failed to download Performance Report.");
         } finally {
             setExporting(null);
         }
@@ -174,7 +440,8 @@ export function StaffManagement() {
         toast.loading("Compiling Monthly Usthadacademy Operations Report...");
         
         try {
-            const allTasks = [...activeTasks, ...completedTasks];
+            const { monthName } = getPeriodDates(selectedPeriod);
+            const allTasks = reportTasks;
             
             // Filter tasks by department
             const salesTasks = allTasks.filter(t => {
@@ -254,7 +521,7 @@ export function StaffManagement() {
                 d.text("USTHAD ACADEMY", 38, 16);
                 d.setFont("helvetica", "normal");
                 d.setFontSize(8);
-                d.text("COMMAND CENTER OS • MONTHLY OPERATIONS REPORT", 38, 22);
+                d.text(`COMMAND CENTER OS • MONTHLY OPERATIONS REPORT (${monthName.toUpperCase()})`, 38, 22);
 
                 // Date Generated
                 const dateStr = new Date().toLocaleDateString("en-IN", {
@@ -428,7 +695,7 @@ export function StaffManagement() {
             doc.setTextColor(darkGray);
             doc.text("MONTHLY OPERATIONS & TASK DIRECTIVES", 105, 96, { align: "center" });
 
-            const reportMonthName = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }).toUpperCase();
+            const reportMonthName = monthName.toUpperCase();
             doc.setFont("helvetica", "bold");
             doc.setFontSize(11);
             doc.setTextColor(241, 77, 36);
@@ -459,15 +726,19 @@ export function StaffManagement() {
             doc.text("COMPLETED OBJECTIVES", 24, yPos + 34);
             doc.text("OPERATIONAL VELOCITY", 114, yPos + 34);
 
+            const totalTasksAssignedVal = allTasks.length;
+            const totalTasksCompletedVal = allTasks.filter((t: any) => (t.status || "").toUpperCase() === "COMPLETED").length;
+            const operationalVelocityVal = totalTasksAssignedVal > 0 ? Math.round((totalTasksCompletedVal / totalTasksAssignedVal) * 100) : 100;
+
             doc.setFont("helvetica", "bold");
             doc.setFontSize(12.5);
             doc.setTextColor(darkGray);
             doc.text(stats.total.toString(), 24, yPos + 15);
-            doc.text(totalTasksAssigned.toString(), 114, yPos + 15);
+            doc.text(totalTasksAssignedVal.toString(), 114, yPos + 15);
             doc.setTextColor(16, 185, 129); // emerald
-            doc.text(totalTasksCompleted.toString(), 24, yPos + 43);
+            doc.text(totalTasksCompletedVal.toString(), 24, yPos + 43);
             doc.setTextColor(49, 38, 125); // navy
-            doc.text(`${operationalVelocity}%`, 114, yPos + 43);
+            doc.text(`${operationalVelocityVal}%`, 114, yPos + 43);
 
             // Departmental Summaries (Cover Page)
             yPos += 64;
@@ -546,14 +817,8 @@ export function StaffManagement() {
         toast.loading("Compiling Monthly Leave Requests Report...");
         
         try {
-            // Fetch all requests where type is 'leave' directly from Supabase
-            const { data: allLeaves, error: fetchError } = await supabase
-                .from("requests")
-                .select("*, submitted_by:profiles!submitted_by(id, full_name, username, role, department)")
-                .eq("type", "leave")
-                .order("created_at", { ascending: false });
-
-            if (fetchError) throw fetchError;
+            const { monthName } = getPeriodDates(selectedPeriod);
+            const allLeaves = reportLeaves;
 
             const doc = new jsPDF({
                 orientation: "portrait",
@@ -612,7 +877,7 @@ export function StaffManagement() {
                 d.text("USTHAD ACADEMY", 38, 16);
                 d.setFont("helvetica", "normal");
                 d.setFontSize(8);
-                d.text("COMMAND CENTER OS • MONTHLY LEAVE REQUESTS REPORT", 38, 22);
+                d.text(`COMMAND CENTER OS • MONTHLY LEAVE REQUESTS REPORT (${monthName.toUpperCase()})`, 38, 22);
 
                 // Date Generated
                 const dateStr = new Date().toLocaleDateString("en-IN", {
@@ -677,7 +942,7 @@ export function StaffManagement() {
             doc.setTextColor(darkGray);
             doc.text("MONTHLY LEAVE REQUESTS & AUDIT RECORD", 105, 96, { align: "center" });
 
-            const reportMonthName = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }).toUpperCase();
+            const reportMonthName = monthName.toUpperCase();
             doc.setFont("helvetica", "bold");
             doc.setFontSize(11);
             doc.setTextColor(49, 38, 125);
@@ -1510,7 +1775,7 @@ export function StaffManagement() {
 
     // Process staff data for UI
     const staffData = useMemo(() => {
-        const allTasks = [...activeTasks, ...completedTasks];
+        const allTasks = isReportsCenterOpen ? reportTasks : [...activeTasks, ...completedTasks];
         const taskMap = new Map();
         
         allTasks.forEach(t => {
@@ -1519,7 +1784,7 @@ export function StaffManagement() {
             }
             const stats = taskMap.get(t.assigned_to);
             stats.total++;
-            if (t.status === "completed") stats.completed++;
+            if (t.status === "completed" || t.status === "COMPLETED") stats.completed++;
         });
 
         const mappedStaff = staffProfiles.map((profile: Profile) => {
@@ -1558,7 +1823,7 @@ export function StaffManagement() {
             ...staff,
             rank: index + 1
         }));
-    }, [staffProfiles, activeTasks, completedTasks]);
+    }, [staffProfiles, activeTasks, completedTasks, isReportsCenterOpen, reportTasks]);
 
     const employeeOfTheMonth = useMemo(() => {
         if (staffData.length === 0) return null;
@@ -1584,27 +1849,27 @@ export function StaffManagement() {
     }, [totalTasksAssigned, totalTasksCompleted]);
 
     const operationsReportStats = useMemo(() => {
-        const totalSales = activeTasks.filter(t => (getStaffDepartment(t.assigned_to)?.toLowerCase() || "") === "sales").length +
-                           completedTasks.filter(t => (getStaffDepartment(t.assigned_to)?.toLowerCase() || "") === "sales").length;
-        const completedSales = completedTasks.filter(t => (getStaffDepartment(t.assigned_to)?.toLowerCase() || "") === "sales").length;
+        const tasksToUse = isReportsCenterOpen ? reportTasks : [...activeTasks, ...completedTasks];
+        
+        const totalSales = tasksToUse.filter(t => (getStaffDepartment(t.assigned_to)?.toLowerCase() || "") === "sales").length;
+        const completedSales = tasksToUse.filter(t => (getStaffDepartment(t.assigned_to)?.toLowerCase() || "") === "sales" && (t.status === "completed" || t.status === "COMPLETED")).length;
 
         const isAdmin = (t: Task) => {
             const dept = getStaffDepartment(t.assigned_to)?.toLowerCase() || "";
             return dept === "administration" || dept === "admin" || dept === "general" || !dept;
         };
-        const totalAdmin = activeTasks.filter(isAdmin).length + completedTasks.filter(isAdmin).length;
-        const completedAdmin = completedTasks.filter(isAdmin).length;
+        const totalAdmin = tasksToUse.filter(isAdmin).length;
+        const completedAdmin = tasksToUse.filter(t => isAdmin(t) && (t.status === "completed" || t.status === "COMPLETED")).length;
 
         const isFinance = (t: Task) => {
             const dept = getStaffDepartment(t.assigned_to)?.toLowerCase() || "";
             return dept === "finance" || dept === "accounts";
         };
-        const totalFinance = activeTasks.filter(isFinance).length + completedTasks.filter(isFinance).length;
-        const completedFinance = completedTasks.filter(isFinance).length;
+        const totalFinance = tasksToUse.filter(isFinance).length;
+        const completedFinance = tasksToUse.filter(t => isFinance(t) && (t.status === "completed" || t.status === "COMPLETED")).length;
 
-        const totalMarketing = activeTasks.filter(t => (getStaffDepartment(t.assigned_to)?.toLowerCase() || "") === "marketing").length +
-                               completedTasks.filter(t => (getStaffDepartment(t.assigned_to)?.toLowerCase() || "") === "marketing").length;
-        const completedMarketing = completedTasks.filter(t => (getStaffDepartment(t.assigned_to)?.toLowerCase() || "") === "marketing").length;
+        const totalMarketing = tasksToUse.filter(t => (getStaffDepartment(t.assigned_to)?.toLowerCase() || "") === "marketing").length;
+        const completedMarketing = tasksToUse.filter(t => (getStaffDepartment(t.assigned_to)?.toLowerCase() || "") === "marketing" && (t.status === "completed" || t.status === "COMPLETED")).length;
 
         return {
             sales: { total: totalSales, completed: completedSales },
@@ -1612,11 +1877,11 @@ export function StaffManagement() {
             finance: { total: totalFinance, completed: completedFinance },
             marketing: { total: totalMarketing, completed: completedMarketing }
         };
-    }, [activeTasks, completedTasks, staffProfiles]);
+    }, [activeTasks, completedTasks, staffProfiles, isReportsCenterOpen, reportTasks]);
 
     const leavesReportStats = useMemo(() => {
-        const filtered = rawRequests.filter(req => req.type === 'leave');
-        const pending = filtered.length;
+        const filtered = isReportsCenterOpen ? reportLeaves : rawRequests.filter(req => req.type === 'leave');
+        const pending = isReportsCenterOpen ? filtered.filter(l => l.status === "pending" || !l.status).length : filtered.length;
         return {
             total: filtered.length,
             pending,
@@ -1631,7 +1896,7 @@ export function StaffManagement() {
                 };
             })
         };
-    }, [rawRequests]);
+    }, [rawRequests, isReportsCenterOpen, reportLeaves]);
 
     // Process pending requests for UI
     const pendingRequests = useMemo(() => {
@@ -2396,7 +2661,48 @@ export function StaffManagement() {
                         </button>
                     </div>
 
-                    {activeReportView === 'selection' ? (
+                    {/* Period Selector Toggle */}
+                    <div className="bg-zinc-50 border-b border-zinc-100 px-6 py-4 flex items-center justify-between gap-4 shrink-0 font-sans">
+                        <div className="flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-zinc-500" />
+                            <span className="text-xs font-black uppercase text-zinc-500 tracking-wider">Report Target Month:</span>
+                        </div>
+                        <div className="bg-zinc-200/60 p-1 rounded-xl flex gap-1">
+                            <button
+                                onClick={() => setSelectedPeriod('current')}
+                                className={cn(
+                                    "px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-200",
+                                    selectedPeriod === 'current'
+                                        ? "bg-white text-zinc-950 shadow-sm"
+                                        : "text-zinc-500 hover:text-zinc-800"
+                                )}
+                            >
+                                Current Month ({new Date().toLocaleDateString("en-US", { month: "short" })})
+                            </button>
+                            <button
+                                onClick={() => setSelectedPeriod('previous')}
+                                className={cn(
+                                    "px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-200",
+                                    selectedPeriod === 'previous'
+                                        ? "bg-white text-zinc-950 shadow-sm"
+                                        : "text-zinc-500 hover:text-zinc-800"
+                                )}
+                            >
+                                Previous Month ({(() => {
+                                    const d = new Date();
+                                    d.setMonth(d.getMonth() - 1);
+                                    return d.toLocaleDateString("en-US", { month: "short" });
+                                })()})
+                            </button>
+                        </div>
+                    </div>
+
+                    {isLoadingReportData ? (
+                        <div className="flex-1 flex flex-col items-center justify-center p-12 space-y-4">
+                            <Loader2 className="w-8 h-8 text-[#31267D] animate-spin" />
+                            <p className="text-xs font-bold uppercase tracking-widest text-zinc-400 animate-pulse">Compiling period ledger data...</p>
+                        </div>
+                    ) : activeReportView === 'selection' ? (
                         /* Selection View: Report Cards */
                         <div className="p-8 flex-1 overflow-y-auto space-y-6 bg-zinc-50/50">
                             <div>

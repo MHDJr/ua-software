@@ -86,8 +86,16 @@ export async function POST(req: NextRequest) {
                 result = await BIReportService.runStage3(targetYear, targetMonth);
                 break;
             case "cleanup":
-                // Run Stage 4
-                result = await BIReportService.runStage4(targetYear, targetMonth);
+                // Run Stage 4 - only archive after 2 months if not manually forced to a specific month
+                let archiveYear = targetYear;
+                let archiveMonth = targetMonth;
+                if (!year && !month) {
+                    const archiveDate = new Date(nowIST);
+                    archiveDate.setMonth(archiveDate.getMonth() - 2);
+                    archiveYear = archiveDate.getFullYear();
+                    archiveMonth = archiveDate.getMonth() + 1;
+                }
+                result = await BIReportService.runStage4(archiveYear, archiveMonth);
                 break;
             default:
                 return NextResponse.json({ error: `Invalid action '${action}' requested.` }, { status: 400 });
