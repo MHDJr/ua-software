@@ -9,6 +9,7 @@ import { compressImage } from "@/lib/image-utils";
 import { uploadPublicFile, deleteFile } from "@/lib/storage";
 import { motion, AnimatePresence } from "framer-motion";
 import { MobileSyncCard } from "@/components/MobileSyncCard";
+import { ImageCropperModal } from "@/components/ImageCropperModal";
 
 interface ProfileModalProps {
     isOpen: boolean;
@@ -19,6 +20,52 @@ export function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
     const { profile, user, refreshProfile } = useAuth();
     const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
     const [localPhone, setLocalPhone] = useState<string>("");
+    const [isCropperOpen, setIsCropperOpen] = useState(false);
+    const [pendingImageSrc, setPendingImageSrc] = useState<string | null>(null);
+
+    const handleCropComplete = async (croppedBlob: Blob) => {
+        setIsCropperOpen(false);
+        if (pendingImageSrc) {
+            URL.revokeObjectURL(pendingImageSrc);
+        }
+        setPendingImageSrc(null);
+        setIsUploadingPhoto(true);
+        try {
+            const fileName = `${profile?.id || user?.id}-${Date.now()}.webp`;
+            const filePath = `avatars/${fileName}`;
+
+            // Delete old avatar if it exists in storage
+            if (profile?.avatar_url && profile.avatar_url.includes('/storage/v1/object/public/')) {
+                try {
+                    await deleteFile('avatars', profile.avatar_url);
+                } catch (e) {
+                    console.warn("Failed to delete old avatar:", e);
+                }
+            }
+
+            const publicUrl = await uploadPublicFile('avatars', filePath, croppedBlob);
+
+            const { error } = await supabase
+                .from("profiles")
+                .update({ avatar_url: publicUrl })
+                .eq("id", profile?.id || user?.id);
+
+            if (error) {
+                console.error("Photo DB update error:", error);
+                toast.error("Database update failed: " + error.message);
+                setIsUploadingPhoto(false);
+                return;
+            }
+
+            await refreshProfile();
+            toast.success("Profile photo updated successfully!");
+            setIsUploadingPhoto(false);
+        } catch (err: any) {
+            console.error("Upload process error:", err);
+            toast.error(err.message || "Failed to update profile photo");
+            setIsUploadingPhoto(false);
+        }
+    };
 
     // Synchronize local phone input state when profile loads
     React.useEffect(() => {
@@ -42,7 +89,8 @@ export function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
     };
 
     return (
-        <AnimatePresence>
+        <>
+            <AnimatePresence>
             {isOpen && (
                 <div className="fixed inset-0 z-[150] overflow-hidden flex justify-end">
                     {/* Backdrop */}
@@ -85,7 +133,7 @@ export function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
                         <div className="flex-1 overflow-y-auto p-6 space-y-6 flex flex-col items-center">
                             {/* Profile Photo Display with Upload */}
                             <div className="relative group cursor-pointer">
-                                <div className="w-24 h-24 md:w-28 md:h-28 rounded-[2rem] border-4 border-white dark:border-zinc-800 shadow-lg overflow-hidden relative flex items-center justify-center bg-indigo-950 text-white font-bold text-3xl select-none">
+                                <div className="w-24 h-24 md:w-28 md:h-28 rounded-full border-4 border-white dark:border-zinc-800 shadow-lg overflow-hidden relative flex items-center justify-center bg-indigo-950 text-white font-bold text-3xl select-none">
                                     {isUploadingPhoto ? (
                                         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center">
                                             <div className="animate-spin h-6 w-6 border-2 border-white/20 border-t-white rounded-full" />
@@ -105,7 +153,7 @@ export function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
                                                 type="file"
                                                 accept="image/*"
                                                 className="hidden"
-                                                onChange={async (e) => {
+                                                onChange={(e) => {
                                                     const file = e.target.files?.[0];
                                                     if (!file) return;
 
@@ -116,55 +164,16 @@ export function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
                                                         return;
                                                     }
 
-                                                    // Validate file size (under 2MB)
-                                                    if (file.size > 2 * 1024 * 1024) {
-                                                        toast.error("Max file size exceeded. Image must be under 2MB.");
+                                                    // Validate file size (under 3MB)
+                                                    if (file.size > 3 * 1024 * 1024) {
+                                                        toast.error("Max file size exceeded. Image must be under 3MB.");
                                                         return;
                                                     }
 
-                                                    setIsUploadingPhoto(true);
-                                                    try {
-                                                        const compressedBlob = await compressImage(file, {
-                                                            maxWidth: 800,
-                                                            maxHeight: 800,
-                                                            maxFileSizeKB: 200,
-                                                            outputFormat: "image/webp"
-                                                        });
-
-                                                        const fileName = `${profile?.id || user?.id}-${Date.now()}.webp`;
-                                                        const filePath = `avatars/${fileName}`;
-
-                                                        // Delete old avatar if it exists in storage
-                                                        if (profile?.avatar_url && profile.avatar_url.includes('/storage/v1/object/public/')) {
-                                                            try {
-                                                                await deleteFile('avatars', profile.avatar_url);
-                                                            } catch (e) {
-                                                                console.warn("Failed to delete old avatar:", e);
-                                                            }
-                                                        }
-
-                                                        const publicUrl = await uploadPublicFile('avatars', filePath, compressedBlob);
-
-                                                        const { error } = await supabase
-                                                            .from("profiles")
-                                                            .update({ avatar_url: publicUrl })
-                                                            .eq("id", profile?.id || user?.id);
-
-                                                        if (error) {
-                                                            console.error("Photo DB update error:", error);
-                                                            toast.error("Database update failed: " + error.message);
-                                                            setIsUploadingPhoto(false);
-                                                            return;
-                                                        }
-
-                                                        await refreshProfile();
-                                                        toast.success("Profile photo updated successfully!");
-                                                        setIsUploadingPhoto(false);
-                                                    } catch (err: any) {
-                                                        console.error("Upload process error:", err);
-                                                        toast.error(err.message || "Failed to update profile photo");
-                                                        setIsUploadingPhoto(false);
-                                                    }
+                                                    const objectUrl = URL.createObjectURL(file);
+                                                    setPendingImageSrc(objectUrl);
+                                                    setIsCropperOpen(true);
+                                                    e.target.value = "";
                                                 }}
                                             />
                                         </label>
@@ -237,6 +246,20 @@ export function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
                     </motion.div>
                 </div>
             )}
-        </AnimatePresence>
+            </AnimatePresence>
+
+            <ImageCropperModal
+                isOpen={isCropperOpen}
+                imageSrc={pendingImageSrc}
+                onClose={() => {
+                    setIsCropperOpen(false);
+                    if (pendingImageSrc) {
+                        URL.revokeObjectURL(pendingImageSrc);
+                    }
+                    setPendingImageSrc(null);
+                }}
+                onCropComplete={handleCropComplete}
+            />
+        </>
     );
 }

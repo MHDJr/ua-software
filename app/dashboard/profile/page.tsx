@@ -205,7 +205,7 @@ export default function ProfilePage() {
                         {/* 1. Profile Identity Info Card */}
                         <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl p-6 md:p-8 shadow-xl">
                             <div className="flex items-center gap-5 mb-8">
-                                <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-indigo-500 flex items-center justify-center text-white font-black text-2xl shadow-lg shadow-indigo-500/20 overflow-hidden">
+                                <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-indigo-500 flex items-center justify-center text-white font-black text-2xl shadow-lg shadow-indigo-500/20 overflow-hidden">
                                     {profile?.avatar_url ? (
                                         <img src={profile.avatar_url} alt="Profile" className="w-full h-full object-cover" />
                                     ) : (

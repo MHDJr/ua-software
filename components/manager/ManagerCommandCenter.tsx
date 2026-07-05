@@ -844,7 +844,7 @@ export function ManagerCommandCenter({
                                     </p>
                                 </div>
                                 <div className="relative">
-                                    <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white font-black text-xs shadow-inner overflow-hidden border border-white/20"
+                                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-black text-xs shadow-inner overflow-hidden border border-white/20"
                                         style={{
                                             background: `linear-gradient(135deg, ${BRAND.navy}, ${BRAND.orange})`,
                                         }}

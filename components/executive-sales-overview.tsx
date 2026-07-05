@@ -546,14 +546,14 @@ export function ExecutiveSalesOverview() {
 
     const fetchHistoricalReports = async () => {
         try {
-            const sixtyDaysAgo = new Date();
-            sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-            const sixtyDaysAgoStr = sixtyDaysAgo.toISOString().split('T')[0];
+            const ninetyDaysAgo = new Date();
+            ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+            const ninetyDaysAgoStr = ninetyDaysAgo.toISOString().split('T')[0];
             
             const { data, error } = await supabase
                 .from('daily_reports')
                 .select('*')
-                .gte('report_date', sixtyDaysAgoStr)
+                .gte('report_date', ninetyDaysAgoStr)
                 .order('report_date', { ascending: false });
                 
             if (error) {
@@ -622,18 +622,24 @@ export function ExecutiveSalesOverview() {
         const prevWeekEntries = historicalReports.filter(r => r.report_date >= fourteenDaysAgoStr && r.report_date < sevenDaysAgoStr);
         const prevWeekData = aggregate(prevWeekEntries);
         
-        // 5. Monthly entries (last 30 days)
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
-        const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
-        const monthlyEntries = historicalReports.filter(r => r.report_date >= thirtyDaysAgoStr && r.report_date <= todayStr);
+        // 5. Monthly entries (current calendar month)
+        const [year, month, day] = todayStr.split('-').map(Number);
+        const currentMonthStartStr = `${year}-${String(month).padStart(2, '0')}-01`;
+        const monthlyEntries = historicalReports.filter(r => r.report_date >= currentMonthStartStr && r.report_date <= todayStr);
         const monthlyData = aggregate(monthlyEntries);
         
-        // 6. Previous Month's entries (days 30 to 59 ago)
-        const sixtyDaysAgo = new Date();
-        sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 59);
-        const sixtyDaysAgoStr = sixtyDaysAgo.toISOString().split('T')[0];
-        const prevMonthlyEntries = historicalReports.filter(r => r.report_date >= sixtyDaysAgoStr && r.report_date < thirtyDaysAgoStr);
+        // 6. Previous Month's entries (previous calendar month Month-to-Date)
+        let prevYear = year;
+        let prevMonth = month - 1;
+        if (prevMonth === 0) {
+            prevMonth = 12;
+            prevYear = year - 1;
+        }
+        const prevMonthStartStr = `${prevYear}-${String(prevMonth).padStart(2, '0')}-01`;
+        const daysInPrevMonth = new Date(prevYear, prevMonth, 0).getDate();
+        const prevMonthEndDay = Math.min(day, daysInPrevMonth);
+        const prevMonthEndStr = `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(prevMonthEndDay).padStart(2, '0')}`;
+        const prevMonthlyEntries = historicalReports.filter(r => r.report_date >= prevMonthStartStr && r.report_date <= prevMonthEndStr);
         const prevMonthlyData = aggregate(prevMonthlyEntries);
         
         // Compute difference percentage function

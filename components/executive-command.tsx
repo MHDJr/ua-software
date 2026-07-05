@@ -83,6 +83,7 @@ import {
     Video,
     Bookmark,
     Crown,
+    Sparkles,
     Megaphone,
     Send,
     Eye,
@@ -453,6 +454,45 @@ const renderCEOTaskGauge = (t: Task) => {
     );
 };
 
+// DAILY BUSINESS QUOTES DATA
+const BUSINESS_QUOTES = [
+    { text: "Great things in business are never done by one person; they're done by a team of people.", author: "Steve Jobs" },
+    { text: "The way to get started is to quit talking and begin doing.", author: "Walt Disney" },
+    { text: "Your most unhappy customers are your greatest source of learning.", author: "Bill Gates" },
+    { text: "Chase the vision, not the money; the money will end up following you.", author: "Tony Hsieh" },
+    { text: "Success is not final; failure is not fatal: It is the courage to continue that counts.", author: "Winston Churchill" },
+    { text: "The secret of change is to focus all of your energy, not on fighting the old, but on building the new.", author: "Socrates" },
+    { text: "Leadership is the capacity to translate vision into reality.", author: "Warren Bennis" },
+    { text: "Don't find fault, find a remedy.", author: "Henry Ford" },
+    { text: "Opportunities don't happen. You create them.", author: "Chris Grosser" },
+    { text: "Formal education will make you a living; self-education will make you a fortune.", author: "Jim Rohn" },
+    { text: "Only those who dare to fail greatly can ever achieve greatly.", author: "Robert F. Kennedy" },
+    { text: "The best way to predict the future is to create it.", author: "Peter Drucker" },
+    { text: "Always deliver more than expected.", author: "Larry Page" },
+    { text: "Whether you think you can or think you can't, you're right.", author: "Henry Ford" },
+    { text: "An investment in knowledge pays the best interest.", author: "Benjamin Franklin" },
+    { text: "Quality means doing it right when no one is looking.", author: "Henry Ford" },
+    { text: "You don't build a business, you build people, then people build the business.", author: "Zig Ziglar" },
+    { text: "If you are working on something that you really care about, you don't have to be pushed. The vision pulls you.", author: "Steve Jobs" },
+    { text: "It's not about ideas. It's about making ideas happen.", author: "Scott Belsky" },
+    { text: "Vision without action is a daydream. Action without vision is a nightmare.", author: "Japanese Proverb" },
+    { text: "The only limit to our realization of tomorrow will be our doubts of today.", author: "Franklin D. Roosevelt" }
+];
+
+const getDailyQuote = () => {
+    const today = new Date();
+    const dateNum = today.getDate() + today.getMonth() * 31 + today.getFullYear();
+    const index = dateNum % BUSINESS_QUOTES.length;
+    return BUSINESS_QUOTES[index];
+};
+
+const getGreeting = () => {
+    const hrs = new Date().getHours();
+    if (hrs < 12) return "Good Morning";
+    if (hrs < 17) return "Good Afternoon";
+    return "Good Evening";
+};
+
 // MAIN COMPONENT: EXECUTIVE COMMAND
 // ============================================
 
@@ -462,6 +502,28 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
     const { profile, signOut, userRole, loading } = useAuth();
     const { theme } = useTheme();
     const queryClient = useQueryClient();
+    const [drillDownType, setDrillDownType] = useState<"staff" | "active" | "overdue" | "balance" | "conversions" | null>(null);
+    const [strategicFocus, setStrategicFocus] = useState(() => {
+        if (typeof window !== "undefined") {
+            return window.localStorage.getItem("CEO_STRATEGIC_FOCUS") || "";
+        }
+        return "";
+    });
+    const [isEditingFocus, setIsEditingFocus] = useState(false);
+    const [focusInput, setFocusInput] = useState(() => {
+        if (typeof window !== "undefined") {
+            return window.localStorage.getItem("CEO_STRATEGIC_FOCUS") || "";
+        }
+        return "";
+    });
+
+    const handleSaveFocus = () => {
+        setStrategicFocus(focusInput);
+        if (typeof window !== "undefined") {
+            window.localStorage.setItem("CEO_STRATEGIC_FOCUS", focusInput);
+        }
+        setIsEditingFocus(false);
+    };
 
     // ============================================
     // 1. STATE DECLARATIONS (TOP-LEVEL)
@@ -522,6 +584,224 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
     const [taskTab, setTaskTab] = useState<
         "active" | "blocked" | "overdue" | "daily" | "completed"
     >("active");
+
+    // Direct Command & Bottleneck Action Prompt States
+    const [isDeployingCommand, setIsDeployingCommand] = useState(false);
+    const [commandDeployedTaskId, setCommandDeployedTaskId] = useState<string | null>(null);
+
+    const directCommandBriefing = useMemo(() => {
+        const overdue = tasks.filter(t => t.due_date && new Date(t.due_date) < new Date() && t.status !== "completed" && t.status !== "COMPLETED");
+        if (overdue.length === 0) return null;
+
+        // Group overdue tasks by assignee
+        const group: Record<string, { name: string, count: number, tasks: typeof tasks }> = {};
+        overdue.forEach(t => {
+            const id = t.assigned_to || "unassigned";
+            const staffMember = staff.find(s => s.id === id);
+            const name = staffMember?.full_name || t.assigned_to_user?.full_name || "Staff Member";
+            if (!group[id]) {
+                group[id] = { name, count: 0, tasks: [] };
+            }
+            group[id].count++;
+            group[id].tasks.push(t);
+        });
+
+        // Find the assignee with the most overdue tasks, or highest overdue days
+        let selectedAssigneeId: string | null = null;
+        let selectedTask: typeof tasks[0] | null = null;
+        let maxDays = 0;
+
+        // Calculate days overdue
+        const now = new Date().getTime();
+        overdue.forEach(t => {
+            const days = Math.floor((now - new Date(t.due_date!).getTime()) / (1000 * 60 * 60 * 24));
+            if (days > maxDays) {
+                maxDays = days;
+                selectedTask = t;
+                selectedAssigneeId = t.assigned_to || "unassigned";
+            }
+        });
+
+        if (!selectedTask || !selectedAssigneeId || selectedAssigneeId === "unassigned") return null;
+
+        const assigneeName = group[selectedAssigneeId].name;
+        const overdueCount = group[selectedAssigneeId].count;
+
+        return {
+            assigneeName,
+            assigneeId: selectedAssigneeId,
+            overdueCount,
+            daysOverdue: maxDays,
+            taskTitle: selectedTask.title,
+            taskId: selectedTask.id
+        };
+    }, [tasks, staff]);
+
+    const handleDeployDirectCommand = async () => {
+        if (!directCommandBriefing) return;
+        setIsDeployingCommand(true);
+        try {
+            const { assigneeId, taskTitle, taskId } = directCommandBriefing;
+            if (assigneeId) {
+                const { error } = await supabase.from("notifications").insert({
+                    user_id: assigneeId,
+                    title: "CEO DIRECT COMMAND",
+                    message: `CEO Salim PA has issued a high-priority Direct Command to clear the "${taskTitle}" stall immediately.`,
+                    type: "alert",
+                });
+                if (error) throw error;
+                setCommandDeployedTaskId(taskId);
+                toast.success("DIRECT COMMAND DEPLOYED TO STAFF");
+            } else {
+                toast.error("Cannot deploy: staff member unassigned.");
+            }
+        } catch (err) {
+            console.error("Direct Command deployment failed:", err);
+            toast.error("Deployment failed. Please check network connection.");
+        } finally {
+            setIsDeployingCommand(false);
+        }
+    };
+
+    // Auto-Rotating Prompts State
+    const [activePromptIndex, setActivePromptIndex] = useState(0);
+    const [isInteractingPrompt, setIsInteractingPrompt] = useState(false);
+    const [deployedTimestamps, setDeployedTimestamps] = useState<Record<string, string>>({});
+
+    // Load deployed commands from localStorage on mount
+    useEffect(() => {
+        try {
+            const stored = localStorage.getItem("ceo_deployed_commands");
+            if (stored) {
+                setDeployedTimestamps(JSON.parse(stored));
+            }
+        } catch (e) {
+            console.error("Failed to load deployed commands:", e);
+        }
+    }, []);
+
+    const rotatingSteps = useMemo(() => {
+        const steps: any[] = [
+            { type: "greeting" }
+        ];
+
+        // Fetch overdue tasks
+        const overdue = tasks.filter(t => t.due_date && new Date(t.due_date) < new Date() && t.status !== "completed" && t.status !== "COMPLETED");
+        
+        // Filter out tasks that had a command deployed within the last 24 hours
+        const activeOverdue = overdue.filter(task => {
+            const deployedAtStr = deployedTimestamps[task.id];
+            if (deployedAtStr) {
+                const deployedAt = new Date(deployedAtStr);
+                const hrsDiff = (new Date().getTime() - deployedAt.getTime()) / (1000 * 60 * 60);
+                if (hrsDiff < 24) {
+                    return false; // Hide task card since command was deployed < 24h ago
+                }
+            }
+            return true;
+        });
+
+        // Sort by due date ascending (most overdue first)
+        const sortedOverdue = [...activeOverdue].sort((a, b) => new Date(a.due_date!).getTime() - new Date(b.due_date!).getTime());
+
+        // Add each overdue task as a separate step (up to 5 tasks)
+        sortedOverdue.slice(0, 5).forEach((task) => {
+            const staffMember = staff.find(s => s.id === task.assigned_to);
+            const name = staffMember?.full_name || task.assigned_to_user?.full_name || "Staff Member";
+            const days = Math.floor((new Date().getTime() - new Date(task.due_date!).getTime()) / (1000 * 60 * 60 * 24));
+            
+            steps.push({
+                type: "overdue_task",
+                task,
+                assigneeName: name,
+                daysOverdue: days
+            });
+        });
+
+        return steps;
+    }, [tasks, staff, deployedTimestamps]);
+
+    useEffect(() => {
+        if (isInteractingPrompt || rotatingSteps.length === 0) return;
+        const currentStep = rotatingSteps[activePromptIndex % rotatingSteps.length];
+        let duration = 12000; // default 12s for tasks
+        if (currentStep?.type === "greeting") duration = 8000; // 8s for Greeting
+
+        const timeout = setTimeout(() => {
+            setActivePromptIndex((prev) => (prev + 1) % rotatingSteps.length);
+        }, duration);
+        return () => clearTimeout(timeout);
+    }, [rotatingSteps, activePromptIndex, isInteractingPrompt]);
+
+    const handleDeployDirectCommandForTask = async (task: Task, assigneeName: string) => {
+        if (!task.assigned_to) {
+            toast.error("Cannot deploy: staff member unassigned.");
+            return;
+        }
+        if (!profile?.id) {
+            toast.error("Cannot deploy: sender not authenticated.");
+            return;
+        }
+        setIsDeployingCommand(true);
+        try {
+            const daysOverdue = task.due_date 
+                ? Math.floor((new Date().getTime() - new Date(task.due_date).getTime()) / (1000 * 60 * 60 * 24))
+                : 0;
+
+            const payload = `[sender_id:${profile.id}] ⚠️ DIRECTIVE DISPATCH\n\nOFFICIAL NOTICE: ${assigneeName}, your task "${task.title}" is currently ${daysOverdue} Days Overdue on the CEO Command Grid. \nResolve this operation immediately.`;
+            const titleText = "CEO DIRECT COMMAND";
+
+            let apiSuccess = false;
+            try {
+                const response = await fetch("/api/send-message", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        user_id: task.assigned_to,
+                        title: titleText,
+                        message: payload,
+                        type: "direct",
+                    }),
+                });
+                if (response.ok) apiSuccess = true;
+            } catch (err) {
+                console.warn("Direct Message API error during deploy command, using fallback...", err);
+            }
+
+            if (!apiSuccess) {
+                const { error } = await supabase.from("notifications").insert({
+                    user_id: task.assigned_to,
+                    title: titleText,
+                    message: payload,
+                    type: "direct",
+                    read: false,
+                    created_at: new Date().toISOString()
+                });
+                if (error) throw error;
+            }
+
+            // Save deployment timestamp locally to filter out from welcome rotation
+            const nowIso = new Date().toISOString();
+            const updatedDeploys = { ...deployedTimestamps, [task.id]: nowIso };
+            setDeployedTimestamps(updatedDeploys);
+            try {
+                localStorage.setItem("ceo_deployed_commands", JSON.stringify(updatedDeploys));
+            } catch (e) {
+                console.error("Failed to save deployed commands to localStorage:", e);
+            }
+
+            setCommandDeployedTaskId(task.id);
+            toast.success(`DIRECT COMMAND DEPLOYED TO ${assigneeName.toUpperCase()}`);
+            
+            // Notify messenger drawer to hot-reload
+            window.dispatchEvent(new CustomEvent("hq-messenger-updated"));
+        } catch (err) {
+            console.error("Direct Command deployment failed:", err);
+            toast.error("Deployment failed. Please check network connection.");
+        } finally {
+            setIsDeployingCommand(false);
+        }
+    };
     const [departmentFilter, setDepartmentFilter] = useState<
         "ceo" | "administration" | "marketing" | "sales" | "finance"
     >("ceo");
@@ -2654,16 +2934,167 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                 </div>
             </header>
 
+            {/* Welcome Card for CEO */}
+            {userRole === "CEO" && (
+                <div className="w-full mb-6">
+                    <motion.div
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.5 }}
+                        className="relative rounded-[2.5rem] p-6 md:p-8 overflow-hidden bg-gradient-to-br from-[#0c1328] via-[#122349] to-[#070b1a] border border-blue-500/30 text-white shadow-[0_25px_60px_rgba(0,0,0,0.35)] flex flex-col justify-between gap-6 min-h-[140px] z-10"
+                    >
+                        {/* Interactive floating background glow shapes */}
+                        <motion.div
+                            animate={{
+                                scale: [1, 1.15, 1],
+                                x: [0, 20, 0],
+                                y: [0, -15, 0],
+                            }}
+                            transition={{
+                                duration: 8,
+                                repeat: Infinity,
+                                ease: "easeInOut"
+                            }}
+                            className="absolute top-0 right-0 w-96 h-96 bg-amber-500/5 rounded-full blur-[90px] -mr-20 -mt-20 pointer-events-none"
+                        />
+                        <motion.div
+                            animate={{
+                                scale: [1.15, 1, 1.15],
+                                x: [0, -20, 0],
+                                y: [0, 15, 0],
+                            }}
+                            transition={{
+                                duration: 10,
+                                repeat: Infinity,
+                                ease: "easeInOut"
+                            }}
+                            className="absolute bottom-0 left-0 w-96 h-96 bg-indigo-500/5 rounded-full blur-[90px] -ml-20 -mb-20 pointer-events-none" />
+                        {/* Navigation controls overlay */}
+                        <div className="absolute top-4 right-4 flex items-center gap-2 z-20">
+                            <button
+                                onClick={() => setActivePromptIndex((prev) => (prev - 1 + rotatingSteps.length) % rotatingSteps.length)}
+                                className="w-6 h-6 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors"
+                            >
+                                <ChevronLeft className="w-3.5 h-3.5" />
+                            </button>
+                            <div className="flex items-center gap-1">
+                                {rotatingSteps.map((_, idx) => (
+                                    <div
+                                        key={idx}
+                                        className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
+                                            (activePromptIndex % rotatingSteps.length) === idx ? "bg-amber-400 w-3" : "bg-white/20"
+                                        }`}
+                                    />
+                                ))}
+                            </div>
+                            <button
+                                onClick={() => setActivePromptIndex((prev) => (prev + 1) % rotatingSteps.length)}
+                                className="w-6 h-6 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors"
+                            >
+                                <ChevronRight className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+
+                        {/* Prompt Render Deck */}
+                        {rotatingSteps.length > 0 && (() => {
+                            const stepIndex = activePromptIndex % rotatingSteps.length;
+                            const currentStep = rotatingSteps[stepIndex];
+                            
+                            if (currentStep.type === "greeting") {
+                                return (
+                                    <div className="flex-1 flex items-center gap-5 z-10 w-full text-left">
+                                        <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-450 via-amber-500 to-amber-600 flex items-center justify-center shadow-2xl shadow-amber-500/30 border border-amber-300/30 shrink-0 select-none">
+                                            <Crown className="w-7 h-7 text-slate-955 font-black animate-pulse" />
+                                            <div className="absolute inset-1 rounded-xl border border-dashed border-slate-955/20 animate-spin" style={{ animationDuration: '24s' }} />
+                                            <div className="absolute -inset-1 rounded-2xl border border-amber-400/20 animate-ping pointer-events-none" style={{ animationDuration: '3s' }} />
+                                        </div>
+                                        <div>
+                                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-1">
+                                                <span className="text-[9px] font-black text-amber-500 uppercase tracking-[0.25em] px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20">
+                                                    Executive Command Active
+                                                </span>
+                                                <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+                                                    {new Date().toLocaleDateString("en-IN", {
+                                                        weekday: "long",
+                                                        month: "long",
+                                                        day: "numeric"
+                                                    })}
+                                                </span>
+                                            </div>
+                                            <h1 className="text-xl md:text-3xl font-black text-white tracking-tight uppercase leading-none mt-2">
+                                                Welcome Back, Salim PA
+                                            </h1>
+                                            <p className="text-xs font-semibold text-slate-400 mt-2">
+                                                Welcome back to the Command Grid. Empowering your strategic directives today.
+                                            </p>
+                                        </div>
+                                    </div>
+                                );
+                            }
+                            
+                            if (currentStep.type === "overdue_task") {
+                                const { task, assigneeName, daysOverdue } = currentStep;
+                                return (
+                                    <div className="flex-1 flex flex-col md:flex-row md:items-center justify-between gap-6 z-10 w-full pr-24 text-left">
+                                        <div className="flex-1 flex flex-col gap-2">
+                                            <div className="flex items-center gap-3">
+                                                <span className="flex items-center gap-1.5 text-[9px] font-black text-red-500 uppercase tracking-[0.2em] px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20 w-fit">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
+                                                    High-Priority Command Briefing
+                                                </span>
+                                                <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${
+                                                    daysOverdue >= 15
+                                                        ? "bg-red-500/15 border border-red-500/30 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.15)] animate-pulse"
+                                                        : "bg-amber-500/15 border border-amber-500/30 text-amber-400"
+                                                }`}>
+                                                    {daysOverdue >= 15 ? "🚨 CLASS-A SEVERE BOTTLENECK" : "⚠️ CLASS-B ELEVATED STALL"}
+                                                </span>
+                                            </div>
+                                            <p className="text-sm md:text-base font-bold text-slate-300 leading-relaxed max-w-4xl mt-1">
+                                                <strong className="text-white font-black">{assigneeName}</strong> has the task{" "}
+                                                <span className="text-amber-450 font-extrabold italic">&ldquo;{task.title}&rdquo;</span> overdue by{" "}
+                                                <strong className="text-red-450 font-black">{daysOverdue} days</strong>. Issue a Direct Command to clear this task?
+                                            </p>
+                                        </div>
+                                        
+                                        <div className="shrink-0 z-10">
+                                            {commandDeployedTaskId === task.id ? (
+                                                <span className="px-5 py-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/20 text-emerald-400 font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.1)]">
+                                                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                                                    Command Deployed
+                                                </span>
+                                            ) : (
+                                                <Button
+                                                    onClick={() => handleDeployDirectCommandForTask(task, assigneeName)}
+                                                    disabled={isDeployingCommand}
+                                                    className="relative px-6 py-3 rounded-2xl bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-655 text-white font-black text-xs uppercase tracking-widest transition-all duration-300 shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] border border-red-400/20 active:scale-95 shrink-0 flex items-center gap-2 overflow-hidden group"
+                                                >
+                                                    <Zap className="w-4 h-4 text-white animate-pulse group-hover:scale-120 transition-transform" />
+                                                    <span>{isDeployingCommand ? "Deploying..." : "Deploy Command"}</span>
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            }
+                            
+                            return null;
+                        })()}
+                    </motion.div>
+                </div>
+            )}
+
             {/* 1. STREAMLINED PRIORITY METRIC GRID */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
                 {/* Card 1: STAFFS */}
                 <div
+                    onClick={() => userRole === "CEO" && setDrillDownType("staff")}
                     className={cn(
                         "rounded-3xl p-6 flex flex-col justify-between transition-all duration-300 group relative overflow-hidden",
                         "bg-white/70 dark:bg-zinc-900/40 backdrop-blur-md border border-white/60 dark:border-zinc-800/50 shadow-[0_12px_40px_rgba(0,0,0,0.02)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.4)]",
                         "hover:-translate-y-1 hover:shadow-md dark:hover:border-zinc-700",
                         userRole === "CEO" &&
-                            "hover:border-amber-500/30 dark:hover:border-amber-500/30 shadow-[0_10px_40px_rgba(245,158,11,0.03)]",
+                            "hover:border-amber-500/30 dark:hover:border-amber-500/30 shadow-[0_10px_40px_rgba(245,158,11,0.03)] cursor-pointer",
                     )}
                 >
                     {userRole === "CEO" && (
@@ -2698,12 +3129,13 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
 
                 {/* Card 2: TASKS */}
                 <div
+                    onClick={() => userRole === "CEO" && setDrillDownType("active")}
                     className={cn(
                         "rounded-3xl p-6 flex flex-col justify-between transition-all duration-300 group relative overflow-hidden",
                         "bg-white/70 dark:bg-zinc-900/40 backdrop-blur-md border border-white/60 dark:border-zinc-800/50 shadow-[0_12px_40px_rgba(0,0,0,0.02)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.4)]",
                         "hover:-translate-y-1 hover:shadow-md dark:hover:border-zinc-700",
                         userRole === "CEO" &&
-                            "hover:border-amber-500/30 dark:hover:border-amber-500/30 shadow-[0_10px_40px_rgba(245,158,11,0.03)]",
+                            "hover:border-amber-500/30 dark:hover:border-amber-500/30 shadow-[0_10px_40px_rgba(245,158,11,0.03)] cursor-pointer",
                     )}
                 >
                     {userRole === "CEO" && (
@@ -2727,12 +3159,13 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
 
                 {/* Card 3: OVERDUE */}
                 <div
+                    onClick={() => userRole === "CEO" && setDrillDownType("overdue")}
                     className={cn(
                         "rounded-3xl p-6 flex flex-col justify-between transition-all duration-300 group relative overflow-hidden",
                         "bg-white/70 dark:bg-zinc-900/40 backdrop-blur-md border border-white/60 dark:border-zinc-800/50 shadow-[0_12px_40px_rgba(0,0,0,0.02)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.4)]",
                         "hover:-translate-y-1 hover:shadow-md dark:hover:border-zinc-700",
                         userRole === "CEO" &&
-                            "hover:border-amber-500/30 dark:hover:border-amber-500/30 shadow-[0_10px_40px_rgba(245,158,11,0.03)]",
+                            "hover:border-red-500/30 dark:hover:border-red-500/30 shadow-[0_10px_40px_rgba(239,68,68,0.03)] cursor-pointer",
                     )}
                 >
                     {userRole === "CEO" && (
@@ -2770,8 +3203,9 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                 {/* Card 4: Role-based (Income / Capacity) */}
                 {userRole === "CEO" ? (
                     <div
+                        onClick={() => setDrillDownType("balance")}
                         className={cn(
-                            "rounded-3xl p-6 flex flex-col justify-between transition-all duration-300 group relative overflow-hidden shadow-lg shadow-emerald-500/5",
+                            "rounded-3xl p-6 flex flex-col justify-between transition-all duration-300 group relative overflow-hidden shadow-lg shadow-emerald-500/5 cursor-pointer",
                             "bg-white/70 backdrop-blur-md border border-white/60 shadow-[0_12px_40px_rgba(0,0,0,0.02)]",
                             "dark:bg-zinc-900/40 dark:backdrop-blur-md dark:border-zinc-800/50 dark:shadow-[0_12px_40px_rgba(0,0,0,0.4)]",
                             "hover:-translate-y-1 hover:shadow-md hover:border-emerald-500/30 dark:hover:border-emerald-500/30",
@@ -2837,8 +3271,9 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                 {/* Card 5: Role-based (Sales / Blockers) */}
                 {userRole === "CEO" ? (
                     <div
+                        onClick={() => setDrillDownType("conversions")}
                         className={cn(
-                            "rounded-3xl p-6 flex flex-col justify-between transition-all duration-300 group relative overflow-hidden",
+                            "rounded-3xl p-6 flex flex-col justify-between transition-all duration-300 group relative overflow-hidden cursor-pointer",
                             "bg-white/70 backdrop-blur-md border border-white/60 shadow-[0_12px_40px_rgba(0,0,0,0.02)]",
                             "dark:bg-zinc-900/40 dark:backdrop-blur-md dark:border-zinc-800/50 dark:shadow-[0_12px_40px_rgba(0,0,0,0.4)]",
                             "hover:-translate-y-1 hover:shadow-md hover:border-blue-500/30 dark:hover:border-blue-500/30",
@@ -4876,6 +5311,260 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* Contextual Drill-Down Panel */}
+            <AnimatePresence>
+                {drillDownType && (
+                    <div className="fixed inset-0 z-[160] overflow-hidden flex justify-end">
+                        {/* Backdrop */}
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-slate-950/40 dark:bg-black/60 backdrop-blur-sm"
+                            onClick={() => setDrillDownType(null)}
+                        />
+
+                        {/* Panel */}
+                        <motion.div
+                            initial={{ x: "100%" }}
+                            animate={{ x: 0 }}
+                            exit={{ x: "100%" }}
+                            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                            className="relative h-full w-full max-w-[500px] bg-white/90 dark:bg-zinc-950/90 backdrop-blur-2xl border-l border-slate-100 dark:border-zinc-800 shadow-2xl flex flex-col justify-between"
+                        >
+                            {/* Header */}
+                            <div className="p-6 border-b border-slate-150 dark:border-zinc-850 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className={`p-2 rounded-xl text-white ${
+                                        drillDownType === "overdue" ? "bg-red-500 animate-pulse" :
+                                        drillDownType === "active" ? "bg-indigo-500" :
+                                        drillDownType === "staff" ? "bg-amber-500" :
+                                        drillDownType === "balance" ? "bg-emerald-500" : "bg-blue-500"
+                                    }`}>
+                                        {drillDownType === "overdue" ? <AlertTriangle className="w-4 h-4" /> :
+                                         drillDownType === "active" ? <ListTodo className="w-4 h-4" /> :
+                                         drillDownType === "staff" ? <Users className="w-4 h-4" /> :
+                                         drillDownType === "balance" ? <DollarSign className="w-4 h-4" /> : <Users className="w-4 h-4" />}
+                                    </div>
+                                    <div>
+                                        <h2 className="text-sm font-black tracking-tight text-slate-900 dark:text-white uppercase">
+                                            {drillDownType === "overdue" ? "Critical Bottleneck Escalations" :
+                                             drillDownType === "active" ? "Active Operations Grid" :
+                                             drillDownType === "staff" ? "Academy Staff Deployment" :
+                                             drillDownType === "balance" ? "Financial Operations Core" : "Strategic Lead Conversions"}
+                                        </h2>
+                                        <p className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mt-0.5">
+                                            {drillDownType === "overdue" ? "Critical stalls requiring executive action" :
+                                             drillDownType === "active" ? "Real-time active operations overview" :
+                                             drillDownType === "staff" ? "Personnel status and workload" :
+                                             drillDownType === "balance" ? "Monthly revenue and balance" : "Current month lead conversions status"}
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setDrillDownType(null)}
+                                    className="w-8 h-8 rounded-full bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 flex items-center justify-center text-slate-500 dark:text-zinc-400 transition-colors"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            {/* Scrollable List */}
+                            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                                {drillDownType === "overdue" && (
+                                    <>
+                                        <style>{`
+                                            @keyframes pulse-glow-red {
+                                                0%, 100% { box-shadow: 0 0 10px rgba(239, 68, 68, 0.2), inset 0 0 0 1px rgba(239, 68, 68, 0.15); }
+                                                50% { box-shadow: 0 0 20px rgba(249, 115, 22, 0.45), inset 0 0 0 1px rgba(249, 115, 22, 0.35); border-color: rgba(249, 115, 22, 0.4); }
+                                            }
+                                            .pulsate-glow-red {
+                                                animation: pulse-glow-red 2s infinite ease-in-out;
+                                            }
+                                        `}</style>
+                                        {tasks.filter(t => t.due_date && new Date(t.due_date) < new Date() && t.status !== "completed" && t.status !== "COMPLETED").length === 0 ? (
+                                            <p className="text-xs text-slate-500 text-center py-8">No critical overdue bottlenecks detected.</p>
+                                        ) : (
+                                            tasks.filter(t => t.due_date && new Date(t.due_date) < new Date() && t.status !== "completed" && t.status !== "COMPLETED").map(t => {
+                                                const daysOverdue = getDaysOverdue(t.due_date);
+                                                const isEscalated = daysOverdue > 15;
+                                                const assignee = staff.find(s => s.id === t.assigned_to);
+                                                return (
+                                                    <div
+                                                        key={t.id}
+                                                        className={cn(
+                                                            "p-5 rounded-2xl bg-white/40 dark:bg-zinc-900/40 border border-slate-150 dark:border-zinc-800 transition-all backdrop-blur-sm flex flex-col gap-3 relative overflow-hidden",
+                                                            isEscalated && "pulsate-glow-red border-red-500/30 bg-red-500/[0.02]"
+                                                        )}
+                                                    >
+                                                        {isEscalated && (
+                                                            <div className="absolute top-0 right-0 px-2 py-0.5 bg-red-500 text-[8px] font-black text-white uppercase tracking-widest rounded-bl-lg">
+                                                                Escalated ({daysOverdue}d Overdue)
+                                                            </div>
+                                                        )}
+                                                        <div>
+                                                            <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-slate-100 dark:bg-zinc-800 rounded text-slate-500 dark:text-zinc-400 tracking-wider">
+                                                                {assignee?.department || "Operations"}
+                                                            </span>
+                                                            <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100 mt-2 pr-12">
+                                                                {t.title}
+                                                            </h4>
+                                                            {t.description && (
+                                                                <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1 line-clamp-2">
+                                                                    {t.description}
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex items-center justify-between border-t border-slate-100 dark:border-zinc-800 pt-3 mt-1 text-[9px] text-slate-500">
+                                                            <span>Assignee: <strong className="text-slate-800 dark:text-zinc-350 font-bold">{assignee?.full_name || 'Unassigned'}</strong></span>
+                                                            <span className={cn("font-bold uppercase tracking-wider", isEscalated ? "text-red-500 font-black" : "text-amber-500")}>
+                                                                Due: {new Date(t.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} ({daysOverdue}d overdue)
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </>
+                                )}
+
+                                {drillDownType === "active" && (
+                                    <>
+                                        {tasks.filter(t => t.status !== "completed" && t.status !== "COMPLETED").length === 0 ? (
+                                            <p className="text-xs text-slate-500 text-center py-8">No active operations in progress.</p>
+                                        ) : (
+                                            tasks.filter(t => t.status !== "completed" && t.status !== "COMPLETED").map(t => {
+                                                const assignee = staff.find(s => s.id === t.assigned_to);
+                                                return (
+                                                    <div
+                                                        key={t.id}
+                                                        className="p-5 rounded-2xl bg-white/40 dark:bg-zinc-900/40 border border-slate-150 dark:border-zinc-800 transition-all backdrop-blur-sm flex flex-col gap-2 relative"
+                                                    >
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-indigo-500/10 text-indigo-500 rounded tracking-wider">
+                                                                {t.priority} priority
+                                                            </span>
+                                                            <span className="text-[9px] font-bold text-slate-400">
+                                                                {t.status}
+                                                            </span>
+                                                        </div>
+                                                        <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100">
+                                                            {t.title}
+                                                        </h4>
+                                                        {t.description && (
+                                                            <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1 line-clamp-2">
+                                                                {t.description}
+                                                            </p>
+                                                        )}
+                                                        <div className="flex items-center justify-between border-t border-slate-100 dark:border-zinc-800 pt-3 mt-1 text-[9px] text-slate-500">
+                                                            <span>Assignee: <strong className="text-slate-800 dark:text-zinc-300 font-bold">{assignee?.full_name || 'Unassigned'}</strong></span>
+                                                            <span>Due: {t.due_date ? new Date(t.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'No deadline'}</span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </>
+                                )}
+
+                                {drillDownType === "staff" && (
+                                    <>
+                                        {staff.length === 0 ? (
+                                            <p className="text-xs text-slate-500 text-center py-8">No staff members registered.</p>
+                                        ) : (
+                                            staff.map(s => {
+                                                const staffActiveTasks = tasks.filter(t => t.assigned_to === s.id && t.status !== "completed" && t.status !== "COMPLETED").length;
+                                                return (
+                                                    <div
+                                                        key={s.id}
+                                                        className="p-4 rounded-2xl bg-white/40 dark:bg-zinc-900/40 border border-slate-150 dark:border-zinc-800 transition-all backdrop-blur-sm flex items-center justify-between"
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-9 h-9 rounded-full bg-[#31267D] flex items-center justify-center text-white font-black text-xs overflow-hidden">
+                                                                {s.avatar_url && isValidAvatarUrl(s.avatar_url) ? (
+                                                                    <img src={s.avatar_url} alt={s.full_name} className="w-full h-full object-cover" />
+                                                                ) : (
+                                                                    s.avatar_url && !isValidAvatarUrl(s.avatar_url) ? (
+                                                                        <span className="text-xs">{s.avatar_url}</span>
+                                                                    ) : (
+                                                                        (s.full_name || 'U').split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase()
+                                                                    )
+                                                                )}
+                                                            </div>
+                                                            <div>
+                                                                <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100">
+                                                                    {s.full_name}
+                                                                </h4>
+                                                                <p className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wide">
+                                                                    {s.designation || 'Staff'} • {s.department || 'Operations'}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <span className="inline-block px-2.5 py-1 bg-indigo-500/10 text-indigo-500 rounded-full text-[9px] font-black uppercase">
+                                                                {staffActiveTasks} Active tasks
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </>
+                                )}
+
+                                {drillDownType === "balance" && (
+                                    <div className="space-y-4">
+                                        <div className="p-5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex flex-col gap-1">
+                                            <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Balance</span>
+                                            <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                                                {new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(stats.currentMonthBalance || 0)}
+                                            </span>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="p-4 rounded-xl bg-slate-50 dark:bg-zinc-800/40 border border-slate-100 dark:border-zinc-800/50">
+                                                <span className="text-[9px] font-black text-slate-400 dark:text-zinc-500 uppercase tracking-widest block mb-1">Leaves Requested</span>
+                                                <span className="text-sm font-black text-slate-800 dark:text-zinc-100">{stats.leavesRequestedToday || 0}</span>
+                                            </div>
+                                            <div className="p-4 rounded-xl bg-slate-50 dark:bg-zinc-800/40 border border-slate-100 dark:border-zinc-800/50">
+                                                <span className="text-[9px] font-black text-slate-400 dark:text-zinc-500 uppercase tracking-widest block mb-1">New Leads</span>
+                                                <span className="text-sm font-black text-slate-800 dark:text-zinc-100">{stats.newLeadsToday || 0}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {drillDownType === "conversions" && (
+                                    <>
+                                        {leads.length === 0 ? (
+                                            <p className="text-xs text-slate-500 text-center py-8">No leads recorded this month.</p>
+                                        ) : (
+                                            leads.map(l => (
+                                                <div key={l.id} className="p-4 rounded-2xl bg-white/40 dark:bg-zinc-900/40 border border-slate-150 dark:border-zinc-800 transition-all backdrop-blur-sm flex items-center justify-between">
+                                                    <div>
+                                                        <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100">{l.lead_name || 'Anonymous Lead'}</h4>
+                                                        <p className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wide mt-0.5">
+                                                            Received {new Date(l.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <span className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                                            l.status === 'converted' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
+                                                            l.status === 'new' ? 'bg-amber-500/10 text-amber-500' : 'bg-indigo-500/10 text-indigo-500'
+                                                        }`}>
+                                                            {l.status}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }
