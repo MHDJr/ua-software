@@ -10,10 +10,21 @@ export default function SalesManagerDailySalesPage() {
     const router = useRouter();
 
     useEffect(() => {
-        if (!loading && (!user || !profile || (!profile.is_manager && profile.role !== "ceo" && profile.role !== "sales"))) {
-            router.push("/");
+        if (!loading) {
+            const hasSalesEdit = profile && (
+                profile.role === "ceo" ||
+                profile.role === "sales" ||
+                (profile.is_manager && (
+                    profile.department === "Sales" ||
+                    profile.manager_permissions?.sales_permission === "edit" ||
+                    profile.manager_permissions?.sales_permission === "both"
+                ))
+            );
+            if (!profile || !hasSalesEdit) {
+                router.push("/");
+            }
         }
-    }, [user, profile, loading, router]);
+    }, [profile, loading, router]);
 
     if (loading || !profile) {
         return (

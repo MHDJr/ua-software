@@ -34,6 +34,16 @@ export type Profile = {
     is_sales_staff?: boolean;
     is_tutor?: boolean;
     is_manager?: boolean;
+    manager_permissions?: {
+        allowed_departments_tasks?: string[];
+        allowed_communication_targets?: string[];
+        send_message_departments_only?: boolean;
+        view_finance_page?: boolean;
+        view_sales_page?: boolean;
+        finance_permission?: 'view' | 'edit' | 'both' | 'none';
+        sales_permission?: 'view' | 'edit' | 'both' | 'none';
+        manage_staff?: boolean;
+    };
     created_at: string;
     updated_at: string;
     subscription?: any;

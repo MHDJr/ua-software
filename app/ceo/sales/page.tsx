@@ -12,12 +12,20 @@ export default function CEOSalesPage() {
     const router = useRouter();
 
     useEffect(() => {
-        if (!loading && (!user || !profile || (profile.role !== "ceo" && !profile.is_manager && profile.role !== "manager"))) {
+        if (!loading && (!user || !profile || (profile.role !== "ceo" && !(profile.is_manager && (
+            profile.manager_permissions?.sales_permission === "view" || 
+            profile.manager_permissions?.sales_permission === "both" || 
+            profile.manager_permissions?.view_sales_page === true
+        ))))) {
             router.push("/");
         }
     }, [user, profile, loading, router]);
 
-    if (loading || !profile || (profile.role !== "ceo" && !profile.is_manager && profile.role !== "manager")) {
+    if (loading || !profile || (profile.role !== "ceo" && !(profile.is_manager && (
+        profile.manager_permissions?.sales_permission === "view" || 
+        profile.manager_permissions?.sales_permission === "both" || 
+        profile.manager_permissions?.view_sales_page === true
+    )))) {
         return (
             <div className="min-h-screen bg-[#050505] flex items-center justify-center">
                 <div className="animate-spin h-8 w-8 border-2 border-white/20 border-t-white rounded-full" />

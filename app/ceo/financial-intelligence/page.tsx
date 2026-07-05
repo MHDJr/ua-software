@@ -797,9 +797,12 @@ export default function CEOFinancialIntelligence() {
             (!user ||
                 !profile ||
                 (profile.role !== "ceo" &&
-                    !profile.is_manager &&
-                    profile.role !== "manager" &&
-                    profile.role !== "accounts"))
+                    profile.role !== "accounts" &&
+                    !(profile.is_manager && (
+                        profile.manager_permissions?.finance_permission === "view" || 
+                        profile.manager_permissions?.finance_permission === "both" || 
+                        profile.manager_permissions?.view_finance_page === true
+                    ))))
         ) {
             router.push("/");
         }

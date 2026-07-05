@@ -309,7 +309,15 @@ function CEOPageContent() {
                 }>
                     {activeView === "command-center" && <ExecutiveCommand currentView={activeView} />}
                     {activeView === "inbox" && <CEOInbox />}
-                    {activeView === "staff-management" && <StaffManagement />}
+                    {activeView === "staff-management" && (
+                        (profile?.role === "ceo" || (profile?.is_manager && profile?.manager_permissions?.manage_staff === true)) ? (
+                            <StaffManagement />
+                        ) : (
+                            <div className="flex flex-col items-center justify-center h-full pt-20">
+                                <p className="text-red-500 font-bold uppercase text-xs">Access Denied</p>
+                            </div>
+                        )
+                    )}
                     {activeView === "sales-intelligence" && <ExecutiveSalesOverview />}
                 </Suspense>
             </main>

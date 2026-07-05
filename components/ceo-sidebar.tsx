@@ -289,6 +289,30 @@ export function CEOSidebar({
                                         userRole === "CEO"
                                     );
                                 }
+                                if (item.id === "financial-intelligence") {
+                                    const hasFinanceView = profile?.department === "Finance" || 
+                                                           profile?.manager_permissions?.finance_permission === "view" || 
+                                                           profile?.manager_permissions?.finance_permission === "both" || 
+                                                           profile?.manager_permissions?.view_finance_page === true;
+                                    return (
+                                        profile?.role === "ceo" ||
+                                        userRole === "CEO" ||
+                                        profile?.role === "accounts" ||
+                                        (profile?.is_manager && hasFinanceView)
+                                    );
+                                }
+                                if (item.id === "sales-intelligence") {
+                                    const hasSalesView = profile?.department === "Sales" || 
+                                                         profile?.manager_permissions?.sales_permission === "view" || 
+                                                         profile?.manager_permissions?.sales_permission === "both" || 
+                                                         profile?.manager_permissions?.view_sales_page === true;
+                                    return (
+                                        profile?.role === "ceo" ||
+                                        userRole === "CEO" ||
+                                        profile?.role === "sales" ||
+                                        (profile?.is_manager && hasSalesView)
+                                    );
+                                }
                                 return true;
                             })
                             .map(renderNavItem)}
@@ -301,7 +325,18 @@ export function CEOSidebar({
 
                     {/* Secondary Navigation - Middle Group */}
                     <ul className="space-y-1">
-                        {middleNavItems.map(renderNavItem)}
+                        {middleNavItems
+                            .filter((item) => {
+                                if (item.id === "staff-management") {
+                                    return (
+                                        profile?.role === "ceo" ||
+                                        userRole === "CEO" ||
+                                        (profile?.is_manager && profile?.manager_permissions?.manage_staff === true)
+                                    );
+                                }
+                                return true;
+                            })
+                            .map(renderNavItem)}
                     </ul>
                 </nav>
 
@@ -449,7 +484,7 @@ export function CEOSidebar({
                                         {profile?.full_name || "Executive"}
                                     </p>
                                     <p className="text-[8px] font-bold text-[#31267D] uppercase tracking-[0.1em] opacity-60">
-                                        {userRole}
+                                        {profile?.designation || userRole}
                                     </p>
                                 </div>
                             )}

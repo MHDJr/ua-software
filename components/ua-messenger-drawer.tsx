@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { X, MessageSquare, Send, Trash2, Loader2, Mail, Check, CheckCheck, RefreshCw, MessageCircle, ArrowLeft } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { supabase, Profile } from "@/lib/supabase";
 import { cn, isValidAvatarUrl } from "@/lib/utils";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -11,15 +11,7 @@ import { format } from "date-fns";
 interface UAMessengerDrawerProps {
     isOpen: boolean;
     onClose: () => void;
-    profile: {
-        id: string;
-        full_name?: string;
-        role?: string;
-        avatar_url?: string;
-        department?: string;
-        is_manager?: boolean;
-        designation?: string;
-    } | null;
+    profile: Profile | null;
 }
  
 interface Thread {
@@ -392,15 +384,8 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
             const managerDept = (profile.department || "").trim();
             const managerDeptLower = managerDept.toLowerCase();
             
-            // Build the allowed departments array
-            const allowedDepts = [managerDept];
-            
-            // Let's also include accounts/finance expansion just in case
-            if (managerDeptLower === "finance" || managerDeptLower === "accounts" || managerDeptLower === "finance/accounts") {
-                if (!allowedDepts.some(d => d.toLowerCase() === "finance")) allowedDepts.push("Finance");
-                if (!allowedDepts.some(d => d.toLowerCase() === "accounts")) allowedDepts.push("Accounts");
-                if (!allowedDepts.some(d => d.toLowerCase() === "finance/accounts")) allowedDepts.push("Finance/Accounts");
-            }
+            const allowedCommTargets = profile.manager_permissions?.allowed_communication_targets || [];
+            const isAllDeptsAllowed = allowedCommTargets.includes("All") || allowedCommTargets.includes("All Departments");
             
             return profilesList.filter(p => {
                 if (p.id === profile.id) return false;
@@ -408,26 +393,54 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
                 const targetRoleLower = p.role?.toLowerCase() || "";
                 const targetDesignationLower = p.designation?.toLowerCase() || "";
                 const isTargetCeo = targetRoleLower === "ceo" || targetDesignationLower === "ceo";
-                const isTargetAdmin = targetRoleLower === "admin" || targetRoleLower === "administrator" || targetDesignationLower === "admin" || targetDesignationLower === "administrator";
                 
-                // CEO and Administrators are always visible to managers
-                if (isTargetCeo || isTargetAdmin) return true;
+                // 1. CEO is always visible (default communication)
+                if (isTargetCeo) return true;
                 
-                // Determine target staff department, defaulting to "Administration" just like in ManagerCommandCenter.tsx
+                // Determine target's department
                 const staffDept = (p.department || "Administration").trim();
                 const staffDeptLower = staffDept.toLowerCase();
                 
-                // 1. Marketing Manager can access and message ALL staff members in the system
+                // 2. Managers of the current user's department are always visible (default communication)
+                const isTargetManager = p.is_manager === true || 
+                                        targetRoleLower === "manager" || 
+                                        targetDesignationLower.includes("manager") ||
+                                        targetDesignationLower.includes("head");
+                const myDeptLower = (profile.department || "Administration").toLowerCase();
+                const isMyDepartmentManager = staffDeptLower === myDeptLower && isTargetManager;
+                if (isMyDepartmentManager) return true;
+                
+                // 3. Custom target checking
+                if (isAllDeptsAllowed) return true;
+                
+                if (allowedCommTargets.length > 0) {
+                    let mappedTarget = "";
+                    if (staffDeptLower === "marketing") mappedTarget = "Marketing";
+                    else if (staffDeptLower === "sales") mappedTarget = "Sales";
+                    else if (staffDeptLower === "finance" || staffDeptLower === "accounts") mappedTarget = "Finance";
+                    else if (staffDeptLower === "administration" || staffDeptLower === "admin") mappedTarget = "Administration";
+                    
+                    if (mappedTarget && allowedCommTargets.includes(mappedTarget)) {
+                        return true;
+                    }
+                    return false;
+                }
+                
+                // Fallback to original manager visibility logic if no custom targets are specified:
+                const isTargetAdmin = targetRoleLower === "admin" || targetRoleLower === "administrator" || targetDesignationLower === "admin" || targetDesignationLower === "administrator";
+                if (isTargetAdmin) return true;
+                
+                // Marketing Manager can message everyone
                 if (managerDeptLower === "marketing") {
                     return true;
                 }
                 
-                // 2. Finance/Accounts managers can access Finance, Accounts, and Finance/Accounts staff
+                // Finance/Accounts managers can access Finance, Accounts, and Finance/Accounts staff
                 if (managerDeptLower === "finance" || managerDeptLower === "accounts" || managerDeptLower === "finance/accounts") {
                     return staffDeptLower === "finance" || staffDeptLower === "accounts" || staffDeptLower === "finance/accounts";
                 }
                 
-                // 3. Other managers (Sales, Administration, etc.) match exactly their department
+                // Other managers match exactly their department
                 return staffDeptLower === managerDeptLower;
             });
         }

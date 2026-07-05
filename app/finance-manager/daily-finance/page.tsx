@@ -283,8 +283,19 @@ export default function FinanceManagerDailyRecordPage() {
 
     // Role verification
     useEffect(() => {
-        if (!authLoading && (!profile || (!profile.is_manager && profile.role !== "ceo" && profile.role !== "accounts"))) {
-            router.push("/");
+        if (!authLoading) {
+            const hasFinanceEdit = profile && (
+                profile.role === "ceo" ||
+                profile.role === "accounts" ||
+                (profile.is_manager && (
+                    profile.department === "Finance" ||
+                    profile.manager_permissions?.finance_permission === "edit" ||
+                    profile.manager_permissions?.finance_permission === "both"
+                ))
+            );
+            if (!profile || !hasFinanceEdit) {
+                router.push("/");
+            }
         }
     }, [profile, authLoading, router]);
 

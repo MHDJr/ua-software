@@ -15,8 +15,15 @@ export default function FinanceManagerPage() {
                 router.replace("/");
             } else if (profile.role === "ceo") {
                 router.replace("/ceo");
-            } else if (!profile.is_manager || profile.department !== "Finance") {
-                // Not a finance manager, redirect to their proper place
+            } else if (
+                !(profile.is_manager && (
+                    profile.department === "Finance" || 
+                    profile.manager_permissions?.finance_permission === "view" || 
+                    profile.manager_permissions?.finance_permission === "both" || 
+                    profile.manager_permissions?.view_finance_page === true
+                ))
+            ) {
+                // Not authorized to view finance manager, redirect to their proper place
                 if (profile.is_manager) {
                     if (profile.department === "Sales") router.replace("/sales-manager");
                     else if (profile.department === "Marketing") router.replace("/marketing-manager");

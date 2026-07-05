@@ -525,6 +525,9 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
     const [departmentFilter, setDepartmentFilter] = useState<
         "ceo" | "administration" | "marketing" | "sales" | "finance"
     >("ceo");
+    const [deploymentPerspective, setDeploymentPerspective] = useState<"my" | "global">("my");
+    const [sendingAlertTaskId, setSendingAlertTaskId] = useState<string | null>(null);
+    const [sentAlerts, setSentAlerts] = useState<Record<string, boolean>>({});
     const [meetingFilter, setMeetingFilter] = useState<
         "upcoming" | "today" | "week"
     >("upcoming");
@@ -683,8 +686,52 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
         });
     }, [ideas, currentTime]);
 
-    const deptFilteredTasks = useMemo(() => {
+    const criticalOverdueTasks = useMemo(() => {
+        if (!profile) return [];
+        return tasks.filter((t) => {
+            const isAssignedByMe = t.created_by === profile.id;
+            const isOverdue = t.due_date && new Date(t.due_date) < new Date() && t.status !== "completed" && t.status !== "COMPLETED";
+            return isAssignedByMe && isOverdue;
+        });
+    }, [tasks, profile]);
+
+    const getDaysOverdue = (dueDateStr?: string) => {
+        if (!dueDateStr) return 0;
+        const due = new Date(dueDateStr);
+        const now = new Date();
+        due.setHours(0, 0, 0, 0);
+        now.setHours(0, 0, 0, 0);
+        const diffTime = now.getTime() - due.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return diffDays > 0 ? diffDays : 0;
+    };
+
+    const perspectiveFilteredTasks = useMemo(() => {
+        const isCeo = profile?.role === "ceo" || userRole === "CEO";
+        const perspective = isCeo ? deploymentPerspective : "my";
         return tasks.filter(t => {
+            if (perspective === "my") {
+                return t.created_by === profile?.id;
+            } else {
+                return t.created_by !== profile?.id;
+            }
+        });
+    }, [tasks, deploymentPerspective, profile, userRole]);
+
+    const perspectiveFilteredCompletedTasks = useMemo(() => {
+        const isCeo = profile?.role === "ceo" || userRole === "CEO";
+        const perspective = isCeo ? deploymentPerspective : "my";
+        return completedTasks.filter(t => {
+            if (perspective === "my") {
+                return t.created_by === profile?.id;
+            } else {
+                return t.created_by !== profile?.id;
+            }
+        });
+    }, [completedTasks, deploymentPerspective, profile, userRole]);
+
+    const deptFilteredTasks = useMemo(() => {
+        return perspectiveFilteredTasks.filter(t => {
             if (departmentFilter === "ceo") return true;
             const assignee = staff.find((s) => s.id === t.assigned_to);
             if (!assignee) return false;
@@ -702,10 +749,10 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                     return false;
             }
         });
-    }, [tasks, departmentFilter, staff]);
+    }, [perspectiveFilteredTasks, departmentFilter, staff]);
 
     const deptFilteredCompletedTasks = useMemo(() => {
-        return completedTasks.filter(t => {
+        return perspectiveFilteredCompletedTasks.filter(t => {
             if (departmentFilter === "ceo") return true;
             const assignee = staff.find((s) => s.id === t.assigned_to);
             if (!assignee) return false;
@@ -723,7 +770,7 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                     return false;
             }
         });
-    }, [completedTasks, departmentFilter, staff]);
+    }, [perspectiveFilteredCompletedTasks, departmentFilter, staff]);
 
     const deptOverdueCount = useMemo(() => {
         return deptFilteredTasks.filter(t => t.due_date && new Date(t.due_date) < new Date() && t.status !== "completed").length;
@@ -2335,6 +2382,61 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
         }
     };
 
+    const deployOverdueAlert = async (task: Task) => {
+        if (!task.assigned_to) return;
+        setSendingAlertTaskId(task.id);
+        
+        const assignedUser = staff.find(s => s.id === task.assigned_to);
+        const assignedName = assignedUser?.full_name || task.assigned_to_user?.full_name || "Staff Member";
+        
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+            
+            const messageBody = `[sender_id:${profile?.id || ""}] ⚠️ SYSTEM ALERT: Your task "${task.title}" is overdue. Please update its status immediately.`;
+            
+            let apiSuccess = false;
+            try {
+                const response = await fetch("/api/send-message", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+                    },
+                    body: JSON.stringify({
+                        user_id: task.assigned_to,
+                        title: `OVERDUE ALERT FROM ${profile?.full_name?.toUpperCase() || "SUPERVISOR"}`,
+                        message: messageBody,
+                        type: "direct",
+                    }),
+                });
+                if (response.ok) apiSuccess = true;
+            } catch (err) {
+                console.warn("API message failed, fallback to DB", err);
+            }
+            
+            if (!apiSuccess) {
+                const { error } = await supabase.from("notifications").insert({
+                    user_id: task.assigned_to,
+                    title: `OVERDUE ALERT FROM ${profile?.full_name?.toUpperCase() || "SUPERVISOR"}`,
+                    message: messageBody,
+                    type: "direct",
+                    read: false,
+                    created_at: new Date().toISOString()
+                });
+                if (error) throw error;
+            }
+            
+            toast.success(`Overdue alert deployed successfully to ${assignedName}!`);
+            setSentAlerts(prev => ({ ...prev, [task.id]: true }));
+        } catch (error: any) {
+            console.error("Failed to deploy overdue alert:", error);
+            toast.error(error.message || "Failed to deploy alert");
+        } finally {
+            setSendingAlertTaskId(null);
+        }
+    };
+
     const openChatModal = (staff: Profile) => {
         setSelectedStaffForChat(staff);
         setIsChatModalOpen(true);
@@ -2803,49 +2905,99 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
             <main className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6 flex-1">
                 {/* 2. LEFT COLUMN - EXECUTIVE AUTHORITY */}
                 <aside className="col-span-1 md:col-span-12 lg:col-span-3 flex flex-col gap-4">
-                    {/* LIVE OPERATIONS SIGNAL PANEL - Hidden on mobile */}
-                    <div className="hidden md:flex bg-white/70 dark:bg-zinc-900/40 backdrop-blur-md border border-white/60 dark:border-zinc-800/50 rounded-[2rem] overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.02)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.4)] flex-col w-full max-w-[300px] mx-auto lg:mx-0">
-                        {/* Today Summary Header */}
-                        <div className="hidden md:block p-5 bg-white/30 dark:bg-zinc-800/30 border-b border-white/40 dark:border-zinc-800/50">
-                            <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-zinc-500 mb-4">
-                                Today Summary
-                            </h4>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="bg-white/60 dark:bg-zinc-900/60 border border-white/50 dark:border-zinc-800/50 rounded-2xl p-3 flex flex-col gap-1 shadow-sm">
-                                    <span className="text-base font-black text-indigo-500 dark:text-indigo-400">
-                                        {stats.tasksAssignedToday}
-                                    </span>
-                                    <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-tighter">
-                                        Tasks Assigned
-                                    </span>
-                                </div>
-                                <div className="bg-white/60 dark:bg-zinc-900/60 border border-white/50 dark:border-zinc-800/50 rounded-2xl p-3 flex flex-col gap-1 shadow-sm">
-                                    <span className="text-base font-black text-emerald-500 dark:text-emerald-400">
-                                        {stats.paymentsReceivedToday}
-                                    </span>
-                                    <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-tighter">
-                                        Payments Received
-                                    </span>
-                                </div>
-                                <div className="bg-white/60 dark:bg-zinc-900/60 border border-white/50 dark:border-zinc-800/50 rounded-2xl p-3 flex flex-col gap-1 shadow-sm">
-                                    <span className="text-base font-black text-orange-500 dark:text-orange-400">
-                                        {stats.leavesRequestedToday}
-                                    </span>
-                                    <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-tighter">
-                                        Leaves Requested
-                                    </span>
-                                </div>
-                                <div className="bg-white/60 dark:bg-zinc-900/60 border border-white/50 dark:border-zinc-800/50 rounded-2xl p-3 flex flex-col gap-1 shadow-sm">
-                                    <span className="text-base font-black text-purple-500 dark:text-purple-400">
-                                        {stats.newLeadsToday}
-                                    </span>
-                                    <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-tighter">
-                                        New Leads
-                                    </span>
-                                </div>
+                    {/* CRITICAL BOTTLENECK ESCALATIONS */}
+                    <div className="hidden md:flex bg-white/70 dark:bg-zinc-900/40 backdrop-blur-md border border-white/60 dark:border-zinc-800/50 rounded-[2rem] p-5 shadow-[0_12px_40px_rgba(0,0,0,0.02)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.4)] flex-col w-full max-w-[300px] mx-auto lg:mx-0">
+                        <div className="flex items-center gap-2 mb-4">
+                            <div className="p-1.5 bg-red-500/10 rounded-lg">
+                                <AlertTriangle className="w-4 h-4 text-red-500" />
+                            </div>
+                            <div>
+                                <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-900 dark:text-zinc-100">
+                                    Critical Bottleneck Escalations
+                                </h4>
+                                <p className="text-[8px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-tighter mt-0.5">
+                                    Overdue tasks assigned by you
+                                </p>
                             </div>
                         </div>
 
+                        <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
+                            {criticalOverdueTasks.length === 0 ? (
+                                <div className="py-8 flex flex-col items-center justify-center text-center">
+                                    <CheckCircle2 className="w-7 h-7 text-emerald-500/30 dark:text-emerald-500/20 mb-2" />
+                                    <span className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-300 dark:text-zinc-700">
+                                        All clean. No bottlenecks!
+                                    </span>
+                                </div>
+                            ) : (
+                                <div className="divide-y divide-slate-100/50 dark:divide-zinc-800/40">
+                                    {criticalOverdueTasks.map((task) => {
+                                        const assignedUser = staff.find((s) => s.id === task.assigned_to);
+                                        const assignedName = assignedUser?.full_name || task.assigned_to_user?.full_name || "Unknown";
+                                        const daysLate = getDaysOverdue(task.due_date);
+                                        const isSending = sendingAlertTaskId === task.id;
+                                        const isSent = sentAlerts[task.id] === true;
+
+                                        return (
+                                            <div 
+                                                key={task.id} 
+                                                className="flex items-center justify-between py-3 px-1 hover:bg-slate-50/50 dark:hover:bg-zinc-800/20 transition-all duration-200"
+                                            >
+                                                {/* Left Info Stack */}
+                                                <div className="min-w-0 flex-1 pr-3">
+                                                    <div className="flex items-center flex-wrap gap-1.5">
+                                                        <span className="text-xs font-semibold text-slate-800 dark:text-zinc-200 line-clamp-1 leading-snug">
+                                                            {task.title}
+                                                        </span>
+                                                        <span className="shrink-0 bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 border border-red-100 dark:border-red-950/40 text-[9px] font-bold px-1.5 py-0.5 rounded-md">
+                                                            {daysLate} {daysLate === 1 ? "DAY" : "DAYS"} LATE
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-[11px] font-medium text-slate-400 dark:text-zinc-500 mt-1 truncate">
+                                                        To: {assignedName}
+                                                    </p>
+                                                </div>
+
+                                                {/* Right Action Switch / State Button */}
+                                                <div className="shrink-0">
+                                                    {isSent ? (
+                                                        <div 
+                                                            className="w-8 h-8 rounded-full flex items-center justify-center bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30 shadow-sm"
+                                                            title="Alert deployed successfully"
+                                                        >
+                                                            <CheckCircle className="w-4 h-4" />
+                                                        </div>
+                                                    ) : (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => deployOverdueAlert(task)}
+                                                            disabled={isSending}
+                                                            title="Send Overdue Alert to Staff"
+                                                            className={cn(
+                                                                "w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 active:scale-90 shadow-sm shadow-orange-500/10",
+                                                                isSending
+                                                                    ? "bg-slate-100 dark:bg-zinc-800 text-slate-400 cursor-not-allowed"
+                                                                    : "bg-orange-50 hover:bg-[#F14D24] dark:bg-orange-950/20 dark:hover:bg-[#F14D24] text-orange-600 hover:text-white"
+                                                            )}
+                                                        >
+                                                            {isSending ? (
+                                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                            ) : (
+                                                                <Send className="w-3.5 h-3.5" />
+                                                            )}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* LIVE OPERATIONS SIGNAL PANEL - Hidden on mobile */}
+                    <div className="hidden md:flex bg-white/70 dark:bg-zinc-900/40 backdrop-blur-md border border-white/60 dark:border-zinc-800/50 rounded-[2rem] overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.02)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.4)] flex-col w-full max-w-[300px] mx-auto lg:mx-0">
                         <div className="p-4 flex flex-col gap-4 flex-1">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
@@ -2965,6 +3117,47 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                             </ScrollArea>
                         </div>
                     </div>
+
+                    {/* TODAY SUMMARY */}
+                    <div className="hidden md:flex bg-white/70 dark:bg-zinc-900/40 backdrop-blur-md border border-white/60 dark:border-zinc-800/50 rounded-[2rem] p-5 shadow-[0_12px_40px_rgba(0,0,0,0.02)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.4)] flex-col w-full max-w-[300px] mx-auto lg:mx-0">
+                        <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-zinc-500 mb-4">
+                            Today Summary
+                        </h4>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="bg-white/60 dark:bg-zinc-900/60 border border-white/50 dark:border-zinc-800/50 rounded-2xl p-3 flex flex-col gap-1 shadow-sm">
+                                <span className="text-base font-black text-indigo-500 dark:text-indigo-400">
+                                    {stats.tasksAssignedToday}
+                                </span>
+                                <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-tighter">
+                                    Tasks Assigned
+                                </span>
+                            </div>
+                            <div className="bg-white/60 dark:bg-zinc-900/60 border border-white/50 dark:border-zinc-800/50 rounded-2xl p-3 flex flex-col gap-1 shadow-sm">
+                                <span className="text-base font-black text-emerald-500 dark:text-emerald-400">
+                                    {stats.paymentsReceivedToday}
+                                </span>
+                                <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-tighter">
+                                    Payments Received
+                                </span>
+                            </div>
+                            <div className="bg-white/60 dark:bg-zinc-900/60 border border-white/50 dark:border-zinc-800/50 rounded-2xl p-3 flex flex-col gap-1 shadow-sm">
+                                <span className="text-base font-black text-orange-500 dark:text-orange-400">
+                                    {stats.leavesRequestedToday}
+                                </span>
+                                <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-tighter">
+                                    Leaves Requested
+                                </span>
+                            </div>
+                            <div className="bg-white/60 dark:bg-zinc-900/60 border border-white/50 dark:border-zinc-800/50 rounded-2xl p-3 flex flex-col gap-1 shadow-sm">
+                                <span className="text-base font-black text-purple-500 dark:text-purple-400">
+                                    {stats.newLeadsToday}
+                                </span>
+                                <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-tighter">
+                                    New Leads
+                                </span>
+                            </div>
+                        </div>
+                    </div>
                 </aside>
 
                 {/* 3?????? CENTER COLUMN - ACTIVE OPERATIONS */}
@@ -3048,6 +3241,35 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                             Daily Tasks
                         </button>
                     </div>
+                    {/* Perspective Filters */}
+                    {(profile?.role === "ceo" || userRole === "CEO") && (
+                        <div className="flex bg-slate-100/80 dark:bg-zinc-800/60 p-1 rounded-2xl border border-slate-200/20 w-full md:w-fit mb-3">
+                            <button
+                                type="button"
+                                onClick={() => setDeploymentPerspective("my")}
+                                className={cn(
+                                    "flex-1 md:flex-none px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 text-center whitespace-nowrap",
+                                    deploymentPerspective === "my"
+                                        ? "bg-[#31267D] text-white shadow-sm"
+                                        : "text-slate-500 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-zinc-200"
+                                )}
+                            >
+                                My Deployments
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setDeploymentPerspective("global")}
+                                className={cn(
+                                    "flex-1 md:flex-none px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 text-center whitespace-nowrap",
+                                    deploymentPerspective === "global"
+                                        ? "bg-[#31267D] text-white shadow-sm"
+                                        : "text-slate-500 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-zinc-200"
+                                )}
+                            >
+                                Global Operations
+                            </button>
+                        </div>
+                    )}
 
                     {/* Department Filters */}
                     <div className="flex flex-wrap gap-1.5 md:gap-2 mb-2 p-1.5 bg-white/40 dark:bg-zinc-800/40 rounded-2xl border border-white/50 dark:border-zinc-700/50 w-full md:w-fit overflow-x-auto scrollbar-hide shadow-inner">
@@ -3175,43 +3397,6 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                                                               <h4 className="text-sm font-black text-slate-900 dark:text-zinc-100 leading-tight uppercase truncate max-w-[220px] sm:max-w-[320px]">
                                                                   {t.title}
                                                               </h4>
-                                                              {(t as any)
-                                                                  .creator && (
-                                                                  <Badge
-                                                                      variant="outline"
-                                                                      className={cn(
-                                                                          "text-[9px] px-2.5 py-0 h-5 border-none font-black uppercase tracking-widest flex items-center gap-1.5",
-                                                                          (
-                                                                              t as any
-                                                                          )
-                                                                              .creator
-                                                                              .role ===
-                                                                              "ceo"
-                                                                              ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                                                                              : "bg-slate-500/10 text-slate-600 dark:text-slate-400",
-                                                                      )}
-                                                                  >
-                                                                      {(
-                                                                          t as any
-                                                                      ).creator
-                                                                          .role ===
-                                                                      "ceo" ? (
-                                                                          <>
-                                                                              <Crown className="w-2.5 h-2.5" />
-                                                                              Assigned
-                                                                              by
-                                                                              CEO
-                                                                          </>
-                                                                      ) : (
-                                                                          <>
-                                                                              <Zap className="w-2.5 h-2.5" />
-                                                                              Assigned
-                                                                              by
-                                                                              Administrator
-                                                                          </>
-                                                                      )}
-                                                                  </Badge>
-                                                              )}
                                                               {t.assigned_to !== profile?.id && (t.created_by === profile?.id || (t as any).assigned_by === profile?.id) && (
                                                                    <div className="flex items-center gap-1 text-slate-400 dark:text-zinc-500 select-none ml-1 shrink-0">
                                                                        {t.is_staff_seen && (

@@ -155,6 +155,30 @@ export function ManagerCommandCenter({
         return propDepartment || (profile?.department as any) || "Sales";
     }, [propDepartment, profile]);
 
+    const hasEditPermission = useMemo(() => {
+        if (!profile) return false;
+        if (profile.role === "ceo") return true;
+        if (department === "Finance") {
+            return profile.department === "Finance" || profile.manager_permissions?.finance_permission === "edit" || profile.manager_permissions?.finance_permission === "both";
+        }
+        if (department === "Sales") {
+            return profile.department === "Sales" || profile.manager_permissions?.sales_permission === "edit" || profile.manager_permissions?.sales_permission === "both";
+        }
+        return true;
+    }, [profile, department]);
+
+    const hasViewPermission = useMemo(() => {
+        if (!profile) return false;
+        if (profile.role === "ceo") return true;
+        if (department === "Finance") {
+            return profile.department === "Finance" || profile.manager_permissions?.finance_permission === "view" || profile.manager_permissions?.finance_permission === "both" || profile.manager_permissions?.view_finance_page === true;
+        }
+        if (department === "Sales") {
+            return profile.department === "Sales" || profile.manager_permissions?.sales_permission === "view" || profile.manager_permissions?.sales_permission === "both" || profile.manager_permissions?.view_sales_page === true;
+        }
+        return true;
+    }, [profile, department]);
+
     // State
     const [staffData, setStaffData] = useState<any[]>([]);
     const [tasks, setTasks] = useState<Task[]>([]);
@@ -194,6 +218,10 @@ export function ManagerCommandCenter({
 
     // Get manager's department access
     const managerDepartmentAccess = useMemo(() => {
+        if (profile?.manager_permissions?.allowed_departments_tasks && profile.manager_permissions.allowed_departments_tasks.length > 0) {
+            return profile.manager_permissions.allowed_departments_tasks;
+        }
+
         const primary = department || (profile?.department as any) || "Sales";
         const depts = [primary];
 
@@ -988,7 +1016,7 @@ export function ManagerCommandCenter({
                                         : `Record and transmit today's ${department.toLowerCase()} metrics to the CEO dashboard.`}
                                 </p>
                                 
-                                {department !== "Marketing" && (
+                                {department !== "Marketing" && hasEditPermission && (
                                     <button
                                         onClick={() => {
                                             if (department === "Finance") router.push("/finance-manager/daily-finance");
@@ -1000,16 +1028,18 @@ export function ManagerCommandCenter({
                                     </button>
                                 )}
 
-                                <button
-                                    onClick={() => {
-                                        if (department === "Finance") router.push("/finance-manager/financial-intelligence");
-                                        else if (department === "Marketing") router.push("/marketing-manager/sales-intelligence");
-                                        else router.push("/sales-manager/sales-intelligence");
-                                    }}
-                                    className="w-full py-3 bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/30 text-white rounded-2xl font-black text-[9px] tracking-widest uppercase transition-all flex items-center justify-center gap-2 active:scale-95"
-                                >
-                                    {department === "Finance" ? "Financial" : "Sales"} Intelligence <BarChart3 className="w-3 h-3" />
-                                </button>
+                                {hasViewPermission && (
+                                    <button
+                                        onClick={() => {
+                                            if (department === "Finance") router.push("/finance-manager/financial-intelligence");
+                                            else if (department === "Marketing") router.push("/marketing-manager/sales-intelligence");
+                                            else router.push("/sales-manager/sales-intelligence");
+                                        }}
+                                        className="w-full py-3 bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/30 text-white rounded-2xl font-black text-[9px] tracking-widest uppercase transition-all flex items-center justify-center gap-2 active:scale-95"
+                                    >
+                                        {department === "Finance" ? "Financial" : "Sales"} Intelligence <BarChart3 className="w-3 h-3" />
+                                    </button>
+                                )}
                             </div>
                         </div>
                     )}
@@ -1347,48 +1377,6 @@ export function ManagerCommandCenter({
                                                         <h4 className="text-sm font-black text-slate-900 leading-tight uppercase truncate max-w-[220px] sm:max-w-[320px]">
                                                             {task.title}
                                                         </h4>
-                                                        {(task as any).creator && (
-                                                            <Badge
-                                                                variant="outline"
-                                                                className={cn(
-                                                                    "text-[9px] px-2.5 py-0.5 h-5 border-none font-black uppercase tracking-widest flex items-center gap-1.5",
-                                                                    (task as any)
-                                                                        .creator
-                                                                        ?.role ===
-                                                                        "ceo"
-                                                                        ? "bg-amber-500/10 text-amber-600 shadow-[0_0_8px_rgba(245,158,11,0.05)]"
-                                                                        : "bg-indigo-500/10 text-indigo-600 shadow-[0_0_8px_rgba(99,102,241,0.05)]",
-                                                                )}
-                                                            >
-                                                                {(task as any)
-                                                                    .creator
-                                                                    ?.role ===
-                                                                "ceo" ? (
-                                                                    <>
-                                                                        <Crown className="w-2.5 h-2.5 text-amber-500 animate-pulse" />
-                                                                        {(task as any)
-                                                                            .creator
-                                                                            ?.full_name ||
-                                                                            "Saleem"}{" "}
-                                                                        (CEO)
-                                                                    </>
-                                                                ) : (
-                                                                    <>
-                                                                        <Zap className="w-2.5 h-2.5 text-indigo-500 animate-pulse" />
-                                                                        {(task as any)
-                                                                            .creator
-                                                                            ?.full_name ||
-                                                                            "Administrator"}{" "}
-                                                                        (
-                                                                        {(task as any)
-                                                                            .creator
-                                                                            ?.designation ||
-                                                                            "Manager"}
-                                                                        )
-                                                                    </>
-                                                                )}
-                                                            </Badge>
-                                                        )}
                                                         {task.is_daily_task && (
                                                             <Badge
                                                                 variant="outline"

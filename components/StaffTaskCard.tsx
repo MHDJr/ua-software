@@ -234,18 +234,6 @@ export const StaffTaskCard: React.FC<StaffTaskCardProps> = ({
                                 </span>
                             </div>
                         )}
-                        {taskCreators[task.created_by] && (
-                            <div className="flex items-center gap-1.5 mt-2 text-slate-500 dark:text-zinc-400 text-[9px] font-black tracking-widest uppercase">
-                                <User className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500 animate-pulse" />
-                                <span>
-                                    Assigned by: <span className="text-indigo-600 dark:text-indigo-400 font-extrabold">{
-                                        taskCreators[task.created_by].role === 'ceo' 
-                                            ? `${taskCreators[task.created_by].full_name || 'Saleem'} (CEO)` 
-                                            : `${taskCreators[task.created_by].full_name || 'Administrator'} (${taskCreators[task.created_by].designation || 'Administrator'})`
-                                    }</span>
-                                </span>
-                            </div>
-                        )}
                     </div>
                 </div>
                 <div className="flex items-center gap-4 shrink-0 ml-3">
