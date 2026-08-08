@@ -95,10 +95,15 @@ function CEOPageContent() {
     const isAuthorized = useMemo(() => {
         if (loading) return true; // Assume authorized while loading
         if (!profile) return false;
-        return profile.role === "ceo" || 
-               profile.role === "manager" || 
+        const role = (profile.role as string)?.toLowerCase();
+        return role === "ceo" || 
+               userRole === "CEO" ||
+               role === "manager" || 
+               role === "admin" ||
+               role === "administrator" ||
+               profile.department === "Administration" ||
                profile.is_manager === true;
-    }, [profile, loading]);
+    }, [profile, loading, userRole]);
 
     // Handle view transitions
     const handleViewChange = useCallback((view: string) => {
