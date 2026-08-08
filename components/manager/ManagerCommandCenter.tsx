@@ -157,24 +157,31 @@ export function ManagerCommandCenter({
 
     const hasEditPermission = useMemo(() => {
         if (!profile) return false;
-        if (profile.role === "ceo") return true;
+        if ((profile.role as string) === "ceo") return true;
         if (department === "Finance") {
             return profile.department === "Finance" || profile.manager_permissions?.finance_permission === "edit" || profile.manager_permissions?.finance_permission === "both";
         }
         if (department === "Sales") {
-            return profile.department === "Sales" || profile.manager_permissions?.sales_permission === "edit" || profile.manager_permissions?.sales_permission === "both";
+            return (profile.role as string) === "ceo" || 
+                   profile.manager_permissions?.sales_permission === "edit" || 
+                   profile.manager_permissions?.sales_permission === "both" || 
+                   profile.manager_permissions?.can_update_staff_sales === true;
         }
         return true;
     }, [profile, department]);
 
     const hasViewPermission = useMemo(() => {
         if (!profile) return false;
-        if (profile.role === "ceo") return true;
+        if ((profile.role as string) === "ceo") return true;
         if (department === "Finance") {
             return profile.department === "Finance" || profile.manager_permissions?.finance_permission === "view" || profile.manager_permissions?.finance_permission === "both" || profile.manager_permissions?.view_finance_page === true;
         }
-        if (department === "Sales") {
-            return profile.department === "Sales" || profile.manager_permissions?.sales_permission === "view" || profile.manager_permissions?.sales_permission === "both" || profile.manager_permissions?.view_sales_page === true;
+        if (department === "Sales" || department === "Marketing") {
+            return profile.manager_permissions?.sales_permission === "view" || 
+                   profile.manager_permissions?.sales_permission === "edit" || 
+                   profile.manager_permissions?.sales_permission === "both" || 
+                   profile.manager_permissions?.view_sales_page === true || 
+                   profile.manager_permissions?.can_update_staff_sales === true;
         }
         return true;
     }, [profile, department]);
@@ -301,37 +308,20 @@ export function ManagerCommandCenter({
     const fetchTasks = async () => {
         if (!profile) return;
         try {
+            // Only show:
+            // 1. Tasks assigned directly to the manager (e.g. from CEO, Administrators, or self)
+            // 2. Tasks created/assigned by the manager themselves to staff
             let activeQuery = supabase
                 .from("tasks")
                 .select("*, creator:created_by(id, full_name, role, designation)")
-                .in("status", ["pending", "in_progress"]);
+                .in("status", ["pending", "in_progress"])
+                .or(`created_by.eq.${profile.id},assigned_to.eq.${profile.id}`);
 
             let completedQuery = supabase
                 .from("tasks")
                 .select("*, creator:created_by(id, full_name, role, designation)")
-                .in("status", ["completed", "COMPLETED"]);
-
-            if (managerDepartmentAccess) {
-                if (department === "Marketing") {
-                    activeQuery = activeQuery.or(`created_by.eq.${profile.id},assigned_to.eq.${profile.id}`);
-                    completedQuery = completedQuery.or(`created_by.eq.${profile.id},assigned_to.eq.${profile.id}`);
-                } else {
-                    const accessibleStaffIds = staffData
-                        .filter(
-                            (s) =>
-                                s.department &&
-                                managerDepartmentAccess.includes(s.department),
-                        )
-                        .map((s) => s.id);
-                    accessibleStaffIds.push(profile.id);
-
-                    activeQuery = activeQuery.in("assigned_to", accessibleStaffIds);
-                    completedQuery = completedQuery.in(
-                        "assigned_to",
-                        accessibleStaffIds,
-                    );
-                }
-            }
+                .in("status", ["completed", "COMPLETED"])
+                .or(`created_by.eq.${profile.id},assigned_to.eq.${profile.id}`);
 
             const [activeRes, completedRes, requestsRes] = await Promise.all([
                 activeQuery.order("created_at", { ascending: false }),
@@ -988,7 +978,7 @@ export function ManagerCommandCenter({
                 {/* Left Column - Action Portal, Sparks, Request Tracker & Community Board */}
                 <div className="col-span-12 lg:col-span-3 space-y-6 order-3 lg:order-1">
                     {/* Department Daily Controls - ADDED FOR FINANCE/SALES/MARKETING MANAGERS */}
-                    {(department === "Finance" || department === "Sales" || department === "Marketing") && (
+                    {(department === "Finance" || department === "Sales" || department === "Marketing") && (hasEditPermission || hasViewPermission) && (
                         <div className="bg-[#1e1b4b] rounded-2xl md:rounded-[2.5rem] p-5 md:p-6 text-white shadow-[0_8px_30px_rgba(30,27,75,0.2)] relative overflow-hidden border border-indigo-500/20 group">
                             <div className="absolute top-0 right-0 w-32 h-32 rounded-full opacity-20 bg-indigo-500 filter blur-[40px] group-hover:opacity-30 transition-opacity"></div>
                             

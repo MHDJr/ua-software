@@ -1,26 +1,60 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 import { ExecutiveSalesOverview } from "@/components/executive-sales-overview";
-import { CEOSidebar } from "@/components/ceo-sidebar";
 import { MobileFAB } from "@/components/mobile-fab";
-import { Crown, LayoutDashboard, LogOut, TrendingUp } from "lucide-react";
+import { LayoutDashboard, LogOut } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { supabase, Profile } from "@/lib/supabase";
 
 export default function MarketingManagerIntelligence() {
-    const { profile, loading, user, signOut } = useAuth();
+    const { profile, loading, user, userRole, signOut } = useAuth();
+    const [liveProfile, setLiveProfile] = useState<Profile | null>(profile);
+    const [isChecking, setIsChecking] = useState(true);
     const router = useRouter();
 
     useEffect(() => {
-        if (!loading && (!user || !profile || (!profile.is_manager && profile.role !== "ceo"))) {
-            router.replace("/");
-        }
-    }, [profile, loading, user, router]);
+        const checkAccess = async () => {
+            if (loading) return;
+            if (!user) {
+                router.replace("/");
+                return;
+            }
 
-    if (loading || !profile) {
+            try {
+                const { data } = await supabase
+                    .from("profiles")
+                    .select("*")
+                    .eq("id", user.id)
+                    .single();
+
+                const p = (data as Profile) || profile;
+                setLiveProfile(p);
+
+                const isCeo = userRole === "CEO" || p?.role === "ceo";
+                const isAdmin = (p?.role as string) === "admin" || (p?.role as string) === "administrator" || p?.department === "Administration";
+                const hasSalesView = isCeo || isAdmin || p?.manager_permissions?.sales_permission === "view" || p?.manager_permissions?.sales_permission === "edit" || p?.manager_permissions?.sales_permission === "both" || p?.manager_permissions?.view_sales_page === true || p?.manager_permissions?.can_update_staff_sales === true;
+
+                if (!p || (!p.is_manager && !isCeo && !isAdmin) || !hasSalesView) {
+                    router.replace("/marketing-manager");
+                    return;
+                }
+            } catch (err) {
+                console.error("MarketingManagerIntelligence access error:", err);
+                router.replace("/marketing-manager");
+            } finally {
+                setIsChecking(false);
+            }
+        };
+
+        checkAccess();
+    }, [profile, loading, user, userRole, router]);
+
+    const effectiveProfile = liveProfile || profile;
+
+    if (loading || isChecking || !effectiveProfile) {
         return (
             <div className="min-h-screen bg-[#F4F7FE] flex items-center justify-center">
                 <div className="animate-spin h-8 w-8 border-2 border-[#2F1E73] border-t-transparent rounded-full" />
@@ -66,7 +100,7 @@ export default function MarketingManagerIntelligence() {
             </header>
 
             {/* Main Content */}
-            <div className="max-w-[1700px] mx-auto p-4 md:p-8">
+            <div className="max-w-[1700px] mx-auto p-4 md:px-8 py-8">
                 <ExecutiveSalesOverview />
             </div>
             

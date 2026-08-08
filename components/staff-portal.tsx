@@ -1943,22 +1943,7 @@ export default function StaffPortal() {
                         Refresh
                     </button>
 
-                    {/* Sales Report Button - Only for Sales Staff without Manager Access */}
-                    {(profile?.department === "Sales" || profile?.role === "sales" || profile?.is_sales_staff) && !profile?.is_manager && (
-                        <a
-                            href="/sales"
-                            className="relative group flex items-center gap-2 px-4 py-2 rounded-xl transition-all duration-300 hover:scale-[1.02]"
-                            style={{
-                                backgroundColor: brand.navy,
-                                boxShadow: `0 4px 14px ${brand.navy}40`,
-                            }}
-                        >
-                            <BarChart3 className="w-4 h-4 text-white" />
-                            <span className="text-[10px] font-black text-white uppercase tracking-widest">
-                                Sales Page
-                            </span>
-                        </a>
-                    )}
+
 
                     {/* Accounts Button - Only for Accounts Staff without Manager Access */}
                     {(profile?.department === "Finance" || profile?.department === "Accounts" || profile?.role === "accounts") && !profile?.is_manager && (

@@ -302,16 +302,13 @@ export function CEOSidebar({
                                     );
                                 }
                                 if (item.id === "sales-intelligence") {
-                                    const hasSalesView = profile?.department === "Sales" || 
-                                                         profile?.manager_permissions?.sales_permission === "view" || 
+                                    const isCeo = (profile?.role as string) === "ceo" || userRole === "CEO";
+                                    const hasSalesView = profile?.manager_permissions?.sales_permission === "view" || 
+                                                         profile?.manager_permissions?.sales_permission === "edit" || 
                                                          profile?.manager_permissions?.sales_permission === "both" || 
-                                                         profile?.manager_permissions?.view_sales_page === true;
-                                    return (
-                                        profile?.role === "ceo" ||
-                                        userRole === "CEO" ||
-                                        profile?.role === "sales" ||
-                                        (profile?.is_manager && hasSalesView)
-                                    );
+                                                         profile?.manager_permissions?.view_sales_page === true || 
+                                                         profile?.manager_permissions?.can_update_staff_sales === true;
+                                    return isCeo || hasSalesView;
                                 }
                                 return true;
                             })

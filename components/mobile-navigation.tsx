@@ -47,9 +47,11 @@ export default function MobileNavigation({ currentPage }: MobileNavigationProps)
                 }
             }
         },
-        ...(profile?.role === "sales" || profile?.role === "ceo"
-            ? [{ id: "sales", label: "Sales", icon: BarChart3, href: "/sales" }]
-            : [{ id: "accounts", label: "Accounts", icon: Wallet, href: "/accounts" }]),
+        ...(profile?.role === "ceo" || (profile?.is_manager && (profile?.department === "Sales" || profile?.manager_permissions?.sales_permission === "edit" || profile?.manager_permissions?.can_update_staff_sales))
+            ? [{ id: "sales", label: "Sales Ops", icon: BarChart3, href: "/sales" }]
+            : profile?.department === "Finance" || profile?.role === "accounts"
+            ? [{ id: "accounts", label: "Accounts", icon: Wallet, href: "/accounts" }]
+            : []),
         { id: "profile", label: "Profile", icon: User, action: () => {
             if (typeof window !== "undefined") {
                 window.dispatchEvent(new Event('open-profile-dialog'));

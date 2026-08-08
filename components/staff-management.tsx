@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Search, Plus, Star, CheckCircle2, Clock, XCircle, Wifi, Building2, Pencil, Trash2, Loader2, X, Mail, Users, FileText, BarChart3, Calendar, Eye, Activity, ArrowLeft, ChevronRight, TrendingUp, Settings } from "lucide-react";
+import { Search, Plus, Star, CheckCircle2, Clock, XCircle, Wifi, Building2, Pencil, Trash2, Loader2, X, Mail, Users, FileText, BarChart3, Calendar, Eye, Activity, ArrowLeft, ChevronRight, TrendingUp, Settings, RotateCcw, Shield, Check, Lock } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -54,6 +54,7 @@ interface StaffMember {
         finance_permission?: 'view' | 'edit' | 'both' | 'none';
         sales_permission?: 'view' | 'edit' | 'both' | 'none';
         manage_staff?: boolean;
+        can_update_staff_sales?: boolean;
     };
 }
 
@@ -1794,33 +1795,165 @@ export function StaffManagement() {
     const [financePermission, setFinancePermission] = useState<'view' | 'edit' | 'both' | 'none'>('none');
     const [salesPermission, setSalesPermission] = useState<'view' | 'edit' | 'both' | 'none'>('none');
     const [manageStaff, setManageStaff] = useState(false);
+    const [canUpdateStaffSales, setCanUpdateStaffSales] = useState(false);
     const [confirmDemote, setConfirmDemote] = useState(false);
+
+    // Helper: Determine if staff member is an Administrator
+    const isStaffAdmin = (staff: StaffMember | null) => {
+        if (!staff) return false;
+        const deptLower = (staff.department || "").trim().toLowerCase();
+        const roleLower = (staff.role || "").trim().toLowerCase();
+        const desigLower = (staff.designation || "").trim().toLowerCase();
+        return (
+            deptLower === "administration" ||
+            deptLower === "admin" ||
+            roleLower === "admin" ||
+            roleLower === "administrator" ||
+            desigLower.includes("admin") ||
+            desigLower.includes("administrator")
+        );
+    };
+
+    // Helper: Compute canonical default permissions for any staff/manager based on their department
+    const getDefaultPermissions = (staff: StaffMember | null) => {
+        if (!staff) {
+            return {
+                canonicalDept: "Administration",
+                isAdmin: false,
+                defaultDepts: [] as string[],
+                defaultCommTargets: [] as string[],
+                defaultFinance: 'none' as const,
+                defaultSales: 'none' as const,
+                defaultManageStaff: false,
+                defaultCanUpdateStaffSales: false,
+            };
+        }
+
+        const dept = (staff.department || "Administration").trim();
+        const deptLower = dept.toLowerCase();
+        const isSales = deptLower === "sales";
+        const isFinance = deptLower === "finance" || deptLower === "accounts" || deptLower === "finance/accounts";
+        const isMarketing = deptLower === "marketing";
+        const isAdmin = isStaffAdmin(staff);
+
+        let canonicalDept = "Administration";
+        if (isSales) canonicalDept = "Sales";
+        else if (isFinance) canonicalDept = "Finance";
+        else if (isMarketing) canonicalDept = "Marketing";
+        else if (isAdmin) canonicalDept = "Administration";
+
+        // 1. Default Task Assignment: Managers can assign tasks to their own department; Admins to all departments
+        const defaultDepts = isAdmin
+            ? ["Administration", "Sales", "Finance", "Marketing"]
+            : [canonicalDept];
+
+        // 2. Default Communication: Managers can message CEO, Admins, and their department; Admins to all
+        const defaultCommTargets = isAdmin
+            ? ["CEO", "Administration", "Finance", "Sales", "Marketing", "All Departments"]
+            : ["CEO", "Administration", canonicalDept];
+
+        // 3. Default Page View & Edit: Department managers have view to their department; Admins have edit
+        let defaultFinance: 'view' | 'edit' | 'both' | 'none' = 'none';
+        let defaultSales: 'view' | 'edit' | 'both' | 'none' = 'none';
+
+        if (isAdmin) {
+            defaultFinance = 'edit';
+            defaultSales = 'edit';
+        } else if (isFinance) {
+            defaultFinance = 'view';
+            defaultSales = 'none';
+        } else if (isSales) {
+            defaultFinance = 'none';
+            defaultSales = 'view'; // Sales staff see Sales Performance & Rankings by default
+        }
+
+        // 4. Staff Management (Provisioning & Terminating Profiles): Disabled by default, only for Admins
+        const defaultManageStaff = false;
+
+        // 5. Sales Operations Logger: Only for Admins by default; sales staff must be explicitly granted 'edit'
+        const defaultCanUpdateStaffSales = isAdmin;
+
+        return {
+            canonicalDept,
+            isAdmin,
+            defaultDepts,
+            defaultCommTargets,
+            defaultFinance,
+            defaultSales,
+            defaultManageStaff,
+            defaultCanUpdateStaffSales,
+        };
+    };
 
     // Initialize states when selected staff changes
     useEffect(() => {
         if (selectedStaffForPermissions) {
             const perms = selectedStaffForPermissions.manager_permissions || {};
-            setAllowedDepts(perms.allowed_departments_tasks || []);
-            setAllowedCommTargets(perms.allowed_communication_targets || []);
+            const defaults = getDefaultPermissions(selectedStaffForPermissions);
+
+            // 1. Task Assignment Authority (populate defaults if not set or empty)
+            if (Array.isArray(perms.allowed_departments_tasks) && perms.allowed_departments_tasks.length > 0) {
+                setAllowedDepts(perms.allowed_departments_tasks);
+            } else {
+                setAllowedDepts(defaults.defaultDepts);
+            }
+
+            // 2. Communication & Messaging Targets (populate defaults if not set or empty)
+            if (Array.isArray(perms.allowed_communication_targets) && perms.allowed_communication_targets.length > 0) {
+                setAllowedCommTargets(perms.allowed_communication_targets);
+            } else {
+                setAllowedCommTargets(defaults.defaultCommTargets);
+            }
+
             setSendMessageDeptsOnly(perms.send_message_departments_only || false);
             
-            // Handle new permissions structure or fallback to legacy booleans
+            // 3. Dashboard & View Permissions
             if (perms.finance_permission) {
                 setFinancePermission(perms.finance_permission);
-            } else {
+            } else if (perms.view_finance_page !== undefined) {
                 setFinancePermission(perms.view_finance_page ? 'both' : 'none');
+            } else {
+                setFinancePermission(defaults.defaultFinance);
             }
             
             if (perms.sales_permission) {
                 setSalesPermission(perms.sales_permission);
-            } else {
+            } else if (perms.view_sales_page !== undefined) {
                 setSalesPermission(perms.view_sales_page ? 'both' : 'none');
+            } else {
+                setSalesPermission(defaults.defaultSales);
             }
             
-            setManageStaff(perms.manage_staff || false);
+            // 4. Staff Management Access (Provision/Terminate profiles)
+            // By default disabled; only configurable for Administrators by CEO
+            if (defaults.isAdmin && perms.manage_staff !== undefined) {
+                setManageStaff(Boolean(perms.manage_staff));
+            } else {
+                setManageStaff(false);
+            }
+
+            // 5. Sales Operations Logger Authority
+            if (perms.can_update_staff_sales !== undefined) {
+                setCanUpdateStaffSales(Boolean(perms.can_update_staff_sales));
+            } else {
+                setCanUpdateStaffSales(defaults.defaultCanUpdateStaffSales);
+            }
+
             setConfirmDemote(false);
         }
     }, [selectedStaffForPermissions]);
+
+    const resetToDefaults = () => {
+        if (!selectedStaffForPermissions) return;
+        const defaults = getDefaultPermissions(selectedStaffForPermissions);
+        setAllowedDepts(defaults.defaultDepts);
+        setAllowedCommTargets(defaults.defaultCommTargets);
+        setFinancePermission(defaults.defaultFinance);
+        setSalesPermission(defaults.defaultSales);
+        setManageStaff(false);
+        setCanUpdateStaffSales(defaults.defaultCanUpdateStaffSales);
+        toast.info("Reset to standard role & department defaults.");
+    };
 
     const upgradeToManager = async () => {
         if (!selectedStaffForPermissions) return;
@@ -1841,18 +1974,22 @@ export function StaffManagement() {
                 newDesignation = `${dept} Administrator`;
             }
 
-            const isFinanceDept = dept === "Finance" || dept === "Accounts";
-            const isSalesDept = dept === "Sales";
+            const defaults = getDefaultPermissions({
+                ...selectedStaffForPermissions,
+                department: dept,
+                designation: newDesignation
+            });
 
             const defaultPerms = {
-                allowed_departments_tasks: [selectedStaffForPermissions.department],
-                allowed_communication_targets: ["CEO", selectedStaffForPermissions.department],
+                allowed_departments_tasks: defaults.defaultDepts,
+                allowed_communication_targets: defaults.defaultCommTargets,
                 send_message_departments_only: false,
-                finance_permission: isFinanceDept ? 'both' as const : 'none' as const,
-                sales_permission: isSalesDept ? 'both' as const : 'none' as const,
-                view_finance_page: isFinanceDept,
-                view_sales_page: isSalesDept,
-                manage_staff: false
+                finance_permission: defaults.defaultFinance,
+                sales_permission: defaults.defaultSales,
+                view_finance_page: defaults.defaultFinance === 'view' || defaults.defaultFinance === 'edit',
+                view_sales_page: defaults.defaultSales === 'view' || defaults.defaultSales === 'edit',
+                manage_staff: false,
+                can_update_staff_sales: defaults.defaultCanUpdateStaffSales
             };
 
             const { error } = await supabase
@@ -1925,6 +2062,15 @@ export function StaffManagement() {
         if (!selectedStaffForPermissions) return;
         setIsSavingPermissions(true);
         try {
+            const isAdmin = isStaffAdmin(selectedStaffForPermissions);
+            const isCeo = userRole === 'CEO' || profile?.role === 'ceo';
+            
+            // manage_staff can only be granted to Administrators by the CEO
+            const finalManageStaff = (isAdmin && isCeo) ? manageStaff : false;
+
+            const isSalesEdit = salesPermission === 'edit' || salesPermission === 'both' || canUpdateStaffSales;
+            const isSalesView = salesPermission === 'view' || isSalesEdit;
+
             const updatedPerms = {
                 allowed_departments_tasks: allowedDepts,
                 allowed_communication_targets: allowedCommTargets,
@@ -1932,8 +2078,9 @@ export function StaffManagement() {
                 finance_permission: financePermission,
                 sales_permission: salesPermission,
                 view_finance_page: financePermission === 'view' || financePermission === 'both',
-                view_sales_page: salesPermission === 'view' || salesPermission === 'both',
-                manage_staff: manageStaff
+                view_sales_page: isSalesView,
+                manage_staff: finalManageStaff,
+                can_update_staff_sales: isSalesEdit
             };
 
             const { error } = await supabase
@@ -1945,7 +2092,7 @@ export function StaffManagement() {
 
             if (error) throw error;
 
-            toast.success("Manager permissions updated successfully.");
+            toast.success("Security controls & permissions updated successfully.");
             setIsPermissionsDialogOpen(false);
             setSelectedStaffForPermissions(null);
             
@@ -2285,7 +2432,7 @@ export function StaffManagement() {
                                 Reports Center
                             </button>
                         )}
-                        {(userRole === 'CEO' || userRole === 'MANAGER') && (
+                        {(userRole === 'CEO' || profile?.role === 'ceo' || (profile?.is_manager && profile?.manager_permissions?.manage_staff === true)) && (
                             <Button
                                 onClick={() => setIsAddStaffOpen(true)}
                                 className="w-full sm:w-auto px-6 py-2.5 h-11 rounded-2xl text-white font-black uppercase tracking-widest text-[11px] flex items-center justify-center gap-2 shadow-xl shadow-orange-500/20 hover:shadow-orange-500/40 hover:scale-[1.02] active:scale-95 transition-all"
@@ -2481,19 +2628,23 @@ export function StaffManagement() {
                                                     </button>
                                                 )}
                                             </div>
-                                            {userRole === 'CEO' && (
-                                                <div className="flex gap-1 items-center">
+                                            <div className="flex gap-1 items-center">
+                                                {(userRole === 'CEO' || profile?.role === 'ceo') && (
                                                     <Button variant="ghost" onClick={() => { setSelectedStaffForPermissions(staff); setIsPermissionsDialogOpen(true); }} className="h-8 px-2 rounded-xl text-[#31267D] hover:bg-indigo-50 font-black uppercase text-[8px] gap-1" title="Manage Permissions">
                                                         <Settings className="w-3.5 h-3.5" /> Perms
                                                     </Button>
-                                                    <Button variant="ghost" onClick={() => { setStaffToEdit(staff); setNewFullName(staff.fullName || staff.name || ""); setIsEditModalOpen(true); }} className="h-8 px-2 rounded-xl text-[#31267D] hover:bg-indigo-50 font-black uppercase text-[8px] gap-1">
-                                                        <Pencil className="w-3.5 h-3.5" /> Edit
-                                                    </Button>
-                                                    <Button variant="ghost" onClick={() => { setStaffToDelete(staff); setIsDeleteModalOpen(true); }} className="h-8 px-2 rounded-xl text-red-600 hover:bg-red-50 font-black uppercase text-[8px] gap-1">
-                                                        <Trash2 className="w-3.5 h-3.5" /> Terminate
-                                                    </Button>
-                                                </div>
-                                            )}
+                                                )}
+                                                {(userRole === 'CEO' || profile?.role === 'ceo' || (profile?.is_manager && profile?.manager_permissions?.manage_staff === true)) && (
+                                                    <>
+                                                        <Button variant="ghost" onClick={() => { setStaffToEdit(staff); setNewFullName(staff.fullName || staff.name || ""); setIsEditModalOpen(true); }} className="h-8 px-2 rounded-xl text-[#31267D] hover:bg-indigo-50 font-black uppercase text-[8px] gap-1">
+                                                            <Pencil className="w-3.5 h-3.5" /> Edit
+                                                        </Button>
+                                                        <Button variant="ghost" onClick={() => { setStaffToDelete(staff); setIsDeleteModalOpen(true); }} className="h-8 px-2 rounded-xl text-red-600 hover:bg-red-50 font-black uppercase text-[8px] gap-1">
+                                                            <Trash2 className="w-3.5 h-3.5" /> Terminate
+                                                        </Button>
+                                                    </>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 );
@@ -2588,15 +2739,17 @@ export function StaffManagement() {
                                                              <FileText className="w-4 h-4" />
                                                          </button>
                                                      )}
-                                                    {userRole === 'CEO' && (
+                                                    {(userRole === 'CEO' || profile?.role === 'ceo') && (
+                                                        <button
+                                                            onClick={() => { setSelectedStaffForPermissions(staff); setIsPermissionsDialogOpen(true); }}
+                                                            className="p-2 rounded-xl transition-all duration-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 text-gray-400 hover:text-[#31267D]"
+                                                            title="Manage Permissions"
+                                                        >
+                                                            <Settings className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                    {(userRole === 'CEO' || profile?.role === 'ceo' || (profile?.is_manager && profile?.manager_permissions?.manage_staff === true)) && (
                                                         <>
-                                                            <button
-                                                                onClick={() => { setSelectedStaffForPermissions(staff); setIsPermissionsDialogOpen(true); }}
-                                                                className="p-2 rounded-xl transition-all duration-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 text-gray-400 hover:text-[#31267D]"
-                                                                title="Manage Permissions"
-                                                            >
-                                                                <Settings className="w-4 h-4" />
-                                                            </button>
                                                             <button
                                                                 onClick={() => { setStaffToEdit(staff); setNewFullName(staff.fullName || staff.name || ""); setIsEditModalOpen(true); }}
                                                                 className="p-2 rounded-xl transition-all duration-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 text-gray-400 hover:text-[#31267D]"
@@ -2688,22 +2841,44 @@ export function StaffManagement() {
             <Dialog open={isPermissionsDialogOpen} onOpenChange={setIsPermissionsDialogOpen}>
                 <DialogContent className="max-w-lg p-0 overflow-hidden rounded-[32px] border border-slate-100/60 bg-[#fbfbfd] shadow-[0_30px_90px_rgba(0,0,0,0.15)] max-h-[90vh] flex flex-col">
                     {/* Header */}
-                    <div className="bg-[#1E1B4B]/95 backdrop-blur-md px-8 py-7 text-white relative shrink-0 border-b border-orange-500/20 flex items-center justify-between">
+                    <div className="bg-[#1E1B4B]/95 backdrop-blur-md px-8 py-6 text-white relative shrink-0 border-b border-orange-500/20 flex items-center justify-between">
                         <div className="flex items-center gap-4">
                             <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center shadow-inner">
                                 <Settings className="w-6 h-6 text-orange-400 animate-spin-slow" />
                             </div>
                             <div>
-                                <h3 className="text-base font-black uppercase tracking-[0.2em] text-white">Security Controls</h3>
+                                <div className="flex items-center gap-2">
+                                    <h3 className="text-base font-black uppercase tracking-[0.2em] text-white">Security Controls</h3>
+                                    {isStaffAdmin(selectedStaffForPermissions) && (
+                                        <span className="px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-400/30 text-[8px] font-black uppercase tracking-widest text-amber-300">
+                                            Administrator
+                                        </span>
+                                    )}
+                                </div>
                                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-300 mt-0.5 flex items-center gap-1.5">
                                     <span className="font-mono text-[9px] opacity-60 bg-white/10 px-2 py-0.5 rounded border border-white/5">@{selectedStaffForPermissions?.username}</span>
                                     <span className="opacity-40">•</span>
-                                    <span className="opacity-80">{selectedStaffForPermissions?.fullName}</span>
+                                    <span className="opacity-80">{selectedStaffForPermissions?.fullName || selectedStaffForPermissions?.name}</span>
+                                    <span className="opacity-40">•</span>
+                                    <span className="text-orange-400 font-bold">{selectedStaffForPermissions?.department}</span>
                                 </p>
                             </div>
                         </div>
-                        <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center cursor-pointer hover:bg-white/10 transition-colors" onClick={() => { setIsPermissionsDialogOpen(false); setSelectedStaffForPermissions(null); }}>
-                            <X className="w-4 h-4 text-gray-300" />
+                        <div className="flex items-center gap-2">
+                            {selectedStaffForPermissions && (
+                                <button
+                                    type="button"
+                                    onClick={resetToDefaults}
+                                    className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-slate-200 hover:text-white text-[8px] font-black uppercase tracking-widest flex items-center gap-1.5 transition-all active:scale-95"
+                                    title="Reset to role standard defaults"
+                                >
+                                    <RotateCcw className="w-3 h-3" />
+                                    <span>Defaults</span>
+                                </button>
+                            )}
+                            <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center cursor-pointer hover:bg-white/10 transition-colors" onClick={() => { setIsPermissionsDialogOpen(false); setSelectedStaffForPermissions(null); }}>
+                                <X className="w-4 h-4 text-gray-300" />
+                            </div>
                         </div>
                     </div>
 
@@ -2715,7 +2890,7 @@ export function StaffManagement() {
                                 <div>
                                     <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest">Management Status</h4>
                                     <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mt-0.5">
-                                        Current Role: {selectedStaffForPermissions?.is_manager ? "Manager" : "Staff"}
+                                        Current Role: {selectedStaffForPermissions?.is_manager ? (selectedStaffForPermissions?.designation || "Manager") : "Standard Staff"}
                                     </p>
                                 </div>
                                 <span className={cn(
@@ -2780,172 +2955,238 @@ export function StaffManagement() {
                             )}
                         </div>
 
-                        {selectedStaffForPermissions?.is_manager && (
-                            <div className="space-y-6">
-                                {/* Task Assignment permissions */}
-                                <div className="space-y-3 p-5 rounded-xl bg-white border border-slate-100 shadow-sm">
-                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-[#31267D] block">
-                                        Task Assignment Authority
-                                    </label>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {["Marketing", "Sales", "Finance", "Administration"].map((dept) => {
-                                            const isChecked = allowedDepts.includes(dept);
-                                            return (
-                                                <button
-                                                    key={dept}
-                                                    type="button"
-                                                    onClick={() => {
+                        <div className="space-y-6">
+                            {/* Task Assignment permissions */}
+                            <div className="space-y-3 p-5 rounded-xl bg-white border border-slate-100 shadow-sm">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-[#31267D] block">
+                                            Task Assignment Authority
+                                        </label>
+                                        <p className="text-[8px] font-semibold text-gray-400 mt-0.5">
+                                            Select departments this operative can delegate and assign tasks to.
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setAllowedDepts(["Marketing", "Sales", "Finance", "Administration"])}
+                                            className="text-[8px] font-black uppercase tracking-wider text-[#31267D] hover:underline"
+                                        >
+                                            Select All
+                                        </button>
+                                        <span className="text-gray-300 text-[8px]">•</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setAllowedDepts([])}
+                                            className="text-[8px] font-black uppercase tracking-wider text-slate-400 hover:underline"
+                                        >
+                                            Clear
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2">
+                                    {["Marketing", "Sales", "Finance", "Administration"].map((dept) => {
+                                        const isChecked = allowedDepts.includes(dept);
+                                        return (
+                                            <button
+                                                key={dept}
+                                                type="button"
+                                                onClick={() => {
+                                                    if (isChecked) {
+                                                        setAllowedDepts(allowedDepts.filter((d) => d !== dept));
+                                                    } else {
+                                                        setAllowedDepts([...allowedDepts, dept]);
+                                                    }
+                                                }}
+                                                className={cn(
+                                                    "flex items-center justify-between px-4 py-3 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all duration-200 hover:scale-[1.01] shadow-sm",
+                                                    isChecked
+                                                        ? "border-[#F14D24] bg-orange-50/20 text-[#F14D24] font-black"
+                                                        : "border-slate-100 hover:border-slate-200 text-slate-500 bg-white"
+                                                )}
+                                            >
+                                                <span>{dept}</span>
+                                                <span className={cn(
+                                                    "w-4 h-4 rounded-md border flex items-center justify-center text-[8px] transition-all",
+                                                    isChecked ? "border-[#F14D24] bg-[#F14D24] text-white" : "border-slate-200 bg-slate-50"
+                                                )}>
+                                                    {isChecked && "✓"}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Communication Authority */}
+                            <div className="space-y-3 p-5 rounded-xl bg-white border border-slate-100 shadow-sm">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-[#31267D] block">
+                                            Communication & Messaging Targets
+                                        </label>
+                                        <p className="text-[8px] font-semibold text-gray-400 mt-0.5">
+                                            Channels and teams this operative can message in UA Messenger.
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setAllowedCommTargets(["All Departments", "CEO", "Administration", "Finance", "Sales", "Marketing"])}
+                                            className="text-[8px] font-black uppercase tracking-wider text-[#31267D] hover:underline"
+                                        >
+                                            Select All
+                                        </button>
+                                        <span className="text-gray-300 text-[8px]">•</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setAllowedCommTargets([])}
+                                            className="text-[8px] font-black uppercase tracking-wider text-slate-400 hover:underline"
+                                        >
+                                            Clear
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-2">
+                                    {["CEO", "Administration", "Finance", "Sales", "Marketing", "All Departments"].map((target) => {
+                                        const isChecked = allowedCommTargets.includes(target);
+                                        return (
+                                            <button
+                                                key={target}
+                                                type="button"
+                                                onClick={() => {
+                                                    if (target === "All Departments") {
                                                         if (isChecked) {
-                                                            setAllowedDepts(allowedDepts.filter((d) => d !== dept));
+                                                            setAllowedCommTargets([]);
                                                         } else {
-                                                            setAllowedDepts([...allowedDepts, dept]);
+                                                            setAllowedCommTargets(["All Departments", "CEO", "Administration", "Finance", "Sales", "Marketing"]);
                                                         }
-                                                    }}
-                                                    className={cn(
-                                                        "flex items-center justify-between px-4 py-3 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all duration-200 hover:scale-[1.01] shadow-sm",
-                                                        isChecked
-                                                            ? "border-[#F14D24] bg-orange-50/20 text-[#F14D24]"
-                                                            : "border-slate-100 hover:border-slate-200 text-slate-500 bg-white"
-                                                    )}
-                                                >
-                                                    <span>{dept}</span>
-                                                    <span className={cn(
-                                                        "w-4 h-4 rounded-md border flex items-center justify-center text-[8px] transition-all",
-                                                        isChecked ? "border-[#F14D24] bg-[#F14D24] text-white" : "border-slate-200 bg-slate-50"
-                                                    )}>
-                                                        {isChecked && "✓"}
-                                                    </span>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-
-                                {/* Communication Authority */}
-                                <div className="space-y-3 p-5 rounded-xl bg-white border border-slate-100 shadow-sm">
-                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-[#31267D] block">
-                                        Communication & Messaging Targets
-                                    </label>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        {["CEO", "Administration", "Finance", "Sales", "Marketing", "All Departments"].map((target) => {
-                                            const isChecked = allowedCommTargets.includes(target);
-                                            return (
-                                                <button
-                                                    key={target}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        if (target === "All Departments") {
-                                                            if (isChecked) {
-                                                                setAllowedCommTargets([]);
-                                                            } else {
-                                                                setAllowedCommTargets(["All Departments", "CEO", "Administration", "Finance", "Sales", "Marketing"]);
-                                                            }
+                                                    } else {
+                                                        let nextTargets = allowedCommTargets.filter(t => t !== "All Departments");
+                                                        if (nextTargets.includes(target)) {
+                                                            nextTargets = nextTargets.filter(t => t !== target);
                                                         } else {
-                                                            let nextTargets = allowedCommTargets.filter(t => t !== "All Departments");
-                                                            if (nextTargets.includes(target)) {
-                                                                nextTargets = nextTargets.filter(t => t !== target);
-                                                            } else {
-                                                                nextTargets = [...nextTargets, target];
-                                                                if (["CEO", "Administration", "Finance", "Sales", "Marketing"].every(t => nextTargets.includes(t))) {
-                                                                    nextTargets.push("All Departments");
-                                                                }
+                                                            nextTargets = [...nextTargets, target];
+                                                            if (["CEO", "Administration", "Finance", "Sales", "Marketing"].every(t => nextTargets.includes(t))) {
+                                                                nextTargets.push("All Departments");
                                                             }
-                                                            setAllowedCommTargets(nextTargets);
                                                         }
-                                                    }}
-                                                    className={cn(
-                                                        "flex flex-col justify-between p-3.5 rounded-xl border text-[9px] font-black uppercase tracking-wider text-left transition-all duration-200 hover:scale-[1.01] shadow-sm h-[68px]",
-                                                        isChecked
-                                                            ? "border-[#31267D] bg-indigo-50/30 text-[#31267D]"
-                                                            : "border-slate-100 hover:border-slate-200 text-slate-500 bg-white"
-                                                    )}
-                                                >
-                                                    <span className={cn(
-                                                        "w-3.5 h-3.5 rounded-md border flex items-center justify-center text-[7px] self-end transition-all",
-                                                        isChecked ? "border-[#31267D] bg-[#31267D] text-white" : "border-slate-200 bg-slate-50"
-                                                    )}>
-                                                        {isChecked && "✓"}
-                                                    </span>
-                                                    <span>{target}</span>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
+                                                        setAllowedCommTargets(nextTargets);
+                                                    }
+                                                }}
+                                                className={cn(
+                                                    "flex flex-col justify-between p-3 rounded-xl border text-[9px] font-black uppercase tracking-wider text-left transition-all duration-200 hover:scale-[1.01] shadow-sm h-[68px]",
+                                                    isChecked
+                                                        ? "border-[#31267D] bg-indigo-50/30 text-[#31267D]"
+                                                        : "border-slate-100 hover:border-slate-200 text-slate-500 bg-white"
+                                                )}
+                                            >
+                                                <span className={cn(
+                                                    "w-3.5 h-3.5 rounded-md border flex items-center justify-center text-[7px] self-end transition-all",
+                                                    isChecked ? "border-[#31267D] bg-[#31267D] text-white" : "border-slate-200 bg-slate-50"
+                                                )}>
+                                                    {isChecked && "✓"}
+                                                </span>
+                                                <span>{target}</span>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
+                            </div>
 
-                                {/* Page View Access Controls */}
-                                <div className="space-y-4 p-5 rounded-xl bg-white border border-slate-100 shadow-sm">
-                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-[#31267D] block">
-                                        Dashboard & View Permissions
-                                    </label>
-                                    <div className="space-y-4">
-                                        {/* Finance Page View & Edit */}
-                                        <div className="space-y-2">
-                                            <div className="flex justify-between items-center">
-                                                <div>
-                                                    <p className="text-[10px] font-black text-gray-800 uppercase tracking-wider">Finance Portal Access</p>
-                                                    <p className="text-[8px] font-semibold text-gray-400 leading-normal">Configure view/edit authorization level.</p>
-                                                </div>
-                                            </div>
-                                            <div className="grid grid-cols-4 gap-1 mt-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/20">
-                                                {(["none", "view", "edit", "both"] as const).map((opt) => {
-                                                    const active = financePermission === opt;
-                                                    const labels = { none: "None", view: "View", edit: "Edit", both: "Both" };
-                                                    return (
-                                                        <button
-                                                            key={opt}
-                                                            type="button"
-                                                            onClick={() => setFinancePermission(opt)}
-                                                            className={cn(
-                                                                "py-2 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all duration-200 text-center",
-                                                                active
-                                                                    ? "bg-[#31267D] text-white shadow-sm"
-                                                                    : "text-slate-500 hover:text-slate-900 bg-transparent hover:bg-slate-200/50"
-                                                            )}
-                                                        >
-                                                            {labels[opt]}
-                                                        </button>
-                                                    );
-                                                })}
+                            {/* Page View Access Controls */}
+                            <div className="space-y-4 p-5 rounded-xl bg-white border border-slate-100 shadow-sm">
+                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-[#31267D] block">
+                                    Dashboard & View Permissions
+                                </label>
+                                <div className="space-y-4">
+                                    {/* Finance Page View & Edit */}
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between items-center">
+                                            <div>
+                                                <p className="text-[10px] font-black text-gray-800 uppercase tracking-wider">Finance Portal Access</p>
+                                                <p className="text-[8px] font-semibold text-gray-400 leading-normal">Configure view/edit authorization level.</p>
                                             </div>
                                         </div>
+                                        <div className="grid grid-cols-4 gap-1 mt-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/20">
+                                            {(["none", "view", "edit", "both"] as const).map((opt) => {
+                                                const active = financePermission === opt;
+                                                const labels = { none: "None", view: "View", edit: "Edit", both: "Both" };
+                                                return (
+                                                    <button
+                                                        key={opt}
+                                                        type="button"
+                                                        onClick={() => setFinancePermission(opt)}
+                                                        className={cn(
+                                                            "py-2 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all duration-200 text-center",
+                                                            active
+                                                                ? "bg-[#31267D] text-white shadow-sm"
+                                                                : "text-slate-500 hover:text-slate-900 bg-transparent hover:bg-slate-200/50"
+                                                        )}
+                                                    >
+                                                        {labels[opt]}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
 
-                                        {/* Sales Page View & Edit */}
-                                        <div className="space-y-2">
-                                            <div className="flex justify-between items-center">
-                                                <div>
-                                                    <p className="text-[10px] font-black text-gray-800 uppercase tracking-wider">Sales Portal Access</p>
-                                                    <p className="text-[8px] font-semibold text-gray-400 leading-normal">Configure view/edit authorization level.</p>
-                                                </div>
-                                            </div>
-                                            <div className="grid grid-cols-4 gap-1 mt-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/20">
-                                                {(["none", "view", "edit", "both"] as const).map((opt) => {
-                                                    const active = salesPermission === opt;
-                                                    const labels = { none: "None", view: "View", edit: "Edit", both: "Both" };
-                                                    return (
-                                                        <button
-                                                            key={opt}
-                                                            type="button"
-                                                            onClick={() => setSalesPermission(opt)}
-                                                            className={cn(
-                                                                "py-2 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all duration-200 text-center",
-                                                                active
-                                                                    ? "bg-[#31267D] text-white shadow-sm"
-                                                                    : "text-slate-500 hover:text-slate-900 bg-transparent hover:bg-slate-200/50"
-                                                            )}
-                                                        >
-                                                            {labels[opt]}
-                                                        </button>
-                                                    );
-                                                })}
+                                    {/* Sales Page View & Edit */}
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between items-center">
+                                            <div>
+                                                <p className="text-[10px] font-black text-gray-800 uppercase tracking-wider">Sales Portal Access</p>
+                                                <p className="text-[8px] font-semibold text-gray-400 leading-normal">
+                                                    Configure sales access. &quot;Edit &amp; Log Sales&quot; enables centralized daily sales logging for all staff.
+                                                </p>
                                             </div>
                                         </div>
+                                        <div className="grid grid-cols-3 gap-1 mt-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/20">
+                                            {(["none", "view", "edit"] as const).map((opt) => {
+                                                const active = salesPermission === opt || (opt === "edit" && salesPermission === "both");
+                                                const labels = { 
+                                                    none: "None", 
+                                                    view: "View", 
+                                                    edit: "Edit & Log Sales" 
+                                                };
+                                                return (
+                                                    <button
+                                                        key={opt}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setSalesPermission(opt);
+                                                            setCanUpdateStaffSales(opt === "edit");
+                                                        }}
+                                                        className={cn(
+                                                            "py-2 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all duration-200 text-center",
+                                                            active
+                                                                ? "bg-[#31267D] text-white shadow-sm"
+                                                                : "text-slate-500 hover:text-slate-900 bg-transparent hover:bg-slate-200/50"
+                                                        )}
+                                                    >
+                                                        {labels[opt]}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
 
-                                        {/* Staff Management Access */}
-                                        <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50/50 border border-slate-100 mt-2">
+                                    {/* Staff Management Access - ONLY FOR ADMINISTRATORS (CEO Delegated) */}
+                                    {isStaffAdmin(selectedStaffForPermissions) && (userRole === 'CEO' || profile?.role === 'ceo') && (
+                                        <div className="flex items-center justify-between p-4 rounded-xl bg-amber-500/5 border border-amber-500/20 mt-2">
                                             <div className="space-y-0.5">
-                                                <p className="text-[10px] font-black text-gray-800 uppercase tracking-wider">Staff Management</p>
-                                                <p className="text-[8px] font-semibold text-gray-400 leading-normal">Allows provisioning and terminating personnel profiles.</p>
+                                                <div className="flex items-center gap-2">
+                                                    <p className="text-[10px] font-black text-gray-800 uppercase tracking-wider">Staff Management Authority</p>
+                                                    <span className="text-[7px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/25">
+                                                        Administrator Only
+                                                    </span>
+                                                </div>
+                                                <p className="text-[8px] font-semibold text-gray-500 leading-normal">
+                                                    Allows provisioning new operatives and terminating personnel profiles (Disabled by default).
+                                                </p>
                                             </div>
                                             <button
                                                 type="button"
@@ -2963,10 +3204,10 @@ export function StaffManagement() {
                                                 />
                                             </button>
                                         </div>
-                                    </div>
+                                    )}
                                 </div>
                             </div>
-                        )}
+                        </div>
                     </div>
 
                     {/* Footer Actions */}
@@ -2978,19 +3219,17 @@ export function StaffManagement() {
                         >
                             Cancel
                         </Button>
-                        {selectedStaffForPermissions?.is_manager && (
-                            <Button 
-                                disabled={isSavingPermissions} 
-                                onClick={savePermissions} 
-                                className="flex-1 py-5 rounded-xl font-black uppercase tracking-widest text-[9px] bg-[#F14D24] hover:brightness-105 active:scale-95 transition-all text-white shadow-md shadow-orange-500/20 border-0"
-                            >
-                                {isSavingPermissions ? (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin mx-auto" />
-                                ) : (
-                                    "Save Settings"
-                                )}
-                            </Button>
-                        )}
+                        <Button 
+                            disabled={isSavingPermissions} 
+                            onClick={savePermissions} 
+                            className="flex-1 py-5 rounded-xl font-black uppercase tracking-widest text-[9px] bg-[#F14D24] hover:brightness-105 active:scale-95 transition-all text-white shadow-md shadow-orange-500/20 border-0"
+                        >
+                            {isSavingPermissions ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin mx-auto" />
+                            ) : (
+                                "Save Settings"
+                            )}
+                        </Button>
                     </div>
                 </DialogContent>
             </Dialog>

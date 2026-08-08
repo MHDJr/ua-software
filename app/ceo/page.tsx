@@ -296,6 +296,7 @@ function CEOPageContent() {
                 </div>
             )}
 
+
             {/* Main Content Area - Optimized for performance */}
             <main 
                 className={cn(

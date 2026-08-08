@@ -43,6 +43,7 @@ export type Profile = {
         finance_permission?: 'view' | 'edit' | 'both' | 'none';
         sales_permission?: 'view' | 'edit' | 'both' | 'none';
         manage_staff?: boolean;
+        can_update_staff_sales?: boolean;
     };
     created_at: string;
     updated_at: string;

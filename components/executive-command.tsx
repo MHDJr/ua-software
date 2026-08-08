@@ -681,9 +681,7 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
     }, []);
 
     const rotatingSteps = useMemo(() => {
-        const steps: any[] = [
-            { type: "greeting" }
-        ];
+        const steps: any[] = [];
 
         // Fetch overdue tasks
         const overdue = tasks.filter(t => t.due_date && new Date(t.due_date) < new Date() && t.status !== "completed" && t.status !== "COMPLETED");
@@ -723,9 +721,7 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
 
     useEffect(() => {
         if (isInteractingPrompt || rotatingSteps.length === 0) return;
-        const currentStep = rotatingSteps[activePromptIndex % rotatingSteps.length];
-        let duration = 12000; // default 12s for tasks
-        if (currentStep?.type === "greeting") duration = 8000; // 8s for Greeting
+        const duration = 12000; // 12s for tasks
 
         const timeout = setTimeout(() => {
             setActivePromptIndex((prev) => (prev + 1) % rotatingSteps.length);
@@ -2934,155 +2930,7 @@ export function ExecutiveCommand({ currentView }: { currentView?: string }) {
                 </div>
             </header>
 
-            {/* Welcome Card for CEO */}
-            {userRole === "CEO" && (
-                <div className="w-full mb-6">
-                    <motion.div
-                        initial={{ opacity: 0, y: -20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5 }}
-                        className="relative rounded-[2.5rem] p-6 md:p-8 overflow-hidden bg-gradient-to-br from-[#0c1328] via-[#122349] to-[#070b1a] border border-blue-500/30 text-white shadow-[0_25px_60px_rgba(0,0,0,0.35)] flex flex-col justify-between gap-6 min-h-[140px] z-10"
-                    >
-                        {/* Interactive floating background glow shapes */}
-                        <motion.div
-                            animate={{
-                                scale: [1, 1.15, 1],
-                                x: [0, 20, 0],
-                                y: [0, -15, 0],
-                            }}
-                            transition={{
-                                duration: 8,
-                                repeat: Infinity,
-                                ease: "easeInOut"
-                            }}
-                            className="absolute top-0 right-0 w-96 h-96 bg-amber-500/5 rounded-full blur-[90px] -mr-20 -mt-20 pointer-events-none"
-                        />
-                        <motion.div
-                            animate={{
-                                scale: [1.15, 1, 1.15],
-                                x: [0, -20, 0],
-                                y: [0, 15, 0],
-                            }}
-                            transition={{
-                                duration: 10,
-                                repeat: Infinity,
-                                ease: "easeInOut"
-                            }}
-                            className="absolute bottom-0 left-0 w-96 h-96 bg-indigo-500/5 rounded-full blur-[90px] -ml-20 -mb-20 pointer-events-none" />
-                        {/* Navigation controls overlay */}
-                        <div className="absolute top-4 right-4 flex items-center gap-2 z-20">
-                            <button
-                                onClick={() => setActivePromptIndex((prev) => (prev - 1 + rotatingSteps.length) % rotatingSteps.length)}
-                                className="w-6 h-6 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors"
-                            >
-                                <ChevronLeft className="w-3.5 h-3.5" />
-                            </button>
-                            <div className="flex items-center gap-1">
-                                {rotatingSteps.map((_, idx) => (
-                                    <div
-                                        key={idx}
-                                        className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
-                                            (activePromptIndex % rotatingSteps.length) === idx ? "bg-amber-400 w-3" : "bg-white/20"
-                                        }`}
-                                    />
-                                ))}
-                            </div>
-                            <button
-                                onClick={() => setActivePromptIndex((prev) => (prev + 1) % rotatingSteps.length)}
-                                className="w-6 h-6 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors"
-                            >
-                                <ChevronRight className="w-3.5 h-3.5" />
-                            </button>
-                        </div>
 
-                        {/* Prompt Render Deck */}
-                        {rotatingSteps.length > 0 && (() => {
-                            const stepIndex = activePromptIndex % rotatingSteps.length;
-                            const currentStep = rotatingSteps[stepIndex];
-                            
-                            if (currentStep.type === "greeting") {
-                                return (
-                                    <div className="flex-1 flex items-center gap-5 z-10 w-full text-left">
-                                        <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-450 via-amber-500 to-amber-600 flex items-center justify-center shadow-2xl shadow-amber-500/30 border border-amber-300/30 shrink-0 select-none">
-                                            <Crown className="w-7 h-7 text-slate-955 font-black animate-pulse" />
-                                            <div className="absolute inset-1 rounded-xl border border-dashed border-slate-955/20 animate-spin" style={{ animationDuration: '24s' }} />
-                                            <div className="absolute -inset-1 rounded-2xl border border-amber-400/20 animate-ping pointer-events-none" style={{ animationDuration: '3s' }} />
-                                        </div>
-                                        <div>
-                                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-1">
-                                                <span className="text-[9px] font-black text-amber-500 uppercase tracking-[0.25em] px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20">
-                                                    Executive Command Active
-                                                </span>
-                                                <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
-                                                    {new Date().toLocaleDateString("en-IN", {
-                                                        weekday: "long",
-                                                        month: "long",
-                                                        day: "numeric"
-                                                    })}
-                                                </span>
-                                            </div>
-                                            <h1 className="text-xl md:text-3xl font-black text-white tracking-tight uppercase leading-none mt-2">
-                                                Welcome Back, Salim PA
-                                            </h1>
-                                            <p className="text-xs font-semibold text-slate-400 mt-2">
-                                                Welcome back to the Command Grid. Empowering your strategic directives today.
-                                            </p>
-                                        </div>
-                                    </div>
-                                );
-                            }
-                            
-                            if (currentStep.type === "overdue_task") {
-                                const { task, assigneeName, daysOverdue } = currentStep;
-                                return (
-                                    <div className="flex-1 flex flex-col md:flex-row md:items-center justify-between gap-6 z-10 w-full pr-24 text-left">
-                                        <div className="flex-1 flex flex-col gap-2">
-                                            <div className="flex items-center gap-3">
-                                                <span className="flex items-center gap-1.5 text-[9px] font-black text-red-500 uppercase tracking-[0.2em] px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20 w-fit">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
-                                                    High-Priority Command Briefing
-                                                </span>
-                                                <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${
-                                                    daysOverdue >= 15
-                                                        ? "bg-red-500/15 border border-red-500/30 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.15)] animate-pulse"
-                                                        : "bg-amber-500/15 border border-amber-500/30 text-amber-400"
-                                                }`}>
-                                                    {daysOverdue >= 15 ? "🚨 CLASS-A SEVERE BOTTLENECK" : "⚠️ CLASS-B ELEVATED STALL"}
-                                                </span>
-                                            </div>
-                                            <p className="text-sm md:text-base font-bold text-slate-300 leading-relaxed max-w-4xl mt-1">
-                                                <strong className="text-white font-black">{assigneeName}</strong> has the task{" "}
-                                                <span className="text-amber-450 font-extrabold italic">&ldquo;{task.title}&rdquo;</span> overdue by{" "}
-                                                <strong className="text-red-450 font-black">{daysOverdue} days</strong>. Issue a Direct Command to clear this task?
-                                            </p>
-                                        </div>
-                                        
-                                        <div className="shrink-0 z-10">
-                                            {commandDeployedTaskId === task.id ? (
-                                                <span className="px-5 py-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/20 text-emerald-400 font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.1)]">
-                                                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                                                    Command Deployed
-                                                </span>
-                                            ) : (
-                                                <Button
-                                                    onClick={() => handleDeployDirectCommandForTask(task, assigneeName)}
-                                                    disabled={isDeployingCommand}
-                                                    className="relative px-6 py-3 rounded-2xl bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-655 text-white font-black text-xs uppercase tracking-widest transition-all duration-300 shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] border border-red-400/20 active:scale-95 shrink-0 flex items-center gap-2 overflow-hidden group"
-                                                >
-                                                    <Zap className="w-4 h-4 text-white animate-pulse group-hover:scale-120 transition-transform" />
-                                                    <span>{isDeployingCommand ? "Deploying..." : "Deploy Command"}</span>
-                                                </Button>
-                                            )}
-                                        </div>
-                                    </div>
-                                );
-                            }
-                            
-                            return null;
-                        })()}
-                    </motion.div>
-                </div>
-            )}
 
             {/* 1. STREAMLINED PRIORITY METRIC GRID */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">

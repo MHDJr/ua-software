@@ -363,8 +363,9 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
         
         const roleLower = profile.role?.toLowerCase() || "";
         const designationLower = profile.designation?.toLowerCase() || "";
+        const deptLower = (profile.department || "").toLowerCase();
         const isCeo = roleLower === "ceo" || designationLower === "ceo";
-        const isAdmin = roleLower === "admin" || roleLower === "administrator" || designationLower === "admin" || designationLower === "administrator";
+        const isAdmin = roleLower === "admin" || roleLower === "administrator" || designationLower === "admin" || designationLower === "administrator" || deptLower === "administration";
         
         if (isCeo || isAdmin) {
             // CEO or Administrators get global organisation access
@@ -381,7 +382,7 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
         
         if (isManager) {
             // Get manager's department (case-insensitive)
-            const managerDept = (profile.department || "").trim();
+            const managerDept = (profile.department || "Administration").trim();
             const managerDeptLower = managerDept.toLowerCase();
             
             const allowedCommTargets = profile.manager_permissions?.allowed_communication_targets || [];
@@ -392,56 +393,44 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
                 
                 const targetRoleLower = p.role?.toLowerCase() || "";
                 const targetDesignationLower = p.designation?.toLowerCase() || "";
-                const isTargetCeo = targetRoleLower === "ceo" || targetDesignationLower === "ceo";
+                const targetDeptLower = (p.department || "Administration").trim().toLowerCase();
                 
-                // 1. CEO is always visible (default communication)
+                const isTargetCeo = targetRoleLower === "ceo" || targetDesignationLower === "ceo";
+                // 1. CEO is always visible
                 if (isTargetCeo) return true;
                 
-                // Determine target's department
-                const staffDept = (p.department || "Administration").trim();
-                const staffDeptLower = staffDept.toLowerCase();
+                // 2. Administrators are always visible
+                const isTargetAdmin = targetRoleLower === "admin" || targetRoleLower === "administrator" || targetDesignationLower === "admin" || targetDesignationLower === "administrator" || targetDeptLower === "administration";
+                if (isTargetAdmin) return true;
                 
-                // 2. Managers of the current user's department are always visible (default communication)
-                const isTargetManager = p.is_manager === true || 
-                                        targetRoleLower === "manager" || 
-                                        targetDesignationLower.includes("manager") ||
-                                        targetDesignationLower.includes("head");
-                const myDeptLower = (profile.department || "Administration").toLowerCase();
-                const isMyDepartmentManager = staffDeptLower === myDeptLower && isTargetManager;
-                if (isMyDepartmentManager) return true;
+                // 3. Staff in manager's own department are always visible
+                let isOwnDept = targetDeptLower === managerDeptLower;
+                if (managerDeptLower === "finance" || managerDeptLower === "accounts" || managerDeptLower === "finance/accounts") {
+                    isOwnDept = targetDeptLower === "finance" || targetDeptLower === "accounts" || targetDeptLower === "finance/accounts";
+                }
+                if (isOwnDept) return true;
                 
-                // 3. Custom target checking
+                // 4. Custom target checking (if extra departments allowed)
                 if (isAllDeptsAllowed) return true;
                 
                 if (allowedCommTargets.length > 0) {
                     let mappedTarget = "";
-                    if (staffDeptLower === "marketing") mappedTarget = "Marketing";
-                    else if (staffDeptLower === "sales") mappedTarget = "Sales";
-                    else if (staffDeptLower === "finance" || staffDeptLower === "accounts") mappedTarget = "Finance";
-                    else if (staffDeptLower === "administration" || staffDeptLower === "admin") mappedTarget = "Administration";
+                    if (targetDeptLower === "marketing") mappedTarget = "Marketing";
+                    else if (targetDeptLower === "sales") mappedTarget = "Sales";
+                    else if (targetDeptLower === "finance" || targetDeptLower === "accounts") mappedTarget = "Finance";
+                    else if (targetDeptLower === "administration" || targetDeptLower === "admin") mappedTarget = "Administration";
                     
                     if (mappedTarget && allowedCommTargets.includes(mappedTarget)) {
                         return true;
                     }
-                    return false;
                 }
                 
-                // Fallback to original manager visibility logic if no custom targets are specified:
-                const isTargetAdmin = targetRoleLower === "admin" || targetRoleLower === "administrator" || targetDesignationLower === "admin" || targetDesignationLower === "administrator";
-                if (isTargetAdmin) return true;
-                
-                // Marketing Manager can message everyone
-                if (managerDeptLower === "marketing") {
+                // Marketing Manager default authority extension
+                if (managerDeptLower === "marketing" && targetDeptLower === "sales") {
                     return true;
                 }
                 
-                // Finance/Accounts managers can access Finance, Accounts, and Finance/Accounts staff
-                if (managerDeptLower === "finance" || managerDeptLower === "accounts" || managerDeptLower === "finance/accounts") {
-                    return staffDeptLower === "finance" || staffDeptLower === "accounts" || staffDeptLower === "finance/accounts";
-                }
-                
-                // Other managers match exactly their department
-                return staffDeptLower === managerDeptLower;
+                return false;
             });
         }
         
@@ -451,18 +440,20 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
             
             const targetRoleLower = p.role?.toLowerCase() || "";
             const targetDesignationLower = p.designation?.toLowerCase() || "";
-            const isTargetCeo = targetRoleLower === "ceo" || targetDesignationLower === "ceo";
-            const isTargetAdmin = targetRoleLower === "admin" || targetRoleLower === "administrator" || targetDesignationLower === "admin" || targetDesignationLower === "administrator";
-            
-            // Determine target's department and current user's department, defaulting to "Administration"
             const targetDeptLower = (p.department || "Administration").toLowerCase();
             const myDeptLower = (profile.department || "Administration").toLowerCase();
             
-            let isMyDepartmentManager = targetDeptLower === myDeptLower;
+            const isTargetCeo = targetRoleLower === "ceo" || targetDesignationLower === "ceo";
+            if (isTargetCeo) return true;
+
+            const isTargetAdmin = targetRoleLower === "admin" || targetRoleLower === "administrator" || targetDesignationLower === "admin" || targetDesignationLower === "administrator" || targetDeptLower === "administration";
+            if (isTargetAdmin) return true;
+            
+            let isMyDepartment = targetDeptLower === myDeptLower;
             if (targetDeptLower === "marketing") {
-                isMyDepartmentManager = myDeptLower === "marketing" || myDeptLower === "sales";
+                isMyDepartment = myDeptLower === "marketing" || myDeptLower === "sales";
             } else if (targetDeptLower === "finance" || targetDeptLower === "accounts" || targetDeptLower === "finance/accounts") {
-                isMyDepartmentManager = myDeptLower === "finance" || myDeptLower === "accounts" || myDeptLower === "finance/accounts";
+                isMyDepartment = myDeptLower === "finance" || myDeptLower === "accounts" || myDeptLower === "finance/accounts";
             }
                  
             const isTargetManager = p.is_manager === true || 
@@ -473,9 +464,9 @@ export function UAMessengerDrawer({ isOpen, onClose, profile }: UAMessengerDrawe
                                     targetRoleLower === "director" ||
                                     targetDesignationLower.includes("director");
             
-            const isMyManager = isMyDepartmentManager && isTargetManager;
+            const isMyManager = isMyDepartment && isTargetManager;
             
-            return isTargetCeo || isTargetAdmin || isMyManager;
+            return isMyManager;
         });
     };
  
